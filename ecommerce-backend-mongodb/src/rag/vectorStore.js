@@ -11,7 +11,11 @@ async function getVectorStore() {
 
   vectorStore = new Chroma(embeddings, {
     collectionName: "shopsphere-products",
-    url: process.env.CHROMA_URL || "http://localhost:8000",
+
+    host: process.env.CHROMA_HOST,
+    apiKey: process.env.CHROMA_API_KEY,
+    tenant: process.env.CHROMA_TENANT,
+    database: process.env.CHROMA_DATABASE,
   });
 
   return vectorStore;
