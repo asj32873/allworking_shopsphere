@@ -1,0 +1,1 @@
+const {HfInference}=require('@huggingface/inference');const hf=new HfInference(process.env.HF_TOKEN);async function generateAnswer(prompt){const r=await hf.chatCompletion({model:process.env.HF_MODEL,messages:[{role:'user',content:prompt}],max_tokens:300,temperature:0.2});return r.choices[0].message.content;}module.exports={generateAnswer};

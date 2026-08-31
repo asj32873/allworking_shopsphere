@@ -1,4 +1,94 @@
-﻿===== App.jsx =====
+﻿===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\api\client.js =====
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:5001/api"
+).replace(/\/$/, "");
+
+let accessTokenGetter = async () => null;
+
+export function configureAccessTokenGetter(getter) {
+  accessTokenGetter = typeof getter === "function" ? getter : async () => null;
+}
+
+async function request(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+
+  if (options.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const token = await accessTokenGetter();
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers,
+    credentials: "include",
+    body:
+      options.body !== undefined && typeof options.body !== "string"
+        ? JSON.stringify(options.body)
+        : options.body,
+  });
+
+  let payload = null;
+
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    payload = await response.json();
+  } else {
+    const text = await response.text();
+
+    payload = text ? { message: text } : null;
+  }
+
+  if (!response.ok) {
+    const error = new Error(
+      payload?.message || `Request failed with status ${response.status}`,
+    );
+
+    error.status = response.status;
+
+    error.details = payload?.details;
+
+    throw error;
+  }
+
+  return payload?.data !== undefined ? payload.data : payload;
+}
+
+export const api = {
+  get: (path) => request(path),
+
+  post: (path, body) =>
+    request(path, {
+      method: "POST",
+      body,
+    }),
+
+  put: (path, body) =>
+    request(path, {
+      method: "PUT",
+      body,
+    }),
+
+  patch: (path, body) =>
+    request(path, {
+      method: "PATCH",
+      body,
+    }),
+
+  delete: (path) =>
+    request(path, {
+      method: "DELETE",
+    }),
+};
+
+export { API_URL };
+
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\App.jsx =====
 import { Routes, Route, Navigate } from "react-router-dom";
 
 import Navbar from "./components/common/Navbar";
@@ -108,7 +198,7 @@ export default function App() {
   );
 }
 
-===== Auth0ProviderWithNavigate.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\auth\Auth0ProviderWithNavigate.jsx =====
 import { Auth0Provider } from "@auth0/auth0-react";
 import { useNavigate } from "react-router-dom";
 
@@ -159,7 +249,7 @@ export default function Auth0ProviderWithNavigate({ children }) {
   );
 }
 
-===== tilt3d.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\common\tilt3d.jsx =====
 import { useRef } from "react";
 
 export default function Tilt3D({ children, className = "", max = 7 }) {
@@ -207,7 +297,7 @@ export default function Tilt3D({ children, className = "", max = 7 }) {
   );
 }
 
-===== Navbar.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\common\Navbar.jsx =====
 import { Link, useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 
@@ -321,7 +411,7 @@ export default function Navbar() {
   );
 }
 
-===== PortalLayout.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\common\PortalLayout.jsx =====
 import RoleSidebar from "./RoleSidebar";
 export default function PortalLayout({ type, children }) {
   return (
@@ -334,7 +424,7 @@ export default function PortalLayout({ type, children }) {
   );
 }
 
-===== ProtectedRoute.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\common\ProtectedRoute.jsx =====
 import { Navigate, Outlet } from "react-router-dom";
 
 import { useApp } from "../../context/AppContext";
@@ -361,7 +451,7 @@ export default function ProtectedRoute({ roles }) {
   return <Outlet />;
 }
 
-===== RoleSidebar.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\common\RoleSidebar.jsx =====
 import { NavLink } from "react-router-dom";
 export default function RoleSidebar({ type }) {
   const vendor = [
@@ -400,7 +490,7 @@ export default function RoleSidebar({ type }) {
   );
 }
 
-===== OrderTracking.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\orders\OrderTracking.jsx =====
 const labels = {
   PLACED: "Order Placed",
   CONFIRMED: "Confirmed",
@@ -425,7 +515,7 @@ export default function OrderTracking({ item }) {
   );
 }
 
-===== ProductCard.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\products\ProductCard.jsx =====
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useApp } from "../../context/AppContext";
@@ -496,7 +586,7 @@ export default function ProductCard({ product }) {
   );
 }
 
-===== ProductQA.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\products\ProductQA.jsx =====
 import { useState } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
@@ -619,7 +709,7 @@ export default function ProductQA({ productId }) {
   );
 }
 
-===== ReviewForm.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\products\ReviewForm.jsx =====
 import { useState } from "react";
 import { useApp } from "../../context/AppContext";
 
@@ -788,7 +878,7 @@ export default function ReviewForm({
   );
 }
 
-===== AppContext.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\context\AppContext.jsx =====
 import React, {
   createContext,
   useCallback,
@@ -1690,7 +1780,20 @@ export function AppProvider({ children }) {
 
 export const useApp = () => useContext(C);
 
-===== main.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\data\dummyData.js =====
+export const USERS=[{id:1,name:"Demo User",email:"user@example.com",phone:"9876543210",password:"user123",role:"USER",status:"ACTIVE"},{id:2,name:"Sony Store Owner",email:"vendor@example.com",phone:"9876543211",password:"vendor123",role:"VENDOR",status:"ACTIVE"},{id:3,name:"Admin",email:"admin@example.com",phone:"9876543212",password:"admin123",role:"ADMIN",status:"ACTIVE"},{id:4,name:"Pending Vendor",email:"pending@example.com",phone:"vendor123",password:"vendor123",role:"VENDOR",status:"ACTIVE"}];
+export const VENDORS=[{id:20,userId:2,storeName:"Sony Electronics Store",email:"vendor@example.com",phone:"9876543211",storeAddress:"Indiranagar, Bengaluru",status:"VERIFIED",createdAt:"2026-07-01",verifiedAt:"2026-07-03"},{id:21,userId:4,storeName:"Tech World",email:"pending@example.com",phone:"9876543213",storeAddress:"Whitefield, Bengaluru",status:"APPLIED",createdAt:"2026-08-10",verifiedAt:null}];
+export const ADDRESSES=[{id:1,userId:1,type:"Home",addressLine:"123 Main Street",city:"Bengaluru",state:"Karnataka",pincode:"560037",isDefault:true},{id:2,userId:1,type:"Office",addressLine:"Tech Park Road",city:"Bengaluru",state:"Karnataka",pincode:"560066",isDefault:false}];
+const img="https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800";
+export const PRODUCTS=[{id:101,vendorId:2,name:"Sony WH-1000XM5",brand:"Sony",category:"AUDIO",description:"Premium wireless noise cancelling headphones.",price:29999,stock:18,rating:4.8,image:img},{id:102,vendorId:2,name:"Sony WF-1000XM5",brand:"Sony",category:"AUDIO",description:"True wireless noise cancelling earbuds.",price:24999,stock:24,rating:4.7,image:img},{id:103,vendorId:2,name:"Sony Bravia 55 Inch TV",brand:"Sony",category:"TV",description:"4K smart television with HDR support.",price:64999,stock:7,rating:4.6,image:img},{id:104,vendorId:2,name:"Sony Xperia Smartphone",brand:"Sony",category:"MOBILE",description:"Premium Android smartphone.",price:79999,stock:9,rating:4.5,image:img},{id:105,vendorId:2,name:"Wireless Keyboard",brand:"Sony",category:"ACCESSORIES",description:"Compact wireless keyboard.",price:2499,stock:30,rating:4.2,image:img},{id:106,vendorId:2,name:"Bluetooth Speaker",brand:"Sony",category:"AUDIO",description:"Portable Bluetooth speaker.",price:5999,stock:14,rating:4.4,image:img},{id:107,vendorId:2,name:"Wireless Mouse",brand:"Sony",category:"ACCESSORIES",description:"Ergonomic wireless mouse.",price:1499,stock:35,rating:4.2,image:img},{id:108,vendorId:2,name:"Gaming Controller",brand:"Sony",category:"ACCESSORIES",description:"Wireless gaming controller.",price:6999,stock:20,rating:4.6,image:img},{id:109,vendorId:2,name:"4K Monitor",brand:"Sony",category:"LAPTOP",description:"Sharp 4K productivity monitor.",price:28999,stock:5,rating:4.1,image:img}];
+export const REVIEWS=[{id:1,productId:101,userId:1,rating:5,review:"Excellent headphones.",createdAt:"2026-08-01"},{id:2,productId:101,userId:7,rating:4,review:"Very comfortable.",createdAt:"2026-08-03"}];
+export const ORDERS=[{id:10482,userId:1,addressId:1,status:"IN_PROGRESS",totalAmount:32498,orderedAt:"2026-08-12T10:30:00"},{id:10481,userId:1,addressId:2,status:"DELIVERED",totalAmount:6999,orderedAt:"2026-08-05T11:00:00"}];
+export const ORDER_ITEMS=[{id:501,orderId:10482,productId:101,vendorId:2,name:"Sony WH-1000XM5",quantity:1,unitPrice:29999,vendorStatus:"DISPATCHED"},{id:502,orderId:10482,productId:105,vendorId:2,name:"Wireless Keyboard",quantity:1,unitPrice:2499,vendorStatus:"PACKED"},{id:503,orderId:10481,productId:108,vendorId:2,name:"Gaming Controller",quantity:1,unitPrice:6999,vendorStatus:"DELIVERED"}];
+export const ORDER_STATUS_HISTORY=[{id:1,orderId:10482,orderItemId:501,status:"PLACED",timestamp:"2026-08-12T10:30:00",remarks:"Order placed"},{id:2,orderId:10482,orderItemId:501,status:"CONFIRMED",timestamp:"2026-08-12T11:00:00",remarks:"Vendor confirmed"},{id:3,orderId:10482,orderItemId:501,status:"PACKED",timestamp:"2026-08-12T16:00:00",remarks:"Product packed"},{id:4,orderId:10482,orderItemId:501,status:"DISPATCHED",timestamp:"2026-08-13T09:00:00",remarks:"Product dispatched"},{id:5,orderId:10482,orderItemId:502,status:"PLACED",timestamp:"2026-08-12T10:30:00",remarks:"Order placed"},{id:6,orderId:10482,orderItemId:502,status:"CONFIRMED",timestamp:"2026-08-12T12:00:00",remarks:"Vendor confirmed"},{id:7,orderId:10482,orderItemId:502,status:"PACKED",timestamp:"2026-08-13T08:30:00",remarks:"Product packed"},{id:8,orderId:10481,orderItemId:503,status:"PLACED",timestamp:"2026-08-05T11:00:00",remarks:"Order placed"},{id:9,orderId:10481,orderItemId:503,status:"CONFIRMED",timestamp:"2026-08-05T12:00:00",remarks:"Vendor confirmed"},{id:10,orderId:10481,orderItemId:503,status:"PACKED",timestamp:"2026-08-06T10:00:00",remarks:"Product packed"},{id:11,orderId:10481,orderItemId:503,status:"DISPATCHED",timestamp:"2026-08-06T15:00:00",remarks:"Product dispatched"},{id:12,orderId:10481,orderItemId:503,status:"OUT_FOR_DELIVERY",timestamp:"2026-08-08T09:00:00",remarks:"Out for delivery"},{id:13,orderId:10481,orderItemId:503,status:"DELIVERED",timestamp:"2026-08-08T17:00:00",remarks:"Delivered"}];
+export const CUSTOMER_ISSUES=[{id:1928,userId:1,vendorId:2,orderId:10482,productId:101,subject:"Delivery status query",description:"Please provide an expected delivery date.",status:"IN_PROGRESS",priority:"MEDIUM",response:"The product has been dispatched."},{id:1927,userId:1,vendorId:2,orderId:10481,productId:108,subject:"Warranty question",description:"I had a question about the warranty.",status:"RESOLVED",priority:"LOW",response:"The product has standard warranty coverage."}];
+export const CART_ITEMS=[];
+
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\main.jsx =====
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
@@ -1717,7 +1820,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   </React.StrictMode>,
 );
 
-===== Addresses.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Addresses.jsx =====
 import { useState } from "react";
 import { useApp } from "../context/AppContext";
 const empty = {
@@ -1833,7 +1936,7 @@ export default function Addresses() {
   );
 }
 
-===== AdminDashboard.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminDashboard.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 export default function AdminDashboard() {
@@ -1873,7 +1976,7 @@ export default function AdminDashboard() {
   );
 }
 
-===== AdminIssues.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminIssues.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 export default function AdminIssues() {
@@ -1936,7 +2039,7 @@ export default function AdminIssues() {
   );
 }
 
-===== AdminOrders.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminOrders.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 const statuses = [
@@ -1993,7 +2096,7 @@ export default function AdminOrders() {
   );
 }
 
-===== AdminReviews.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminReviews.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 export default function AdminReviews() {
@@ -2022,7 +2125,7 @@ export default function AdminReviews() {
   );
 }
 
-===== AdminUsers.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminUsers.jsx =====
 import { useApp } from "../../context/AppContext";
 import PortalLayout from "../../components/common/PortalLayout";
 export default function AdminUsers() {
@@ -2078,7 +2181,7 @@ export default function AdminUsers() {
   );
 }
 
-===== AdminVendors.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminVendors.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 export default function AdminVendors() {
@@ -2141,7 +2244,7 @@ export default function AdminVendors() {
   );
 }
 
-===== Cart.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Cart.jsx =====
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -2283,7 +2386,7 @@ export default function Cart() {
   );
 }
 
-===== Home.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Home.jsx =====
 import { Link } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import ProductCard from "../components/products/ProductCard";
@@ -2321,7 +2424,7 @@ export default function Home() {
   );
 }
 
-===== Issues.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Issues.jsx =====
 import { useState } from "react";
 import { useApp } from "../context/AppContext";
 export default function Issues() {
@@ -2417,7 +2520,7 @@ export default function Issues() {
   );
 }
 
-===== Login.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Login.jsx =====
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -2552,7 +2655,7 @@ export default function Login() {
   );
 }
 
-===== OrderDetails.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\OrderDetails.jsx =====
 import { Link, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import OrderTracking from "../components/orders/OrderTracking";
@@ -2630,7 +2733,7 @@ export default function OrderDetails() {
   );
 }
 
-===== Orders.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Orders.jsx =====
 import { Link } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 export default function Orders() {
@@ -2674,7 +2777,7 @@ export default function Orders() {
   );
 }
 
-===== PaymentCancel.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\PaymentCancel.jsx =====
 import { Link } from "react-router-dom";
 
 export default function PaymentCancel() {
@@ -2705,7 +2808,7 @@ export default function PaymentCancel() {
   );
 }
 
-===== PaymentSuccess.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\PaymentSuccess.jsx =====
 import { Link } from "react-router-dom";
 
 export default function PaymentSuccess() {
@@ -2736,7 +2839,7 @@ export default function PaymentSuccess() {
   );
 }
 
-===== ProductDetails.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\ProductDetails.jsx =====
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -2891,7 +2994,7 @@ export default function ProductDetails() {
   );
 }
 
-===== Products.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Products.jsx =====
 import { useMemo, useState } from "react";
 import ProductCard from "../components/products/ProductCard";
 import { useApp } from "../context/AppContext";
@@ -3056,7 +3159,7 @@ export default function Products() {
   );
 }
 
-===== Profile.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Profile.jsx =====
 import { Link } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 export default function Profile() {
@@ -3135,7 +3238,7 @@ export default function Profile() {
   );
 }
 
-===== Register.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Register.jsx =====
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -3210,7 +3313,7 @@ export default function Register() {
   );
 }
 
-===== Reviews.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Reviews.jsx =====
 import { Link } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 export default function Reviews() {
@@ -3239,7 +3342,7 @@ export default function Reviews() {
   );
 }
 
-===== VendorDashboard.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorDashboard.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 export default function VendorDashboard() {
@@ -3282,7 +3385,7 @@ export default function VendorDashboard() {
   );
 }
 
-===== VendorIssues.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorIssues.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 export default function VendorIssues() {
@@ -3333,7 +3436,7 @@ export default function VendorIssues() {
   );
 }
 
-===== VendorOrders.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorOrders.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 const next = {
@@ -3403,7 +3506,7 @@ export default function VendorOrders() {
   );
 }
 
-===== VendorProductEdit.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorProductEdit.jsx =====
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PortalLayout from "../../components/common/PortalLayout";
@@ -3562,7 +3665,7 @@ export default function VendorProductEdit() {
   );
 }
 
-===== VendorProducts.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorProducts.jsx =====
 import { Link } from "react-router-dom";
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
@@ -3620,7 +3723,7 @@ export default function VendorProducts() {
   );
 }
 
-===== VendorProfile.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorProfile.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 export default function VendorProfile() {
@@ -3652,7 +3755,7 @@ export default function VendorProfile() {
   );
 }
 
-===== VendorRegister.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\VendorRegister.jsx =====
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -3727,7 +3830,7 @@ export default function VendorRegister() {
   );
 }
 
-===== Addresses.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Addresses.jsx =====
 import { useState } from "react";
 import { useApp } from "../context/AppContext";
 
@@ -3877,7 +3980,7 @@ export default function Addresses() {
   );
 }
 
-===== AdminDashboard.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminDashboard.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 
@@ -3921,7 +4024,7 @@ export default function AdminDashboard() {
   );
 }
 
-===== AdminIssues.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminIssues.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 
@@ -3989,7 +4092,7 @@ export default function AdminIssues() {
   );
 }
 
-===== AdminOrders.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminOrders.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 
@@ -4059,7 +4162,7 @@ export default function AdminOrders() {
   );
 }
 
-===== AdminReviews.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminReviews.jsx =====
 import { useEffect, useMemo } from "react";
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
@@ -4124,7 +4227,7 @@ export default function AdminReviews() {
   );
 }
 
-===== AdminUsers.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminUsers.jsx =====
 import { useApp } from "../../context/AppContext";
 import PortalLayout from "../../components/common/PortalLayout";
 
@@ -4189,7 +4292,7 @@ export default function AdminUsers() {
   );
 }
 
-===== AdminVendors.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminVendors.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 
@@ -4263,7 +4366,7 @@ export default function AdminVendors() {
   );
 }
 
-===== Cart.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Cart.jsx =====
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -4404,7 +4507,7 @@ export default function Cart() {
   );
 }
 
-===== Issues.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Issues.jsx =====
 import { useState } from "react";
 import { useApp } from "../context/AppContext";
 
@@ -4541,7 +4644,7 @@ export default function Issues() {
   );
 }
 
-===== Login.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Login.jsx =====
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -4636,7 +4739,7 @@ export default function Login() {
   );
 }
 
-===== OrderDetails.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\OrderDetails.jsx =====
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -4741,7 +4844,7 @@ export default function OrderDetails() {
   );
 }
 
-===== Orders.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Orders.jsx =====
 import { Link } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 
@@ -4802,7 +4905,7 @@ export default function Orders() {
   );
 }
 
-===== ProductDetails.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\ProductDetails.jsx =====
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -4975,7 +5078,7 @@ export default function ProductDetails() {
   );
 }
 
-===== Profile.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Profile.jsx =====
 import { Link } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 
@@ -5078,7 +5181,7 @@ export default function Profile() {
   );
 }
 
-===== Register.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Register.jsx =====
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -5141,7 +5244,7 @@ export default function Register() {
   );
 }
 
-===== Reviews.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Reviews.jsx =====
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApp } from "../context/AppContext";
@@ -5205,7 +5308,7 @@ export default function Reviews() {
   );
 }
 
-===== VendorDashboard.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorDashboard.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 
@@ -5273,7 +5376,7 @@ export default function VendorDashboard() {
   );
 }
 
-===== VendorIssues.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorIssues.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 
@@ -5339,7 +5442,7 @@ export default function VendorIssues() {
   );
 }
 
-===== VendorOrders.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorOrders.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 
@@ -5423,7 +5526,7 @@ export default function VendorOrders() {
   );
 }
 
-===== VendorProductEdit.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorProductEdit.jsx =====
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PortalLayout from "../../components/common/PortalLayout";
@@ -5564,7 +5667,7 @@ export default function VendorProductEdit() {
   );
 }
 
-===== VendorProducts.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorProducts.jsx =====
 import { Link } from "react-router-dom";
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
@@ -5635,7 +5738,7 @@ export default function VendorProducts() {
   );
 }
 
-===== VendorProfile.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorProfile.jsx =====
 import PortalLayout from "../../components/common/PortalLayout";
 import { useApp } from "../../context/AppContext";
 
@@ -5675,7 +5778,7 @@ export default function VendorProfile() {
   );
 }
 
-===== VendorRegister.jsx =====
+===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\VendorRegister.jsx =====
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";

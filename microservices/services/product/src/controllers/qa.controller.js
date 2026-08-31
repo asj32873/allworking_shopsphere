@@ -1,0 +1,1 @@
+const {postJson}=require('../utils/serviceClient');const {fail}=require('../utils/apiResponse');async function ask(req,res){const r=await postJson(process.env.RAG_SERVICE_URL||'http://localhost:5010',`/internal/products/${req.params.id}/qa`,{question:req.body.question});if(!r.ok)return res.status(r.status).json(r.data);res.json(r.data);}module.exports={ask};

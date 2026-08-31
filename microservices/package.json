@@ -1,0 +1,10 @@
+{
+  "name": "shopsphere-microservices-backend",
+  "private": true,
+  "version": "3.0.0",
+  "scripts": {
+    "install:all": "powershell -ExecutionPolicy Bypass -File scripts/install-all.ps1",
+    "start:all": "powershell -ExecutionPolicy Bypass -File scripts/start-all.ps1",
+    "check": "node scripts/check.js"
+  }
+}

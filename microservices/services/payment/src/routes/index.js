@@ -1,0 +1,1 @@
+const router=require('express').Router();const c=require('../controllers/payment.controller');const {authenticate,authorize}=require('../middleware/auth');router.post('/api/payments/debug',c.debug);router.post('/api/payments/create-checkout-session',authenticate,authorize('USER'),c.createCheckoutSession);module.exports=router;
