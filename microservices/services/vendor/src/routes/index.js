@@ -12,7 +12,6 @@ router.get(
 router.post("/internal/vendors", internal, c.internalCreate);
 router.get("/internal/vendors/by-user/:userId", internal, c.internalGetByUser);
 
-
 router.get("/internal/vendors", internal, c.internalList);
 router.patch("/internal/vendors/:id", internal, c.internalUpdate);
 router.delete("/internal/vendors/:id", internal, c.internalRemove);

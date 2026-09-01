@@ -1,0 +1,11 @@
+$src = "C:\Users\Administrator\Desktop\Python-practice\shopshere-microservices-\microservices\services"
+$out = Join-Path $src "notes.txt"
+
+Get-ChildItem -Path $src -Recurse -File -Filter "*.js" |
+      Where-Object { $_.FullName -notlike "*\node_modules\*" } |
+      Sort-Object FullName |
+      ForEach-Object {            
+          "===== $($_.Name) ====="            
+          Get-Content -LiteralPath $_.FullName
+          ""                                          
+      } | Set-Content -LiteralPath $out -Encoding UTF8

@@ -176,17 +176,40 @@ export function AppProvider({ children }) {
       return;
     }
 
-    const data = await api.get("/cart");
+    try {
+      console.log("LOADING CART...");
 
-    const items = (data.items || []).map((i) => ({
-      ...i,
-      id: i.id || i._id,
-      productId: i.productId?._id || i.productId,
-      product: normalizeProduct(i.product || {}),
-    }));
+      const data = await api.get("/cart");
 
-    setCartItems(items);
-    setCartTotal(data.total || 0);
+      console.log("CART API RESPONSE:", data);
+
+      const cartData = Array.isArray(data)
+        ? data
+        : data?.data || data?.items || [];
+
+      const items = cartData.map((i) => ({
+        ...i,
+        id: i.id || i._id,
+        productId: i.productId?._id || i.productId,
+        product: normalizeProduct(i.product || {}),
+      }));
+
+      console.log("NORMALIZED CART ITEMS:", items);
+
+      setCartItems(items);
+
+      const total = items.reduce(
+        (sum, item) => sum + Number(item.subtotal || 0),
+        0,
+      );
+
+      setCartTotal(total);
+    } catch (error) {
+      console.error("FAILED TO LOAD CART:", error);
+
+      setCartItems([]);
+      setCartTotal(0);
+    }
   }, [user]);
 
   /*
@@ -234,19 +257,61 @@ export function AppProvider({ children }) {
     }
 
     if (user.role === "USER") {
-      const [addressData, orderData, issueData] = await Promise.all([
-        api.get("/addresses"),
-        api.get("/orders"),
-        api.get("/issues"),
-      ]);
+      const [addressResult, orderResult, issueResult] =
+        await Promise.allSettled([
+          api.get("/addresses"),
+          api.get("/orders"),
+          api.get("/issues"),
+        ]);
 
-      setAddresses((addressData || []).map(normalizeAddress));
+      /*
+       * ADDRESSES
+       */
+      if (addressResult.status === "fulfilled") {
+        const addressData = addressResult.value;
 
-      setOrders((orderData || []).map(normalizeOrder));
+        const addressList = Array.isArray(addressData)
+          ? addressData
+          : addressData?.data || addressData?.items || [];
 
-      setIssues((issueData || []).map(normalizeIssue));
+        console.log("ADDRESS API RESPONSE:", addressData);
+        console.log("ADDRESS LIST:", addressList);
 
-      await Promise.all([loadCart(), loadReviews()]);
+        setAddresses(addressList.map(normalizeAddress));
+      } else {
+        console.error("FAILED TO LOAD ADDRESSES:", addressResult.reason);
+      }
+
+      /*
+       * ORDERS
+       */
+      if (orderResult.status === "fulfilled") {
+        const orderData = orderResult.value;
+
+        setOrders(
+          (Array.isArray(orderData) ? orderData : []).map(normalizeOrder),
+        );
+      } else {
+        console.error("FAILED TO LOAD ORDERS:", orderResult.reason);
+      }
+
+      /*
+       * ISSUES
+       */
+      if (issueResult.status === "fulfilled") {
+        const issueData = issueResult.value;
+
+        setIssues(
+          (Array.isArray(issueData) ? issueData : []).map(normalizeIssue),
+        );
+      } else {
+        console.error("FAILED TO LOAD ISSUES:", issueResult.reason);
+      }
+
+      /*
+       * Load these independently too
+       */
+      await Promise.allSettled([loadCart(), loadReviews()]);
     }
 
     if (user.role === "VENDOR") {
@@ -327,7 +392,11 @@ export function AppProvider({ children }) {
       loadUserData().catch(console.error);
     }
   }, [loading, user, loadUserData]);
-
+  useEffect(() => {
+    if (!loading && user?.role === "USER") {
+      loadCart().catch(console.error);
+    }
+  }, [loading, user, loadCart]);
   /*
    * ---------------------------------------------------------
    * LEGACY EMAIL/PASSWORD LOGIN
@@ -839,6 +908,7 @@ export function AppProvider({ children }) {
       cartItems,
       cartTotal,
 
+      loadCart,
       addToCart,
       removeFromCart,
       updateCartQty,

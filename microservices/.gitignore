@@ -8,3 +8,5 @@ npm-debug.log*
 coverage/
 .vscode/
 chroma-data/
+vendor/
+user/

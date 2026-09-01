@@ -1,1 +1,6 @@
-const router=require('express').Router();const c=require('../controllers/user.controller');const {authenticate,authorize}=require('../middleware/auth');router.get('/api/users/me',authenticate,authorize('USER'),c.me);router.patch('/api/users/me',authenticate,c.update);module.exports=router;
+const router = require("express").Router();
+const c = require("../controllers/user.controller");
+const { authenticate, authorize } = require("../middleware/auth");
+router.get("/api/users/me", authenticate, authorize("USER"), c.me);
+router.patch("/api/users/me", authenticate, c.update);
+module.exports = router;

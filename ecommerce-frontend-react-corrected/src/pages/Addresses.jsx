@@ -16,7 +16,8 @@ export default function Addresses() {
     deleteAddress,
     setDefaultAddress,
   } = useApp();
-  const mine = addresses.filter((a) => a.userId === user.id);
+  const mine = addresses;
+  console.log("Addresses from context:", addresses);
   const [f, setF] = useState(empty),
     [edit, setEdit] = useState(null);
   const submit = (e) => {

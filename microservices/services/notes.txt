@@ -1,0 +1,4299 @@
+﻿===== app.js =====
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const { notFound, errorHandler } = require("./middleware/error");
+const app = express();
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-address",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== address.controller.js =====
+const Address = require("../models/Address");
+const { ok, fail } = require("../utils/apiResponse");
+async function list(req, res) {
+  ok(
+    res,
+    await Address.find({ userId: req.user.id }).sort({
+      isDefault: -1,
+      createdAt: -1,
+    }),
+  );
+}
+async function create(req, res) {
+  const existing = await Address.exists({ userId: req.user.id });
+  const a = await Address.create({
+    ...req.body,
+    userId: req.user.id,
+    isDefault: !existing,
+  });
+  ok(res, a, "Address created.", 201);
+}
+async function update(req, res) {
+  const a = await Address.findOneAndUpdate(
+    { _id: req.params.id, userId: req.user.id },
+    req.body,
+    { new: true, runValidators: true },
+  );
+  if (!a) return fail(res, "Address not found.", 404);
+  ok(res, a, "Address updated.");
+}
+async function remove(req, res) {
+  const a = await Address.findOneAndDelete({
+    _id: req.params.id,
+    userId: req.user.id,
+  });
+  if (!a) return fail(res, "Address not found.", 404);
+  const replacement = await Address.findOne({ userId: req.user.id }).sort({
+    createdAt: 1,
+  });
+  if (replacement)
+    await Address.findByIdAndUpdate(replacement._id, { isDefault: true });
+  ok(res, null, "Address deleted.");
+}
+async function setDefault(req, res) {
+  const a = await Address.findOne({ _id: req.params.id, userId: req.user.id });
+  if (!a) return fail(res, "Address not found.", 404);
+  await Address.updateMany({ userId: req.user.id }, { isDefault: false });
+  a.isDefault = true;
+  await a.save();
+  ok(res, a, "Default address updated.");
+}
+async function internalGet(req, res) {
+  const a = await Address.findOne({
+    _id: req.params.id,
+    userId: req.params.userId,
+  }).lean();
+  if (!a) return fail(res, "Address not found.", 404);
+  ok(res, a);
+}
+module.exports = { list, create, update, remove, setDefault, internalGet };
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== Address.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},type:{type:String,enum:['Home','Office','Other'],default:'Home'},addressLine:{type:String,required:true,trim:true},city:{type:String,required:true,trim:true},state:{type:String,required:true,trim:true},pincode:{type:String,required:true,trim:true},isDefault:{type:Boolean,default:false}},{timestamps:true});schema.index({userId:1,isDefault:1});module.exports=mongoose.model('Address',schema);
+
+===== index.js =====
+const router=require('express').Router();const c=require('../controllers/address.controller');const {authenticate,authorize}=require('../middleware/auth');const internal=require('../middleware/internal');router.get('/api/addresses',authenticate,authorize('USER'),c.list);router.post('/api/addresses',authenticate,authorize('USER'),c.create);router.put('/api/addresses/:id',authenticate,authorize('USER'),c.update);router.delete('/api/addresses/:id',authenticate,authorize('USER'),c.remove);router.patch('/api/addresses/:id/default',authenticate,authorize('USER'),c.setDefault);router.get('/internal/addresses/:userId/:id',internal,c.internalGet);module.exports=router;
+
+===== server.js =====
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+const app = require("./app");
+const connectDB = require("./config/db");
+const PORT = Number(process.env.PORT || 5008);
+(async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(
+        "ShopSphere address service running on http://localhost:" + PORT,
+      ),
+    );
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-admin',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== admin.controller.js =====
+const {getJson,patchJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const AUTH=()=>process.env.AUTH_SERVICE_URL||'http://localhost:5002';const VENDOR=()=>process.env.VENDOR_SERVICE_URL||'http://localhost:5012';const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ORDER=()=>process.env.ORDER_SERVICE_URL||'http://localhost:5005';const SUPPORT=()=>process.env.SUPPORT_SERVICE_URL||'http://localhost:5011';
+async function dashboard(req,res){const [u,v,p,o]=await Promise.all([getJson(AUTH(),'/internal/admin/users'),getJson(VENDOR(),'/internal/vendors'),getJson(PRODUCT(),'/api/products?limit=1'),getJson(ORDER(),'/api/orders/admin/list',{'authorization':req.headers.authorization||''})]);ok(res,{users:u.data?.data?.length||0,vendors:v.data?.data?.length||0,products:p.data?.data?.total||0,orders:o.data?.data?.length||0});}
+async function vendors(req,res){const r=await getJson(VENDOR(),'/internal/vendors');if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data);}
+async function approveVendor(req,res){const r=await patchJson(VENDOR(),`/internal/vendors/${req.params.id}`,{status:'VERIFIED',verifiedAt:new Date()});if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data,'Vendor approved.');}
+async function rejectVendor(req,res){const r=await patchJson(VENDOR(),`/internal/vendors/${req.params.id}`,{status:'REJECTED',verifiedAt:null});if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data,'Vendor rejected.');}
+async function deleteVendor(req,res){const vr=await getJson(VENDOR(),'/internal/vendors');const v=(vr.data?.data||[]).find(x=>String(x._id)===String(req.params.id));if(!v)return fail(res,'Vendor not found.',404);await patchJson(AUTH(),`/internal/users/${v.userId}`,{status:'DISABLED'});const r=await fetch(`${VENDOR()}/internal/vendors/${req.params.id}`,{method:'DELETE',headers:{'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''}});const d=await r.json();if(!r.ok)return res.status(r.status).json(d);ok(res,null,'Vendor deleted.');}
+async function users(req,res){const r=await getJson(AUTH(),'/internal/admin/users');if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data);}
+async function updateUserStatus(req,res){if(req.params.id===req.user.id)return fail(res,'You cannot disable your own admin account.',400);if(!['ACTIVE','DISABLED'].includes(req.body.status))return fail(res,'Invalid user status.');const r=await patchJson(AUTH(),`/internal/users/${req.params.id}`,{status:req.body.status});if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data,'User status updated.');}
+async function issues(req,res){const r=await getJson(SUPPORT(),'/api/issues',{'authorization':req.headers.authorization||''});if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data);}
+module.exports={dashboard,vendors,approveVendor,rejectVendor,deleteVendor,users,updateUserStatus,issues};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== index.js =====
+const router=require('express').Router();const c=require('../controllers/admin.controller');const {authenticate,authorize}=require('../middleware/auth');router.use(authenticate,authorize('ADMIN'));router.get('/api/admin/dashboard',c.dashboard);router.get('/api/admin/vendors',c.vendors);router.patch('/api/admin/vendors/:id/approve',c.approveVendor);router.patch('/api/admin/vendors/:id/reject',c.rejectVendor);router.delete('/api/admin/vendors/:id',c.deleteVendor);router.get('/api/admin/users',c.users);router.patch('/api/admin/users/:id/status',c.updateUserStatus);router.get('/api/admin/issues',c.issues);module.exports=router;
+
+===== server.js =====
+require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5013);
+(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere admin service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== server.js =====
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const {
+  createProxyMiddleware,
+  fixRequestBody,
+} = require("http-proxy-middleware");
+
+const app = express();
+
+const services = {
+  auth:
+    process.env.AUTH_SERVICE_URL ||
+    "http://localhost:5002",
+
+  users:
+    process.env.USER_SERVICE_URL ||
+    "http://localhost:5007",
+
+  products:
+    process.env.PRODUCT_SERVICE_URL ||
+    "http://localhost:5003",
+
+  cart:
+    process.env.CART_SERVICE_URL ||
+    "http://localhost:5004",
+
+  orders:
+    process.env.ORDER_SERVICE_URL ||
+    "http://localhost:5005",
+
+  payments:
+    process.env.PAYMENT_SERVICE_URL ||
+    "http://localhost:5006",
+
+  addresses:
+    process.env.ADDRESS_SERVICE_URL ||
+    "http://localhost:5008",
+
+  reviews:
+    process.env.REVIEW_SERVICE_URL ||
+    "http://localhost:5009",
+
+  rag:
+    process.env.RAG_SERVICE_URL ||
+    "http://localhost:5010",
+
+  issues:
+    process.env.SUPPORT_SERVICE_URL ||
+    "http://localhost:5011",
+
+  vendor:
+    process.env.VENDOR_SERVICE_URL ||
+    "http://localhost:5012",
+
+  admin:
+    process.env.ADMIN_SERVICE_URL ||
+    "http://localhost:5013",
+};
+
+/* -------------------------------------------------------
+   SECURITY / BASIC MIDDLEWARE
+------------------------------------------------------- */
+
+app.use(helmet());
+
+app.use(
+  cors({
+    origin:
+      process.env.FRONTEND_URL ||
+      "http://localhost:5173",
+
+    credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+      "stripe-signature",
+    ],
+  })
+);
+
+app.use(
+  morgan(
+    process.env.NODE_ENV === "production"
+      ? "combined"
+      : "dev"
+  )
+);
+
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
+/* -------------------------------------------------------
+   HEALTH
+------------------------------------------------------- */
+
+app.get("/health", (req, res) => {
+  res.json({
+    success: true,
+    service: "shopsphere-api-gateway",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    success: true,
+    service: "shopsphere-api-gateway",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/* -------------------------------------------------------
+   BODY PARSING
+
+   IMPORTANT:
+
+   Normal API requests are parsed here.
+
+   http-proxy-middleware's fixRequestBody()
+   reconstructs the body for the upstream service.
+
+   Stripe webhook is registered BEFORE this middleware.
+------------------------------------------------------- */
+
+/* -------------------------------------------------------
+   STRIPE WEBHOOK
+
+   Stripe requires the RAW request body.
+
+   Therefore this route MUST appear before express.json().
+------------------------------------------------------- */
+
+app.use(
+  "/api/payments/webhook",
+  createProxyMiddleware({
+    target: services.payments,
+
+    changeOrigin: true,
+
+    proxyTimeout: 15000,
+
+    pathRewrite: {
+      "^/": "/api/payments/webhook",
+    },
+
+    on: {
+      proxyReq: (proxyReq, req) => {
+        if (req.headers["stripe-signature"]) {
+          proxyReq.setHeader(
+            "stripe-signature",
+            req.headers["stripe-signature"]
+          );
+        }
+
+        proxyReq.setHeader(
+          "x-gateway-request",
+          "shopsphere"
+        );
+      },
+
+      error: (err, req, res) => {
+        console.error(
+          `[GATEWAY STRIPE ERROR] ${err.message}`
+        );
+
+        if (!res.headersSent) {
+          res.status(502).json({
+            success: false,
+            message:
+              "Payment service unavailable.",
+          });
+        }
+      },
+    },
+  })
+);
+
+/* -------------------------------------------------------
+   NORMAL REQUEST BODY PARSING
+------------------------------------------------------- */
+
+app.use(
+  express.json({
+    limit: "1mb",
+  })
+);
+
+app.use(
+  express.urlencoded({
+    extended: true,
+  })
+);
+
+/* -------------------------------------------------------
+   PROXY FACTORY
+------------------------------------------------------- */
+
+function proxy(target, pathRewrite) {
+  return createProxyMiddleware({
+    target,
+
+    changeOrigin: true,
+
+    proxyTimeout: 15000,
+
+    pathRewrite,
+
+    on: {
+      proxyReq: (proxyReq, req) => {
+        /*
+         * IMPORTANT:
+         *
+         * Set headers BEFORE fixRequestBody().
+         *
+         * fixRequestBody() writes the already-parsed
+         * Express body into the outgoing proxy request.
+         */
+
+        proxyReq.setHeader(
+          "x-gateway-request",
+          "shopsphere"
+        );
+
+        /*
+         * Only reconstruct the body when Express has
+         * already parsed it.
+         */
+        if (
+          req.body &&
+          typeof req.body === "object"
+        ) {
+          fixRequestBody(proxyReq, req);
+        }
+
+        console.log(
+          `[GATEWAY] ${req.method} ${req.originalUrl} -> ${target}${req.url}`
+        );
+      },
+
+      proxyRes: (proxyRes, req) => {
+        console.log(
+          `[GATEWAY] ${req.method} ${req.originalUrl} <- ${proxyRes.statusCode}`
+        );
+      },
+
+      error: (err, req, res) => {
+        console.error(
+          `[GATEWAY PROXY ERROR] ${req.method} ${req.originalUrl}:`,
+          err.message
+        );
+
+        if (!res.headersSent) {
+          res.status(502).json({
+            success: false,
+            message:
+              "Upstream service unavailable.",
+            error: err.message,
+          });
+        }
+      },
+    },
+  });
+}
+
+/* -------------------------------------------------------
+   AUTH
+------------------------------------------------------- */
+
+app.use(
+  "/api/auth",
+  proxy(
+    services.auth,
+    {
+      "^/": "/api/auth/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   USERS
+------------------------------------------------------- */
+
+app.use(
+  "/api/users",
+  proxy(
+    services.users,
+    {
+      "^/": "/api/users/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   PRODUCTS
+------------------------------------------------------- */
+
+app.use(
+  "/api/products",
+  proxy(
+    services.products,
+    {
+      "^/": "/api/products/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   CART
+------------------------------------------------------- */
+
+app.use(
+  "/api/cart",
+  proxy(
+    services.cart,
+    {
+      "^/": "/api/cart/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   ORDERS
+------------------------------------------------------- */
+
+app.use(
+  "/api/orders",
+  proxy(
+    services.orders,
+    {
+      "^/": "/api/orders/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   PAYMENTS
+------------------------------------------------------- */
+
+app.use(
+  "/api/payments",
+  proxy(
+    services.payments,
+    {
+      "^/": "/api/payments/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   ADDRESSES
+------------------------------------------------------- */
+
+app.use(
+  "/api/addresses",
+  proxy(
+    services.addresses,
+    {
+      "^/": "/api/addresses/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   REVIEWS
+------------------------------------------------------- */
+
+app.use(
+  "/api/reviews",
+  proxy(
+    services.reviews,
+    {
+      "^/": "/api/reviews/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   RAG
+------------------------------------------------------- */
+
+app.use(
+  "/api/rag",
+  proxy(
+    services.rag,
+    {
+      "^/": "/api/rag/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   SUPPORT / ISSUES
+------------------------------------------------------- */
+
+app.use(
+  "/api/issues",
+  proxy(
+    services.issues,
+    {
+      "^/": "/api/issues/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   VENDOR
+------------------------------------------------------- */
+
+app.use(
+  "/api/vendor",
+  proxy(
+    services.vendor,
+    {
+      "^/": "/api/vendor/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   ADMIN
+------------------------------------------------------- */
+
+app.use(
+  "/api/admin",
+  proxy(
+    services.admin,
+    {
+      "^/": "/api/admin/",
+    }
+  )
+);
+
+/* -------------------------------------------------------
+   GATEWAY DIAGNOSTIC
+------------------------------------------------------- */
+
+app.post(
+  "/api/payment-debug",
+  (req, res) => {
+    res.json({
+      success: true,
+      message:
+        "Gateway payment debug route works",
+    });
+  }
+);
+
+/* -------------------------------------------------------
+   404
+------------------------------------------------------- */
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Gateway route not found.",
+    path: req.originalUrl,
+  });
+});
+
+/* -------------------------------------------------------
+   START
+------------------------------------------------------- */
+
+const PORT = Number(
+  process.env.GATEWAY_PORT || 5001
+);
+
+app.listen(
+  PORT,
+  "0.0.0.0",
+  () => {
+    console.log(
+      `ShopSphere API Gateway running on http://localhost:${PORT}`
+    );
+  }
+);
+
+
+
+
+// require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});
+// const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+// const {createProxyMiddleware,fixRequestBody}=require('http-proxy-middleware');
+// const app=express();
+// const services={
+//  auth:process.env.AUTH_SERVICE_URL||'http://localhost:5002',users:process.env.USER_SERVICE_URL||'http://localhost:5007',products:process.env.PRODUCT_SERVICE_URL||'http://localhost:5003',cart:process.env.CART_SERVICE_URL||'http://localhost:5004',orders:process.env.ORDER_SERVICE_URL||'http://localhost:5005',payments:process.env.PAYMENT_SERVICE_URL||'http://localhost:5006',addresses:process.env.ADDRESS_SERVICE_URL||'http://localhost:5008',reviews:process.env.REVIEW_SERVICE_URL||'http://localhost:5009',rag:process.env.RAG_SERVICE_URL||'http://localhost:5010',issues:process.env.SUPPORT_SERVICE_URL||'http://localhost:5011',vendor:process.env.VENDOR_SERVICE_URL||'http://localhost:5012',admin:process.env.ADMIN_SERVICE_URL||'http://localhost:5013'
+// };
+// app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization']}));
+// app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));
+// app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+// app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-api-gateway',timestamp:new Date().toISOString()}));
+// app.get('/api/health',(req,res)=>res.json({success:true,service:'shopsphere-api-gateway',timestamp:new Date().toISOString()}));
+// // Stripe webhook MUST be proxied with its raw body before express.json().
+// app.use('/api/payments/webhook',createProxyMiddleware({target:services.payments,changeOrigin:true,pathRewrite:{'^/':'/api/payments/webhook'},buffer:async(req)=>{const chunks=[];for await(const c of req)chunks.push(c);return Buffer.concat(chunks);},on:{proxyReq:(proxyReq,req)=>{if(req.headers['stripe-signature'])proxyReq.setHeader('stripe-signature',req.headers['stripe-signature']);}}}));
+// app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));
+// function proxy(target,pathRewrite){return createProxyMiddleware({target,changeOrigin:true,pathRewrite,proxyTimeout:15000,on:{proxyReq:(proxyReq,req)=>{fixRequestBody(proxyReq,req);proxyReq.setHeader('x-gateway-request','shopsphere');},error:(err,req,res)=>{if(!res.headersSent)res.status(502).json({success:false,message:'Upstream service unavailable.',error:err.message});}}});}
+// app.use('/api/auth',proxy(services.auth,{ '^/':'/api/auth/' }));
+// app.use('/api/users',proxy(services.users,{ '^/':'/api/users/' }));
+// app.use('/api/products',proxy(services.products,{ '^/':'/api/products/' }));
+// app.use('/api/cart',proxy(services.cart,{ '^/':'/api/cart/' }));
+// app.use('/api/orders',proxy(services.orders,{ '^/':'/api/orders/' }));
+// app.use('/api/payments',proxy(services.payments,{ '^/':'/api/payments/' }));
+// app.use('/api/addresses',proxy(services.addresses,{ '^/':'/api/addresses/' }));
+// app.use('/api/reviews',proxy(services.reviews,{ '^/':'/api/reviews/' }));
+// app.use('/api/rag',proxy(services.rag,{ '^/':'/api/rag/' }));
+// app.use('/api/issues',proxy(services.issues,{ '^/':'/api/issues/' }));
+// app.use('/api/vendor',proxy(services.vendor,{ '^/':'/api/vendor/' }));
+// app.use('/api/admin',proxy(services.admin,{ '^/':'/api/admin/' }));
+// app.post('/api/payment-debug',(req,res)=>res.json({success:true,message:'Gateway payment debug route works'}));
+// app.listen(Number(process.env.GATEWAY_PORT||5001),'0.0.0.0',()=>console.log('ShopSphere API Gateway running on http://localhost:5001'));
+
+===== app.js =====
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const { notFound, errorHandler } = require("./middleware/error");
+const app = express();
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-auth",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== auth.controller.js =====
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+const { postJson, getJson } = require("../utils/serviceClient");
+const { ok, fail } = require("../utils/apiResponse");
+function publicUser(u) {
+  return {
+    id: u._id,
+    name: u.name,
+    email: u.email,
+    phone: u.phone,
+    role: u.role,
+    status: u.status,
+    auth0Sub: u.auth0Sub,
+  };
+}
+function tokenFor(u) {
+  return jwt.sign(
+    { id: u._id.toString(), role: u.role },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
+  );
+}
+async function register(req, res) {
+  const { name, email, phone, password } = req.body;
+  const e = email.toLowerCase();
+  if (await User.exists({ email: e }))
+    return fail(res, "Email already exists.", 409);
+  const u = await User.create({
+    name,
+    email: e,
+    phone,
+    passwordHash: await bcrypt.hash(
+      password,
+      Number(process.env.BCRYPT_SALT_ROUNDS || 12),
+    ),
+    role: "USER",
+  });
+  ok(res, { user: publicUser(u), token: tokenFor(u) }, "Account created.", 201);
+}
+async function registerVendor(req, res) {
+  const { ownerName, storeName, email, phone, storeAddress, password } =
+    req.body;
+  const e = email.toLowerCase();
+  if (await User.exists({ email: e }))
+    return fail(res, "Email already exists.", 409);
+  const u = await User.create({
+    name: ownerName,
+    email: e,
+    phone,
+    passwordHash: await bcrypt.hash(
+      password,
+      Number(process.env.BCRYPT_SALT_ROUNDS || 12),
+    ),
+    role: "VENDOR",
+  });
+  const vr = await postJson(
+    process.env.VENDOR_SERVICE_URL || "http://localhost:5012",
+    "/internal/vendors",
+    {
+      userId: u._id,
+      storeName,
+      email: e,
+      phone,
+      storeAddress,
+      status: "APPLIED",
+    },
+  );
+  if (!vr.ok) {
+    await User.findByIdAndDelete(u._id);
+    return res.status(vr.status).json(vr.data);
+  }
+  ok(
+    res,
+    { user: publicUser(u), vendor: vr.data.data },
+    "Vendor application submitted.",
+    201,
+  );
+}
+async function login(req, res) {
+  const { email, password } = req.body;
+  const u = await User.findOne({ email: email.trim().toLowerCase() }).select(
+    "+passwordHash",
+  );
+  if (!u || !u.passwordHash) return fail(res, "Invalid credentials.", 401);
+  if (u.status === "DISABLED") return fail(res, "Account disabled.", 403);
+  if (!(await bcrypt.compare(password, u.passwordHash)))
+    return fail(res, "Invalid credentials.", 401);
+  if (u.role === "VENDOR") {
+    const vr = await getJson(
+      process.env.VENDOR_SERVICE_URL || "http://localhost:5012",
+      `/internal/vendors/by-user/${u._id}`,
+    );
+    const v = vr.data?.data;
+    if (!vr.ok || !v || v.status !== "VERIFIED")
+      return fail(res, "Vendor is not verified yet.", 403);
+  }
+  ok(res, { user: publicUser(u), token: tokenFor(u) }, "Login successful.");
+}
+async function me(req, res) {
+  ok(res, req.user);
+}
+async function internalUser(req, res) {
+  const u = await User.findById(req.params.id).lean();
+  if (!u) return fail(res, "User not found.", 404);
+  delete u.passwordHash;
+  ok(res, u);
+}
+async function internalUsers(req, res) {
+  const users = await User.find()
+    .select("-passwordHash")
+    .sort({ createdAt: -1 })
+    .lean();
+  ok(res, users);
+}
+async function internalUsers(req, res) {
+  const users = await User.find()
+    .select("-passwordHash")
+    .sort({ createdAt: -1 })
+    .lean();
+  ok(res, users);
+}
+async function updateInternal(req, res) {
+  const allowed = ["name", "phone", "status", "role"];
+  const updates = {};
+  for (const k of allowed)
+    if (req.body[k] !== undefined) updates[k] = req.body[k];
+  const u = await User.findByIdAndUpdate(req.params.id, updates, {
+    new: true,
+    runValidators: true,
+  }).lean();
+  if (!u) return fail(res, "User not found.", 404);
+  delete u.passwordHash;
+  ok(res, u);
+}
+module.exports = {
+  register,
+  registerVendor,
+  login,
+  me,
+  internalUser,
+  internalUsers,
+  updateInternal,
+};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== User.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({name:{type:String,required:true,trim:true},email:{type:String,required:true,unique:true,lowercase:true,trim:true,index:true},phone:{type:String,trim:true},passwordHash:{type:String,select:false},auth0Sub:{type:String,unique:true,sparse:true,index:true},role:{type:String,enum:['USER','VENDOR','ADMIN'],default:'USER',index:true},status:{type:String,enum:['ACTIVE','DISABLED'],default:'ACTIVE',index:true}},{timestamps:true});module.exports=mongoose.model('User',schema);
+
+===== index.js =====
+const router = require("express").Router();
+
+const controller = require("../controllers/auth.controller");
+
+const validate = require("../middleware/validate");
+
+const {
+  authenticate,
+} = require("../middleware/auth");
+
+const internal = require("../middleware/internal");
+
+const {
+  registerSchema,
+  vendorRegisterSchema,
+  loginSchema,
+} = require("../validators/auth");
+
+/* -------------------------------------------------------
+   PUBLIC AUTH ROUTES
+------------------------------------------------------- */
+
+router.post(
+  "/api/auth/register",
+  validate(registerSchema),
+  controller.register
+);
+
+router.post(
+  "/api/auth/vendor/register",
+  validate(vendorRegisterSchema),
+  controller.registerVendor
+);
+
+router.post(
+  "/api/auth/login",
+  validate(loginSchema),
+  controller.login
+);
+
+/* -------------------------------------------------------
+   AUTHENTICATED USER ROUTES
+------------------------------------------------------- */
+
+router.get(
+  "/api/auth/me",
+  authenticate,
+  controller.me
+);
+
+router.post(
+  "/api/auth/logout",
+  authenticate,
+  (req, res) => {
+    return res.json({
+      success: true,
+      message: "Logged out.",
+    });
+  }
+);
+
+/* -------------------------------------------------------
+   INTERNAL SERVICE ROUTES
+
+   These use x-internal-service-token rather than
+   normal user JWT authentication.
+------------------------------------------------------- */
+
+router.get(
+  "/internal/users/:id",
+  internal,
+  controller.internalUser
+);
+
+router.get(
+  "/internal/admin/users",
+  internal,
+  controller.internalUsers
+);
+
+router.patch(
+  "/internal/users/:id",
+  internal,
+  controller.updateInternal
+);
+
+module.exports = router;
+
+
+
+// const router=require('express').Router();const c=require('../controllers/auth.controller');const validate=require('../middleware/validate');const {authenticate}=require('../middleware/auth');const internal=require('../middleware/internal');const {registerSchema,vendorRegisterSchema,loginSchema}=require('../validators/auth');
+// router.post('/api/auth/register',validate(registerSchema),c.register);router.post('/api/auth/vendor/register',validate(vendorRegisterSchema),c.registerVendor);router.post('/api/auth/login',validate(loginSchema),c.login);router.get('/api/auth/me',authenticate,c.me);router.post('/api/auth/logout',authenticate,(req,res)=>res.json({success:true,message:'Logged out.'}));
+// router.get('/internal/users/:id',internal,c.internalUser);router.get('/internal/admin/users',internal,c.internalUsers);router.get('/internal/admin/users',internal,c.internalUsers);router.patch('/internal/users/:id',internal,c.updateInternal);module.exports=router;
+
+===== server.js =====
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+const app = require("./app");
+const connectDB = require("./config/db");
+const PORT = Number(process.env.PORT || 5002);
+(async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(
+        "ShopSphere auth service running on http://localhost:" + PORT,
+      ),
+    );
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== auth.js =====
+const { z } = require("zod");
+const registerSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  password: z.string().min(6),
+});
+const vendorRegisterSchema = z.object({
+  ownerName: z.string().min(2),
+  storeName: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  storeAddress: z.string().min(5),
+  password: z.string().min(6),
+});
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+module.exports = { registerSchema, vendorRegisterSchema, loginSchema };
+
+===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-cart',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== cart.controller.js =====
+const CartItem = require("../models/CartItem");
+const { getJson } = require("../utils/serviceClient");
+const { ok, fail } = require("../utils/apiResponse");
+
+const PRODUCT = () =>
+  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+
+async function getCart(req, res) {
+  const userId = req.auth.id;
+
+  const items = await CartItem.find({
+    userId,
+  }).lean();
+
+  const out = [];
+
+  for (const item of items) {
+    const r = await getJson(PRODUCT(), `/internal/products/${item.productId}`);
+
+    const p = r.data?.data;
+
+    if (!p) {
+      out.push({
+        id: item._id,
+        productId: null,
+        quantity: item.quantity,
+        product: null,
+        subtotal: 0,
+        availableStock: 0,
+        available: false,
+        status: "PRODUCT_UNAVAILABLE",
+      });
+    } else {
+      out.push({
+        id: item._id,
+        productId: p._id,
+        quantity: item.quantity,
+        product: p,
+        subtotal: item.quantity * p.price,
+        availableStock: p.stock,
+        available: p.stock >= item.quantity,
+        status:
+          p.stock === 0
+            ? "OUT_OF_STOCK"
+            : p.stock < item.quantity
+              ? "INSUFFICIENT_STOCK"
+              : "AVAILABLE",
+      });
+    }
+  }
+
+  ok(res, out);
+}
+
+async function add(req, res) {
+  const userId = req.auth.id;
+  const { productId, quantity = 1 } = req.body;
+
+  const qty = Number(quantity);
+
+  if (!productId || !Number.isInteger(qty) || qty < 1) {
+    return fail(res, "productId and a positive integer quantity are required.");
+  }
+
+  // Check product
+  const r = await getJson(PRODUCT(), `/internal/products/${productId}`);
+
+  const p = r.data?.data;
+
+  if (!r.ok || !p) {
+    return fail(res, "Product not found.", 404);
+  }
+
+  // Find existing cart item
+  let item = await CartItem.findOne({
+    userId,
+    productId,
+  });
+
+  if (item) {
+    // Calculate the NEW quantity
+    const newQuantity = item.quantity + qty;
+
+    // Check stock against the TOTAL quantity
+    if (newQuantity > p.stock) {
+      return fail(res, `Only ${p.stock} item(s) are available.`, 409);
+    }
+
+    item.quantity = newQuantity;
+
+    await item.save();
+  } else {
+    // New cart item
+    if (qty > p.stock) {
+      return fail(res, `Only ${p.stock} item(s) are available.`, 409);
+    }
+
+    item = await CartItem.create({
+      userId,
+      productId,
+      quantity: qty,
+    });
+  }
+
+  ok(res, item, "Cart updated.");
+}
+
+async function update(req, res) {
+  const userId = req.auth.id;
+  const q = Number(req.body.quantity);
+
+  if (!Number.isInteger(q) || q < 1) {
+    return fail(res, "Quantity must be a positive integer.");
+  }
+
+  const item = await CartItem.findOne({
+    userId,
+    _id: req.params.id,
+  });
+
+  if (!item) {
+    return fail(res, "Cart item not found.", 404);
+  }
+
+  const r = await getJson(PRODUCT(), `/internal/products/${item.productId}`);
+
+  const p = r.data?.data;
+
+  if (!p) {
+    return fail(res, "Product not found.", 404);
+  }
+
+  if (p.stock < q) {
+    return fail(res, `Only ${p.stock} item(s) are available.`, 409);
+  }
+
+  item.quantity = q;
+
+  await item.save();
+
+  ok(res, item, "Cart item updated.");
+}
+
+async function remove(req, res) {
+  const userId = req.auth.id;
+
+  const item = await CartItem.findOneAndDelete({
+    userId,
+    _id: req.params.id,
+  });
+
+  if (!item) {
+    return fail(res, "Cart item not found.", 404);
+  }
+
+  ok(res, null, "Cart item removed.");
+}
+
+async function clear(req, res) {
+  const userId = req.auth.id;
+
+  await CartItem.deleteMany({
+    userId,
+  });
+
+  ok(res, null, "Cart cleared.");
+}
+
+async function internalCart(req, res) {
+  const items = await CartItem.find({
+    userId: req.params.userId,
+  }).lean();
+
+  ok(res, items);
+}
+
+async function internalClear(req, res) {
+  await CartItem.deleteMany({
+    userId: req.params.userId,
+  });
+
+  ok(res, null, "Cart cleared.");
+}
+
+module.exports = {
+  getCart,
+  add,
+  update,
+  remove,
+  clear,
+  internalCart,
+  internalClear,
+};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== CartItem.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},productId:{type:mongoose.Schema.Types.ObjectId,required:true},quantity:{type:Number,required:true,min:1}},{timestamps:true});schema.index({userId:1,productId:1},{unique:true});module.exports=mongoose.model('CartItem',schema);
+
+===== index.js =====
+const router = require("express").Router();
+
+const c = require("../controllers/cart.controller");
+
+const { authenticate, authorize } = require("../middleware/auth");
+
+const internal = require("../middleware/internal");
+
+// GET CART
+router.get("/api/cart", authenticate, authorize("USER"), c.getCart);
+
+// ADD ITEM
+router.post("/api/cart/items", authenticate, authorize("USER"), c.add);
+
+// UPDATE ITEM
+router.patch("/api/cart/items/:id", authenticate, authorize("USER"), c.update);
+
+// DELETE ITEM
+router.delete("/api/cart/items/:id", authenticate, authorize("USER"), c.remove);
+
+// CLEAR CART
+router.delete("/api/cart", authenticate, authorize("USER"), c.clear);
+
+// INTERNAL ROUTES
+router.get("/internal/cart/:userId", internal, c.internalCart);
+
+router.post("/internal/cart/:userId/clear", internal, c.internalClear);
+
+module.exports = router;
+
+===== server.js =====
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+const app = require("./app");
+const connectDB = require("./config/db");
+const PORT = Number(process.env.PORT || 5004);
+(async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(
+        "ShopSphere cart service running on http://localhost:" + PORT,
+      ),
+    );
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-order',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== order.controller.js =====
+const Order=require('../models/Order');const OrderItem=require('../models/OrderItem');const History=require('../models/OrderStatusHistory');const {getJson,postJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');
+const CART=()=>process.env.CART_SERVICE_URL||'http://localhost:5004';const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ADDRESS=()=>process.env.ADDRESS_SERVICE_URL||'http://localhost:5008';
+async function createOrder(req,res){const {addressId}=req.body;const ar=await getJson(ADDRESS(),`/internal/addresses/${req.user.id}/${addressId}`);if(!ar.ok)return fail(res,'Delivery address not found.',404);const cr=await getJson(CART(),`/internal/cart/${req.user.id}`);const cart=cr.data?.data||[];if(!cart.length)return fail(res,'Cart is empty.',400);const items=[];for(const i of cart){const pr=await getJson(PRODUCT(),`/internal/products/${i.productId}`);const p=pr.data?.data;if(!p)return fail(res,'A product in your cart no longer exists.',409);if(p.stock<i.quantity)return fail(res,`Only ${p.stock} item(s) of ${p.name} are available.`,409);items.push({productId:p._id,vendorId:p.vendorId,name:p.name,quantity:i.quantity,unitPrice:p.price});}
+ const reserve=await postJson(PRODUCT(),'/internal/products/reserve',{items:items.map(i=>({productId:i.productId,quantity:i.quantity}))});if(!reserve.ok)return res.status(reserve.status).json(reserve.data);try{const total=items.reduce((s,i)=>s+i.quantity*i.unitPrice,0);const order=await Order.create({userId:req.user.id,addressId,totalAmount:total,paymentStatus:'PAID',paymentMethod:'STRIPE_TEST'});const docs=await OrderItem.insertMany(items.map(i=>({...i,orderId:order._id})));await History.create({orderId:order._id,status:'PLACED',updatedBy:req.user.id,remarks:'Order created'});await postJson(CART(),`/internal/cart/${req.user.id}/clear`,{});ok(res,{order,items:docs},'Order created.',201);}catch(e){await postJson(PRODUCT(),'/internal/products/release',{items});throw e;}}
+async function listMyOrders(req,res){const orders=await Order.find({userId:req.user.id}).sort({createdAt:-1}).lean();ok(res,orders);}
+async function getById(req,res){const o=await Order.findById(req.params.id).lean();if(!o)return fail(res,'Order not found.',404);if(req.user.role==='USER'&&o.userId.toString()!==req.user.id.toString())return fail(res,'Order not found.',404);const items=await OrderItem.find({orderId:o._id}).lean();ok(res,{...o,items});}
+async function tracking(req,res){const o=await Order.findById(req.params.id).lean();if(!o)return fail(res,'Order not found.',404);if(req.user.role==='USER'&&o.userId.toString()!==req.user.id.toString())return fail(res,'Order not found.',404);ok(res,{order:o,history:await History.find({orderId:o._id}).sort({timestamp:1}).lean()});}
+async function vendorList(req,res){const items=await OrderItem.find({vendorId:req.user.id}).lean();const ids=[...new Set(items.map(i=>i.orderId.toString()))];ok(res,await Order.find({_id:{$in:ids}}).sort({createdAt:-1}));}
+async function vendorUpdateStatus(req,res){const item=await OrderItem.findOne({_id:req.params.itemId,orderId:req.params.orderId,vendorId:req.user.id});if(!item)return fail(res,'Order item not found.',404);item.vendorStatus=req.body.status;await item.save();await History.create({orderId:item.orderId,orderItemId:item._id,status:item.vendorStatus,updatedBy:req.user.id,remarks:req.body.remarks});await refreshOrderStatus(item.orderId);ok(res,item,'Order item status updated.');}
+async function adminList(req,res){ok(res,await Order.find().sort({createdAt:-1}));}
+async function adminUpdateStatus(req,res){const item=await OrderItem.findOne({_id:req.params.itemId,orderId:req.params.orderId});if(!item)return fail(res,'Order item not found.',404);item.vendorStatus=req.body.status;await item.save();await History.create({orderId:item.orderId,orderItemId:item._id,status:item.vendorStatus,updatedBy:req.user.id,remarks:req.body.remarks});await refreshOrderStatus(item.orderId);ok(res,item,'Order item status updated.');}
+async function refreshOrderStatus(orderId){const items=await OrderItem.find({orderId}).lean();if(!items.length)return;const statuses=items.map(i=>i.vendorStatus);let status='PLACED';if(statuses.every(s=>s==='DELIVERED'))status='DELIVERED';else if(statuses.some(s=>s==='OUT_FOR_DELIVERY'))status='OUT_FOR_DELIVERY';else if(statuses.some(s=>s==='DISPATCHED'))status='DISPATCHED';else if(statuses.some(s=>s==='PACKED'))status='PACKED';else if(statuses.some(s=>s==='CONFIRMED'))status='CONFIRMED';else if(statuses.every(s=>s==='CANCELLED'))status='CANCELLED';await Order.findByIdAndUpdate(orderId,{status});}
+async function internalCreatePaid(req,res){const {userId,addressId,totalAmount,items,stripeSessionId,stripePaymentIntentId}=req.body;const order=await Order.create({userId,addressId,totalAmount,paymentStatus:'PAID',paymentMethod:'STRIPE_TEST',stripeSessionId,stripePaymentIntentId});const docs=await OrderItem.insertMany(items.map(i=>({...i,orderId:order._id})));await History.create({orderId:order._id,status:'PLACED',updatedBy:userId,remarks:'Stripe payment confirmed'});ok(res,{order,items:docs},'Order created.',201);}
+async function internalReviewEligibility(req,res){const orderIds=await Order.find({userId:req.params.userId,status:'DELIVERED'}).distinct('_id');const exists=await OrderItem.exists({orderId:{$in:orderIds},productId:req.params.productId});ok(res,{eligible:Boolean(exists)});}
+async function internalVendorOrders(req,res){const ids=await OrderItem.find({vendorId:req.params.vendorId}).distinct('orderId');ok(res,ids);}
+async function internalVendorItems(req,res){ok(res,await OrderItem.find({vendorId:req.params.vendorId}).lean());}
+module.exports={createOrder,listMyOrders,getById,tracking,vendorList,vendorUpdateStatus,adminList,adminUpdateStatus,internalCreatePaid,internalReviewEligibility,internalVendorOrders,internalVendorItems};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== Order.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},addressId:{type:mongoose.Schema.Types.ObjectId,required:true},status:{type:String,enum:['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED'],default:'PLACED',index:true},totalAmount:{type:Number,required:true,min:0},paymentStatus:{type:String,enum:['PENDING','PAID','FAILED','REFUNDED'],default:'PAID',index:true},paymentMethod:{type:String,enum:['STRIPE_TEST'],default:'STRIPE_TEST'},stripeSessionId:{type:String,unique:true,sparse:true,index:true},stripePaymentIntentId:{type:String,default:null},orderedAt:{type:Date,default:Date.now}},{timestamps:true});module.exports=mongoose.model('Order',schema);
+
+===== OrderItem.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({orderId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},productId:{type:mongoose.Schema.Types.ObjectId,required:true},vendorId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},name:{type:String,required:true},quantity:{type:Number,required:true,min:1},unitPrice:{type:Number,required:true,min:0},vendorStatus:{type:String,enum:['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED'],default:'PLACED'}},{timestamps:true});module.exports=mongoose.model('OrderItem',schema);
+
+===== OrderStatusHistory.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({orderId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},orderItemId:{type:mongoose.Schema.Types.ObjectId},status:{type:String,enum:['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED'],required:true},updatedBy:{type:mongoose.Schema.Types.ObjectId,required:true},timestamp:{type:Date,default:Date.now},remarks:String},{timestamps:false});schema.index({orderItemId:1,timestamp:1});module.exports=mongoose.model('OrderStatusHistory',schema);
+
+===== index.js =====
+const router=require('express').Router();const c=require('../controllers/order.controller');const validate=require('../middleware/validate');const {authenticate,authorize}=require('../middleware/auth');const internal=require('../middleware/internal');const {createOrderSchema,statusSchema}=require('../validators/order');
+router.post('/api/orders',authenticate,authorize('USER'),validate(createOrderSchema),c.createOrder);router.get('/api/orders',authenticate,authorize('USER'),c.listMyOrders);router.get('/api/orders/vendor/list',authenticate,authorize('VENDOR'),c.vendorList);router.patch('/api/orders/vendor/:orderId/items/:itemId/status',authenticate,authorize('VENDOR'),validate(statusSchema),c.vendorUpdateStatus);router.get('/api/orders/admin/list',authenticate,authorize('ADMIN'),c.adminList);router.patch('/api/orders/admin/:orderId/items/:itemId/status',authenticate,authorize('ADMIN'),validate(statusSchema),c.adminUpdateStatus);router.get('/api/orders/:id',authenticate,authorize('USER','VENDOR','ADMIN'),c.getById);router.get('/api/orders/:id/tracking',authenticate,authorize('USER','VENDOR','ADMIN'),c.tracking);
+router.post('/internal/orders/paid',internal,c.internalCreatePaid);router.get('/internal/orders/review-eligibility/:userId/:productId',internal,c.internalReviewEligibility);router.get('/internal/orders/vendor/:vendorId/order-ids',internal,c.internalVendorOrders);router.get('/internal/orders/vendor/:vendorId/items',internal,c.internalVendorItems);module.exports=router;
+
+===== server.js =====
+require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5005);
+(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere order service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== order.js =====
+const {z}=require('zod');const createOrderSchema=z.object({addressId:z.string().min(1),paymentMethod:z.string().optional()});const statusSchema=z.object({status:z.enum(['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED']),remarks:z.string().optional()});module.exports={createOrderSchema,statusSchema};
+
+===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');const routes=require('./routes');const controller=require('./controllers/payment.controller');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+// Stripe requires the exact raw bytes for signature verification.
+app.post('/api/payments/webhook',express.raw({type:'application/json'}),controller.webhook);
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-payment',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== payment.controller.js =====
+const stripe=require('../services/stripe.service');const Payment=require('../models/Payment');const {getJson,postJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const CART=()=>process.env.CART_SERVICE_URL||'http://localhost:5004';const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ADDRESS=()=>process.env.ADDRESS_SERVICE_URL||'http://localhost:5008';const ORDER=()=>process.env.ORDER_SERVICE_URL||'http://localhost:5005';
+async function createCheckoutSession(req,res){if(!stripe)return fail(res,'Stripe is not configured.',503);const {addressId}=req.body;const ar=await getJson(ADDRESS(),`/internal/addresses/${req.user.id}/${addressId}`);if(!ar.ok)return fail(res,'Delivery address not found.',404);const cr=await getJson(CART(),`/internal/cart/${req.user.id}`);const cart=cr.data?.data||[];if(!cart.length)return fail(res,'Cart is empty.',400);const lineItems=[];const orderItems=[];let total=0;for(const i of cart){const pr=await getJson(PRODUCT(),`/internal/products/${i.productId}`);const p=pr.data?.data;if(!p)return fail(res,'A product in your cart no longer exists.',409);if(p.stock<i.quantity)return fail(res,`Only ${p.stock} item(s) of ${p.name} are available.`,409);lineItems.push({price_data:{currency:'inr',product_data:{name:p.name,description:p.description?.slice(0,500)||undefined},unit_amount:Math.round(p.price*100)},quantity:i.quantity});orderItems.push({productId:p._id,vendorId:p.vendorId,name:p.name,quantity:i.quantity,unitPrice:p.price});total+=i.quantity*p.price;}
+const session=await stripe.checkout.sessions.create({mode:'payment',line_items:lineItems,customer_email:req.user.email,metadata:{userId:req.user.id,addressId},success_url:`${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,cancel_url:`${process.env.FRONTEND_URL}/payment/cancel`,submit_type:'pay',payment_method_types:['card']});await Payment.create({userId:req.user.id,addressId,stripeSessionId:session.id,amount:total,currency:'inr',status:'PENDING'});ok(res,{sessionId:session.id,url:session.url,orderItems},'Checkout session created.');}
+async function webhook(req,res){if(!stripe)return res.status(503).json({success:false,message:'Stripe is not configured.'});const sig=req.headers['stripe-signature'];let event;try{event=stripe.webhooks.constructEvent(req.body,sig,process.env.STRIPE_WEBHOOK_SECRET);}catch(e){return res.status(400).json({success:false,message:`Webhook Error: ${e.message}`});}
+if(event.type==='checkout.session.completed'){const s=event.data.object;const payment=await Payment.findOneAndUpdate({stripeSessionId:s.id},{status:'PAID',stripePaymentIntentId:s.payment_intent},{new:true});if(payment&&!payment.orderId){const cr=await getJson(CART(),`/internal/cart/${payment.userId}`);const cart=cr.data?.data||[];const items=[];for(const i of cart){const pr=await getJson(PRODUCT(),`/internal/products/${i.productId}`);const p=pr.data?.data;if(p)items.push({productId:p._id,vendorId:p.vendorId,name:p.name,quantity:i.quantity,unitPrice:p.price});}if(items.length){const reserve=await postJson(PRODUCT(),'/internal/products/reserve',{items:items.map(i=>({productId:i.productId,quantity:i.quantity}))});if(reserve.ok){const or=await postJson(ORDER(),'/internal/orders/paid',{userId:payment.userId,addressId:payment.addressId,totalAmount:payment.amount,items,stripeSessionId:s.id,stripePaymentIntentId:s.payment_intent});if(or.ok){payment.orderId=or.data.data.order._id;await payment.save();await postJson(CART(),`/internal/cart/${payment.userId}/clear`,{});}}}}}
+if(event.type==='checkout.session.expired'){await Payment.findOneAndUpdate({stripeSessionId:event.data.object.id},{status:'CANCELLED'});}res.json({received:true});}
+async function debug(req,res){res.json({success:true,message:'Payment router works'});}module.exports={createCheckoutSession,webhook,debug};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== Payment.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},addressId:{type:mongoose.Schema.Types.ObjectId,required:true},stripeSessionId:{type:String,required:true,unique:true,index:true},stripePaymentIntentId:{type:String,default:null,index:true},amount:{type:Number,required:true,min:0},currency:{type:String,default:'inr'},status:{type:String,enum:['PENDING','PAID','FAILED','CANCELLED'],default:'PENDING',index:true},orderId:{type:mongoose.Schema.Types.ObjectId,default:null,index:true}},{timestamps:true});module.exports=mongoose.model('Payment',schema);
+
+===== index.js =====
+const router=require('express').Router();const c=require('../controllers/payment.controller');const {authenticate,authorize}=require('../middleware/auth');router.post('/api/payments/debug',c.debug);router.post('/api/payments/create-checkout-session',authenticate,authorize('USER'),c.createCheckoutSession);module.exports=router;
+
+===== server.js =====
+require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5006);
+(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere payment service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+
+===== stripe.service.js =====
+const Stripe=require('stripe');module.exports=process.env.STRIPE_SECRET_KEY?new Stripe(process.env.STRIPE_SECRET_KEY):null;
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== app.js =====
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const { notFound, errorHandler } = require("./middleware/error");
+const app = express();
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-product",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== product.controller.js =====
+const Product = require('../models/Product');
+const { ok, fail } = require('../utils/apiResponse');
+const {
+  pagination,
+  buildProductFilter,
+  productSort,
+} = require('../services/query.service');
+
+const {
+  getVendorByUserId,
+  getAllVendors,
+} = require('../services/vendor.service');
+
+
+async function list(req, res) {
+  const { page, limit, skip } = pagination(req);
+  const filter = buildProductFilter(req.query);
+
+  const [items, total] = await Promise.all([
+    Product.find(filter)
+      .sort(productSort(req.query.sort))
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+
+    Product.countDocuments(filter),
+  ]);
+
+  /*
+   * Product.vendorId contains the authenticated user's ID.
+   *
+   * Vendor.userId contains the same ID.
+   *
+   * Fetch all vendors once instead of making one HTTP
+   * request for every product.
+   */
+  const vendors = await getAllVendors();
+
+  const vendorMap = new Map(
+    vendors.map((vendor) => [
+      String(vendor.userId),
+      vendor,
+    ]),
+  );
+
+  const productsWithVendor = items.map((product) => ({
+    ...product,
+    vendor:
+      vendorMap.get(String(product.vendorId)) || null,
+  }));
+
+  return ok(res, {
+    items: productsWithVendor,
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  });
+}
+
+
+async function getById(req, res) {
+  const product = await Product
+    .findById(req.params.id)
+    .lean();
+
+  if (!product) {
+    return fail(
+      res,
+      'Product not found.',
+      404,
+    );
+  }
+
+  /*
+   * For a single product, directly resolve its vendor
+   * through the Vendor Service using the Product.vendorId,
+   * which is the user's ID.
+   */
+  const vendor = await getVendorByUserId(
+    product.vendorId,
+  );
+
+  return ok(res, {
+    ...product,
+    vendor,
+  });
+}
+
+
+async function create(req, res) {
+  const product = await Product.create({
+    ...req.body,
+    vendorId: req.user.id,
+  });
+
+  return ok(
+    res,
+    product,
+    'Product created.',
+    201,
+  );
+}
+
+
+async function update(req, res) {
+  const product = await Product.findOneAndUpdate(
+    {
+      _id: req.params.id,
+      vendorId: req.user.id,
+    },
+    req.body,
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
+
+  if (!product) {
+    return fail(
+      res,
+      'Product not found or not owned by you.',
+      404,
+    );
+  }
+
+  return ok(
+    res,
+    product,
+    'Product updated.',
+  );
+}
+
+
+async function remove(req, res) {
+  const product = await Product.findOneAndDelete({
+    _id: req.params.id,
+    vendorId: req.user.id,
+  });
+
+  if (!product) {
+    return fail(
+      res,
+      'Product not found or not owned by you.',
+      404,
+    );
+  }
+
+  return ok(
+    res,
+    null,
+    'Product deleted.',
+  );
+}
+
+
+async function updateStock(req, res) {
+  const stock = Number(req.body.stock);
+
+  if (
+    !Number.isInteger(stock) ||
+    stock < 0
+  ) {
+    return fail(
+      res,
+      'Stock must be a non-negative integer.',
+    );
+  }
+
+  const product = await Product.findOneAndUpdate(
+    {
+      _id: req.params.id,
+      vendorId: req.user.id,
+    },
+    {
+      stock,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
+
+  if (!product) {
+    return fail(
+      res,
+      'Product not found or not owned by you.',
+      404,
+    );
+  }
+
+  return ok(
+    res,
+    product,
+    'Stock updated.',
+  );
+}
+
+
+async function internalGet(req, res) {
+  const product = await Product
+    .findById(req.params.id)
+    .lean();
+
+  if (!product) {
+    return fail(
+      res,
+      'Product not found.',
+      404,
+    );
+  }
+
+  return ok(res, product);
+}
+
+
+async function internalReserve(req, res) {
+  const { items } = req.body;
+
+  if (
+    !Array.isArray(items) ||
+    !items.length
+  ) {
+    return fail(
+      res,
+      'items are required.',
+    );
+  }
+
+  const session = await Product.startSession();
+
+  try {
+    const result = [];
+
+    await session.withTransaction(async () => {
+      for (const item of items) {
+        const product =
+          await Product.findOneAndUpdate(
+            {
+              _id: item.productId,
+              stock: {
+                $gte: item.quantity,
+              },
+            },
+            {
+              $inc: {
+                stock: -item.quantity,
+              },
+            },
+            {
+              new: true,
+              session,
+            },
+          );
+
+        if (!product) {
+          const error = new Error(
+            `Insufficient stock for product ${item.productId}`,
+          );
+
+          error.status = 409;
+
+          throw error;
+        }
+
+        result.push(product);
+      }
+    });
+
+    return ok(
+      res,
+      result,
+      'Stock reserved.',
+    );
+  } finally {
+    await session.endSession();
+  }
+}
+
+
+async function internalRelease(req, res) {
+  const { items } = req.body;
+
+  if (!Array.isArray(items)) {
+    return fail(
+      res,
+      'items are required.',
+    );
+  }
+
+  await Product.bulkWrite(
+    items.map((item) => ({
+      updateOne: {
+        filter: {
+          _id: item.productId,
+        },
+        update: {
+          $inc: {
+            stock: item.quantity,
+          },
+        },
+      },
+    })),
+  );
+
+  return ok(
+    res,
+    null,
+    'Stock released.',
+  );
+}
+
+
+async function internalRating(req, res) {
+  const {
+    rating,
+    reviewCount,
+  } = req.body;
+
+  const product =
+    await Product.findByIdAndUpdate(
+      req.params.id,
+      {
+        rating: Number(rating) || 0,
+        reviewCount: Number(reviewCount) || 0,
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+
+  if (!product) {
+    return fail(
+      res,
+      'Product not found.',
+      404,
+    );
+  }
+
+  return ok(res, product);
+}
+
+
+module.exports = {
+  list,
+  getById,
+  create,
+  update,
+  remove,
+  updateStock,
+  internalGet,
+  internalReserve,
+  internalRelease,
+  internalRating,
+};
+
+===== qa.controller.js =====
+const {postJson}=require('../utils/serviceClient');const {fail}=require('../utils/apiResponse');async function ask(req,res){const r=await postJson(process.env.RAG_SERVICE_URL||'http://localhost:5010',`/internal/products/${req.params.id}/qa`,{question:req.body.question});if(!r.ok)return res.status(r.status).json(r.data);res.json(r.data);}module.exports={ask};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== Product.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({vendorId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},name:{type:String,required:true,trim:true,index:true},description:{type:String,required:true},brand:{type:String,required:true,trim:true,index:true},category:{type:String,enum:['ELECTRONICS','MOBILE','LAPTOP','AUDIO','TV','HOME_APPLIANCES','ACCESSORIES','OTHER'],required:true,index:true},price:{type:Number,required:true,min:0},stock:{type:Number,required:true,min:0,default:0},imageUrl:String,rating:{type:Number,min:0,max:5,default:0},reviewCount:{type:Number,default:0}},{timestamps:true});schema.index({name:'text',brand:'text',description:'text'});schema.index({category:1,price:1,rating:-1});module.exports=mongoose.model('Product',schema);
+
+===== index.js =====
+const router=require('express').Router();const c=require('../controllers/product.controller');const qa=require('../controllers/qa.controller');const validate=require('../middleware/validate');const {authenticate,authorize}=require('../middleware/auth');const internal=require('../middleware/internal');const {productSchema}=require('../validators/product');
+router.get('/api/products',c.list);router.get('/api/products/:id',c.getById);router.post('/api/products/:id/qa',qa.ask);router.post('/api/products',authenticate,authorize('VENDOR'),validate(productSchema),c.create);router.put('/api/products/:id',authenticate,authorize('VENDOR'),validate(productSchema.partial()),c.update);router.delete('/api/products/:id',authenticate,authorize('VENDOR'),c.remove);router.patch('/api/products/:id/stock',authenticate,authorize('VENDOR'),c.updateStock);
+router.get('/internal/products/:id',internal,c.internalGet);router.post('/internal/products/reserve',internal,c.internalReserve);router.post('/internal/products/release',internal,c.internalRelease);router.patch('/internal/products/:id/rating',internal,c.internalRating);module.exports=router;
+
+===== server.js =====
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+const app = require("./app");
+const connectDB = require("./config/db");
+const PORT = Number(process.env.PORT || 5003);
+(async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(
+        "ShopSphere product service running on http://localhost:" + PORT,
+      ),
+    );
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
+
+===== query.service.js =====
+function pagination(req){const page=Math.max(parseInt(req.query.page||'1',10),1);const limit=Math.min(Math.max(parseInt(req.query.limit||'9',10),1),100);return {page,limit,skip:(page-1)*limit};}
+function buildProductFilter(q){const f={};if(q.q){const e=q.q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');f.$or=[{name:{$regex:e,$options:'i'}},{brand:{$regex:e,$options:'i'}},{description:{$regex:e,$options:'i'}}];}if(q.brand)f.brand=q.brand;if(q.category)f.category=q.category;if(q.minPrice!==undefined||q.maxPrice!==undefined){f.price={};if(q.minPrice!==undefined)f.price.$gte=Number(q.minPrice);if(q.maxPrice!==undefined)f.price.$lte=Number(q.maxPrice);}if(q.rating)f.rating={$gte:Number(q.rating)};if(q.stock==='in')f.stock={$gt:0};if(q.stock==='out')f.stock=0;if(q.vendorId)f.vendorId=q.vendorId;return f;}
+function productSort(v){if(v==='low')return {price:1};if(v==='high')return {price:-1};if(v==='rating')return {rating:-1};return {createdAt:-1};}module.exports={pagination,buildProductFilter,productSort};
+
+===== vendor.service.js =====
+const { getJson } = require('../utils/serviceClient');
+
+const VENDOR_SERVICE =
+  process.env.VENDOR_SERVICE_URL || 'http://localhost:5012';
+
+/**
+ * Product.vendorId stores the authenticated user's ID.
+ * Vendor.userId stores the same ID.
+ *
+ * Therefore Product Service resolves a vendor through:
+ *
+ * GET /internal/vendors/by-user/:userId
+ */
+async function getVendorByUserId(userId) {
+  if (!userId) {
+    return null;
+  }
+
+  try {
+    const result = await getJson(
+      VENDOR_SERVICE,
+      `/internal/vendors/by-user/${encodeURIComponent(String(userId))}`,
+    );
+
+    if (!result.ok) {
+      console.error(
+        `Vendor lookup failed for user ${userId}: HTTP ${result.status}`,
+      );
+
+      return null;
+    }
+
+    return result.data?.data || null;
+  } catch (error) {
+    console.error(
+      `Vendor service request failed for user ${userId}:`,
+      error.message,
+    );
+
+    return null;
+  }
+}
+
+/**
+ * Gets all vendors through the internal Vendor Service endpoint.
+ *
+ * This is used for product LIST responses so we do not make
+ * one HTTP request per product.
+ */
+async function getAllVendors() {
+  try {
+    const result = await getJson(
+      VENDOR_SERVICE,
+      '/internal/vendors',
+    );
+
+    if (!result.ok) {
+      console.error(
+        `Vendor list lookup failed: HTTP ${result.status}`,
+      );
+
+      return [];
+    }
+
+    return Array.isArray(result.data?.data)
+      ? result.data.data
+      : [];
+  } catch (error) {
+    console.error(
+      'Vendor service list request failed:',
+      error.message,
+    );
+
+    return [];
+  }
+}
+
+module.exports = {
+  getVendorByUserId,
+  getAllVendors,
+};
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== product.js =====
+const {z}=require('zod');const productSchema=z.object({name:z.string().min(1),description:z.string().min(1),brand:z.string().min(1),category:z.enum(['ELECTRONICS','MOBILE','LAPTOP','AUDIO','TV','HOME_APPLIANCES','ACCESSORIES','OTHER']),price:z.number().nonnegative(),stock:z.number().int().nonnegative().optional(),imageUrl:z.string().optional()});module.exports={productSchema};
+
+===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-rag',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== rag.controller.js =====
+const graph=require('../rag/graph');const {ingestProduct}=require('../rag/ingest');const {ok,fail}=require('../utils/apiResponse');async function qa(req,res){const {question}=req.body;if(!question||question.trim().length<2)return fail(res,'Question is required.');const result=await graph.invoke({question:question.trim(),productId:req.params.id});ok(res,{answer:result.answer});}async function ingest(req,res){await ingestProduct(req.params.id);ok(res,null,'Product indexed.');}module.exports={qa,ingest};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== embeddings.js =====
+const {HuggingFaceInferenceEmbeddings}=require('@langchain/community/embeddings/hf');module.exports=new HuggingFaceInferenceEmbeddings({apiKey:process.env.HUGGINGFACEHUB_API_KEY,model:'BAAI/bge-base-en-v1.5',provider:'hf-inference'});
+
+===== graph.js =====
+const {StateGraph,StateSchema,START,END}=require('@langchain/langgraph');const {z}=require('zod');const {getVectorStore}=require('./vectorStore');const {generateAnswer}=require('../utils/hfClient');const State=new StateSchema({question:z.string(),productId:z.string(),context:z.string().default(''),answer:z.string().default('')});async function retrieve(s){const v=await getVectorStore();const docs=await v.similaritySearch(s.question,4,{productId:s.productId});return {context:docs.map(d=>d.pageContent).join('\n\n---\n\n')};}async function generate(s){const prompt=`You are ShopSphere's Product Q&A assistant. Answer using ONLY the product context. Do not invent specifications. If unavailable, say "I don't have enough information about that." Keep it concise.\n\nPRODUCT CONTEXT:\n${s.context}\n\nUSER QUESTION:\n${s.question}\n\nANSWER:`;return {answer:(await generateAnswer(prompt)).trim()};}module.exports=new StateGraph(State).addNode('retrieve',retrieve).addNode('generate',generate).addEdge(START,'retrieve').addEdge('retrieve','generate').addEdge('generate',END).compile();
+
+===== ingest.js =====
+const {Document}=require('@langchain/core/documents');const {getVectorStore}=require('./vectorStore');const {getJson}=require('../utils/serviceClient');const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const REVIEWS=()=>process.env.REVIEW_SERVICE_URL||'http://localhost:5009';function id(p){return `product-${p._id||p.id}`;}async function buildProductDocument(productId){const p=await getJson(PRODUCT(),`/internal/products/${productId}`);if(!p.ok)throw new Error('Product not found');const product=p.data.data;const r=await getJson(REVIEWS(),`/api/reviews/product/${productId}`);const reviews=r.data?.data||[];const text=`Product Name: ${product.name}
+Brand: ${product.brand}
+Category: ${product.category}
+Price: â‚¹${product.price}
+Stock: ${product.stock}
+Rating: ${product.rating||0}/5
+Review Count: ${product.reviewCount||0}
+
+Description:
+${product.description}
+
+Customer Reviews:
+${reviews.length?reviews.map(x=>`Rating: ${x.rating}/5\nReview: ${x.review}`).join('\n\n'):'No reviews available.'}`;return new Document({pageContent:text,metadata:{productId:String(product._id),type:'product',name:product.name,brand:product.brand,category:product.category}});}async function ingestProduct(productId){const v=await getVectorStore();const d=await buildProductDocument(productId);const docId=id(d.metadata);try{await v.delete({ids:[docId]});}catch{}await v.addDocuments([d],{ids:[docId]});return d;}module.exports={buildProductDocument,ingestProduct};
+
+===== vectorStore.js =====
+const {Chroma}=require('@langchain/community/vectorstores/chroma');const {CloudClient,ChromaClient}=require('chromadb');const embeddings=require('./embeddings');let vectorStore=null;async function getVectorStore(){if(vectorStore)return vectorStore;if(process.env.NODE_ENV==='production'){if(!process.env.CHROMA_API_KEY||!process.env.CHROMA_TENANT||!process.env.CHROMA_DATABASE)throw new Error('CHROMA_API_KEY, CHROMA_TENANT and CHROMA_DATABASE are required in production');const client=new CloudClient({apiKey:process.env.CHROMA_API_KEY,tenant:process.env.CHROMA_TENANT,database:process.env.CHROMA_DATABASE});vectorStore=new Chroma(embeddings,{collectionName:'shopsphere-products',index:client});}else{const client=new ChromaClient({path:process.env.CHROMA_URL||'http://localhost:8000'});vectorStore=new Chroma(embeddings,{collectionName:'shopsphere-products',index:client});}return vectorStore;}module.exports={getVectorStore};
+
+===== index.js =====
+const router=require('express').Router();const c=require('../controllers/rag.controller');const internal=require('../middleware/internal');router.post('/internal/products/:id/qa',internal,c.qa);router.post('/internal/products/:id/ingest',internal,c.ingest);module.exports=router;
+
+===== server.js =====
+require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5010);
+(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere rag service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== hfClient.js =====
+const {HfInference}=require('@huggingface/inference');const hf=new HfInference(process.env.HF_TOKEN);async function generateAnswer(prompt){const r=await hf.chatCompletion({model:process.env.HF_MODEL,messages:[{role:'user',content:prompt}],max_tokens:300,temperature:0.2});return r.choices[0].message.content;}module.exports={generateAnswer};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-review',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== review.controller.js =====
+const mongoose=require('mongoose');const Review=require('../models/Review');const {getJson,patchJson,postJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ORDER=()=>process.env.ORDER_SERVICE_URL||'http://localhost:5005';const RAG=()=>process.env.RAG_SERVICE_URL||'http://localhost:5010';
+async function listForProduct(req,res){const reviews=await Review.find({productId:req.params.productId}).sort({createdAt:-1}).lean();ok(res,reviews);}
+async function recalc(productId){const stats=await Review.aggregate([{$match:{productId:new mongoose.Types.ObjectId(productId)}},{$group:{_id:'$productId',averageRating:{$avg:'$rating'},reviewCount:{$sum:1}}}]);const rating=stats.length?Number(stats[0].averageRating.toFixed(2)):0;const count=stats.length?stats[0].reviewCount:0;const r=await patchJson(PRODUCT(),`/internal/products/${productId}/rating`,{rating,reviewCount:count});if(!r.ok)throw new Error('Unable to update product rating');}
+async function notifyRag(productId){try{await postJson(RAG(),`/internal/products/${productId}/ingest`,{});}catch(e){console.error('RAG reindex failed:',e.message);}}
+async function create(req,res){const product=await getJson(PRODUCT(),`/internal/products/${req.params.productId}`);if(!product.ok)return fail(res,'Product not found.',404);const numeric=Number(req.body.rating);if(!Number.isInteger(numeric)||numeric<1||numeric>5)return fail(res,'Rating must be an integer between 1 and 5.',400);if(!req.body.review||req.body.review.trim().length<2)return fail(res,'Review must contain at least 2 characters.',400);const elig=await getJson(ORDER(),`/internal/orders/review-eligibility/${req.user.id}/${req.params.productId}`);if(!elig.data?.data?.eligible)return fail(res,'You can review this product only after purchasing it and receiving a delivered order.',403);if(await Review.exists({productId:req.params.productId,userId:req.user.id}))return fail(res,'You have already reviewed this product.',409);const created=await Review.create({productId:req.params.productId,userId:req.user.id,rating:numeric,review:req.body.review.trim()});await recalc(created.productId);notifyRag(created.productId);ok(res,created,'Review submitted successfully.',201);}
+async function update(req,res){const r=await Review.findOne({_id:req.params.id,userId:req.user.id});if(!r)return fail(res,'Review not found.',404);r.rating=Number(req.body.rating);r.review=req.body.review.trim();if(!Number.isInteger(r.rating)||r.rating<1||r.rating>5)return fail(res,'Rating must be an integer between 1 and 5.',400);await r.save();await recalc(r.productId);notifyRag(r.productId);ok(res,r,'Review updated successfully.');}
+async function remove(req,res){const filter=req.user.role==='ADMIN'?{_id:req.params.id}:{_id:req.params.id,userId:req.user.id};const r=await Review.findOneAndDelete(filter);if(!r)return fail(res,'Review not found.',404);await recalc(r.productId);notifyRag(r.productId);ok(res,null,'Review deleted successfully.');}
+module.exports={listForProduct,create,update,remove};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== Review.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({productId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},rating:{type:Number,required:true,min:1,max:5},review:{type:String,required:true,trim:true,minlength:2,maxlength:2000}},{timestamps:true});schema.index({productId:1,userId:1},{unique:true});module.exports=mongoose.model('Review',schema);
+
+===== index.js =====
+const router=require('express').Router();const c=require('../controllers/review.controller');const {authenticate,authorize}=require('../middleware/auth');router.get('/api/reviews/product/:productId',c.listForProduct);router.post('/api/reviews/product/:productId',authenticate,authorize('USER'),c.create);router.put('/api/reviews/:id',authenticate,authorize('USER'),c.update);router.delete('/api/reviews/:id',authenticate,authorize('USER','ADMIN'),c.remove);module.exports=router;
+
+===== server.js =====
+require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5009);
+(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere review service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-support',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== issue.controller.js =====
+const Issue = require("../models/CustomerIssue");
+const { getJson } = require("../utils/serviceClient");
+const { ok, fail } = require("../utils/apiResponse");
+
+const ORDER =
+  () => process.env.ORDER_SERVICE_URL || "http://localhost:5005";
+
+async function create(req, res) {
+  if (req.body.orderId) {
+    const result = await getJson(
+      ORDER(),
+      `/api/orders/${req.body.orderId}`,
+      {
+        authorization: req.headers.authorization || "",
+      }
+    );
+
+    if (!result.ok) {
+      return fail(res, "Order does not belong to you.", 403);
+    }
+  }
+
+  const issue = await Issue.create({
+    ...req.body,
+    userId: req.user._id || req.user.id,
+  });
+
+  return ok(res, issue, "Issue submitted.", 201);
+}
+
+async function list(req, res) {
+  let filter = {};
+
+  const userId = req.user._id || req.user.id;
+
+  if (req.user.role === "USER") {
+    filter.userId = userId;
+  } else if (req.user.role === "VENDOR") {
+    const result = await getJson(
+      ORDER(),
+      `/internal/orders/vendor/${userId}/order-ids`
+    );
+
+    filter = {
+      $or: [
+        { assignedTo: userId },
+        {
+          orderId: {
+            $in: result.data?.data || [],
+          },
+        },
+      ],
+    };
+  }
+
+  if (req.query.status) {
+    filter.status = req.query.status;
+  }
+
+  if (req.query.priority) {
+    filter.priority = req.query.priority;
+  }
+
+  if (req.query.assignedTo) {
+    filter.assignedTo = req.query.assignedTo;
+  }
+
+  const issues = await Issue.find(filter)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return ok(res, issues);
+}
+
+async function getById(req, res) {
+  const issue = await Issue.findById(req.params.id).lean();
+
+  if (!issue) {
+    return fail(res, "Issue not found.", 404);
+  }
+
+  const userId = req.user._id || req.user.id;
+
+  if (
+    req.user.role === "USER" &&
+    issue.userId.toString() !== userId.toString()
+  ) {
+    return fail(res, "Issue not found.", 404);
+  }
+
+  return ok(res, issue);
+}
+
+async function update(req, res) {
+  const issue = await Issue.findById(req.params.id);
+
+  if (!issue) {
+    return fail(res, "Issue not found.", 404);
+  }
+
+  const userId = req.user._id || req.user.id;
+
+  if (
+    req.user.role === "USER" &&
+    issue.userId.toString() !== userId.toString()
+  ) {
+    return fail(res, "Issue not found.", 404);
+  }
+
+  if (req.user.role === "VENDOR") {
+    const allowed = ["status", "response"];
+
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        issue[key] = req.body[key];
+      }
+    }
+  } else {
+    Object.assign(issue, req.body);
+  }
+
+  if (
+    issue.status === "RESOLVED" ||
+    issue.status === "CLOSED"
+  ) {
+    issue.resolvedAt = issue.resolvedAt || new Date();
+  } else {
+    issue.resolvedAt = undefined;
+  }
+
+  await issue.save();
+
+  return ok(res, issue, "Issue updated.");
+}
+
+/*
+ * Internal service endpoint.
+ *
+ * Used by another backend service to obtain the number
+ * of unresolved issues associated with a vendor.
+ */
+
+async function internalVendorCount(req, res) {
+  const vendorId = req.params.vendorId;
+
+  const result = await getJson(
+    ORDER(),
+    `/internal/orders/vendor/${vendorId}/order-ids`
+  );
+
+  if (!result.ok) {
+    return fail(
+      res,
+      "Unable to retrieve vendor orders.",
+      502
+    );
+  }
+
+  const orderIds = result.data?.data || [];
+
+  const count = await Issue.countDocuments({
+    $or: [
+      { assignedTo: vendorId },
+      { orderId: { $in: orderIds } },
+    ],
+    status: {
+      $nin: ["RESOLVED", "CLOSED"],
+    },
+  });
+
+  return ok(res, {
+    vendorId,
+    count,
+  });
+}
+
+// async function internalVendorCount(req, res) {
+//   const vendorId = req.params.vendorId;
+
+//   const count = await Issue.countDocuments({
+//     $or: [
+//       { assignedTo: vendorId },
+//       {
+//         orderId: {
+//           $in: [],
+//         },
+//       },
+//     ],
+//     status: {
+//       $nin: ["RESOLVED", "CLOSED"],
+//     },
+//   });
+
+//   return ok(res, {
+//     vendorId,
+//     count,
+//   });
+// }
+
+module.exports = {
+  create,
+  list,
+  getById,
+  update,
+  internalVendorCount,
+};
+
+
+
+// const Issue = require("../models/CustomerIssue");
+// const { getJson } = require("../utils/serviceClient");
+// const { ok, fail } = require("../utils/apiResponse");
+// const ORDER = () => process.env.ORDER_SERVICE_URL || "http://localhost:5005";
+// async function create(req, res) {
+//   if (req.body.orderId) {
+//     const r = await getJson(ORDER(), `/api/orders/${req.body.orderId}`, {
+//       authorization: req.headers.authorization || "",
+//     });
+//     if (!r.ok) return fail(res, "Order does not belong to you.", 403);
+//   }
+//   const i = await Issue.create({ ...req.body, userId: req.user.id });
+//   ok(res, i, "Issue submitted.", 201);
+// }
+// async function list(req, res) {
+//   let filter = {};
+//   if (req.user.role === "USER") filter.userId = req.user.id;
+//   else if (req.user.role === "VENDOR") {
+//     const r = await getJson(
+//       ORDER(),
+//       `/internal/orders/vendor/${req.user.id}/order-ids`,
+//     );
+//     filter = {
+//       $or: [
+//         { assignedTo: req.user.id },
+//         { orderId: { $in: r.data?.data || [] } },
+//       ],
+//     };
+//   }
+//   if (req.query.status) filter.status = req.query.status;
+//   if (req.query.priority) filter.priority = req.query.priority;
+//   if (req.query.assignedTo) filter.assignedTo = req.query.assignedTo;
+//   ok(res, await Issue.find(filter).sort({ createdAt: -1 }).lean());
+// }
+// async function getById(req, res) {
+//   const i = await Issue.findById(req.params.id).lean();
+//   if (!i) return fail(res, "Issue not found.", 404);
+//   if (
+//     req.user.role === "USER" &&
+//     i.userId.toString() !== req.user.id.toString()
+//   )
+//     return fail(res, "Issue not found.", 404);
+//   ok(res, i);
+// }
+// async function update(req, res) {
+//   const i = await Issue.findById(req.params.id);
+//   if (!i) return fail(res, "Issue not found.", 404);
+//   if (
+//     req.user.role === "USER" &&
+//     i.userId.toString() !== req.user.id.toString()
+//   )
+//     return fail(res, "Issue not found.", 404);
+//   if (req.user.role === "VENDOR") {
+//     for (const k of ["status", "response"])
+//       if (req.body[k] !== undefined) i[k] = req.body[k];
+//   } else Object.assign(i, req.body);
+//   if (["RESOLVED", "CLOSED"].includes(i.status))
+//     i.resolvedAt = i.resolvedAt || new Date();
+//   else i.resolvedAt = undefined;
+//   await i.save();
+//   ok(res, i, "Issue updated.");
+// }
+// module.exports = { create, list, getById, update };
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== CustomerIssue.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},orderId:{type:mongoose.Schema.Types.ObjectId,default:null,index:true},productId:{type:mongoose.Schema.Types.ObjectId,default:null,index:true},subject:{type:String,required:true,trim:true},description:{type:String,required:true,trim:true},status:{type:String,enum:['OPEN','IN_PROGRESS','RESOLVED','CLOSED'],default:'OPEN',index:true},priority:{type:String,enum:['LOW','MEDIUM','HIGH','URGENT'],default:'MEDIUM',index:true},assignedTo:{type:mongoose.Schema.Types.ObjectId,default:null},response:String,resolvedAt:Date},{timestamps:true});module.exports=mongoose.model('CustomerIssue',schema);
+
+===== index.js =====
+const router = require("express").Router();
+
+const controller = require("../controllers/issue.controller");
+const validate = require("../middleware/validate");
+const { authenticate, authorize } = require("../middleware/auth");
+const internal = require("../middleware/internal");
+
+const {
+  createIssueSchema,
+  updateIssueSchema,
+} = require("../validators/issue");
+
+/*
+ * Internal service-to-service endpoint.
+ *
+ * IMPORTANT:
+ * This must be registered BEFORE router.use(authenticate)
+ * because internal services authenticate using
+ * x-internal-service-token rather than a user JWT.
+ */
+router.get(
+  "/internal/issues/vendor/:vendorId/count",
+  internal,
+  controller.internalVendorCount
+);
+
+/*
+ * Public/API Gateway-facing support routes.
+ */
+router.use(authenticate);
+
+router.post(
+  "/api/issues",
+  authorize("USER"),
+  validate(createIssueSchema),
+  controller.create
+);
+
+router.get(
+  "/api/issues",
+  authorize("USER", "VENDOR", "ADMIN"),
+  controller.list
+);
+
+router.get(
+  "/api/issues/:id",
+  authorize("USER", "VENDOR", "ADMIN"),
+  controller.getById
+);
+
+router.patch(
+  "/api/issues/:id",
+  authorize("USER", "VENDOR", "ADMIN"),
+  validate(updateIssueSchema),
+  controller.update
+);
+
+module.exports = router;
+
+
+// const router = require("express").Router();
+// const c = require("../controllers/issue.controller");
+// const validate = require("../middleware/validate");
+// const { authenticate, authorize } = require("../middleware/auth");
+// const { createIssueSchema, updateIssueSchema } = require("../validators/issue");
+// router.use(authenticate);
+// router.post(
+//   "/api/issues",
+//   authorize("USER"),
+//   validate(createIssueSchema),
+//   c.create,
+// );
+// router.get("/api/issues", authorize("USER", "VENDOR", "ADMIN"), c.list);
+// router.get("/api/issues/:id", authorize("USER", "VENDOR", "ADMIN"), c.getById);
+// router.patch(
+//   "/api/issues/:id",
+//   authorize("USER", "VENDOR", "ADMIN"),
+//   validate(updateIssueSchema),
+//   c.update,
+// );
+// router.get(
+//   "/internal/issues/vendor/:vendorId/count",
+//   require("../middleware/internal"),
+//   c.internalVendorCount,
+// );
+// module.exports = router;
+
+===== server.js =====
+require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5011);
+(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere support service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== issue.js =====
+const {z}=require('zod');const createIssueSchema=z.object({orderId:z.string().optional(),productId:z.string().optional(),subject:z.string().min(2),description:z.string().min(2),priority:z.enum(['LOW','MEDIUM','HIGH','URGENT']).optional()});const updateIssueSchema=z.object({status:z.enum(['OPEN','IN_PROGRESS','RESOLVED','CLOSED']).optional(),priority:z.enum(['LOW','MEDIUM','HIGH','URGENT']).optional(),assignedTo:z.string().optional(),response:z.string().optional()});module.exports={createIssueSchema,updateIssueSchema};
+
+===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-user',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== user.controller.js =====
+const {getJson,patchJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const AUTH=()=>process.env.AUTH_SERVICE_URL||'http://localhost:5002';async function me(req,res){const r=await getJson(AUTH(),`/internal/users/${req.user.id}`);if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data);}async function update(req,res){const allowed=['name','phone'];const updates={};for(const k of allowed)if(req.body[k]!==undefined)updates[k]=req.body[k];const r=await patchJson(AUTH(),`/internal/users/${req.user.id}`,updates);if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data,'Profile updated.');}module.exports={me,update};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== index.js =====
+const router = require("express").Router();
+const c = require("../controllers/user.controller");
+const { authenticate, authorize } = require("../middleware/auth");
+router.get("/api/users/me", authenticate, authorize("USER"), c.me);
+router.patch("/api/users/me", authenticate, c.update);
+module.exports = router;
+
+===== server.js =====
+require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5007);
+(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere user service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-vendor',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== vendor.controller.js =====
+const Vendor=require('../models/Vendor');const {getJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ORDER=()=>process.env.ORDER_SERVICE_URL||'http://localhost:5005';
+async function profile(req,res){const v=await Vendor.findOne({userId:req.user.id}).lean();if(!v)return fail(res,'Vendor profile not found.',404);ok(res,v);}
+async function dashboard(req,res){const pr=await getJson(PRODUCT(),`/api/products?vendorId=${encodeURIComponent(req.user.id)}&limit=100`);const or=await getJson(ORDER(),`/internal/orders/vendor/${req.user.id}/items`);const ir=await getJson(process.env.SUPPORT_SERVICE_URL||'http://localhost:5011',`/internal/issues/vendor/${req.user.id}/count`);const products=pr.data?.data?.items||[];const items=or.data?.data||[];const orderIds=[...new Set(items.map(i=>String(i.orderId)))];const sales=items.reduce((s,i)=>s+i.quantity*i.unitPrice,0);ok(res,{products:products.length,orders:orderIds.length,lowStock:products.filter(p=>p.stock<10).length,openIssues:ir.data?.data?.count||0,sales});}
+async function internalCreate(req,res){const v=await Vendor.create(req.body);ok(res,v,'Vendor created.',201);}async function internalGetByUser(req,res){const v=await Vendor.findOne({userId:req.params.userId}).lean();if(!v)return fail(res,'Vendor not found.',404);ok(res,v);}async function internalList(req,res){ok(res,await Vendor.find().sort({createdAt:-1}).lean());}async function internalUpdate(req,res){const v=await Vendor.findByIdAndUpdate(req.params.id,req.body,{new:true,runValidators:true});if(!v)return fail(res,'Vendor not found.',404);ok(res,v);}async function internalRemove(req,res){const v=await Vendor.findByIdAndDelete(req.params.id);if(!v)return fail(res,'Vendor not found.',404);ok(res,v);}
+module.exports={profile,dashboard,internalCreate,internalGetByUser,internalList,internalUpdate,internalRemove};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== Vendor.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},storeName:{type:String,required:true,trim:true},email:{type:String,required:true,lowercase:true,trim:true},phone:String,storeAddress:{type:String,required:true},status:{type:String,enum:['APPLIED','VERIFIED','REJECTED','UNVERIFIED'],default:'APPLIED'},verifiedAt:Date},{timestamps:true});schema.index({userId:1},{unique:true});module.exports=mongoose.model('Vendor',schema);
+
+===== index.js =====
+const router = require("express").Router();
+const c = require("../controllers/vendor.controller");
+const { authenticate, authorize } = require("../middleware/auth");
+const internal = require("../middleware/internal");
+router.get("/api/vendor/profile", authenticate, authorize("VENDOR"), c.profile);
+router.get(
+  "/api/vendor/dashboard",
+  authenticate,
+  authorize("VENDOR"),
+  c.dashboard,
+);
+router.post("/internal/vendors", internal, c.internalCreate);
+router.get("/internal/vendors/by-user/:userId", internal, c.internalGetByUser);
+
+router.get("/internal/vendors", internal, c.internalList);
+router.patch("/internal/vendors/:id", internal, c.internalUpdate);
+router.delete("/internal/vendors/:id", internal, c.internalRemove);
+module.exports = router;
+
+===== server.js =====
+require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5012);
+(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere vendor service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
