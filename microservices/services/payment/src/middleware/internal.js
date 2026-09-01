@@ -1,1 +1,11 @@
-module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+module.exports = (req, res, next) => {
+  const expected = process.env.INTERNAL_SERVICE_TOKEN;
+  if (!expected || req.headers["x-internal-service-token"] !== expected)
+    return res
+      .status(401)
+      .json({
+        success: false,
+        message: "Invalid internal service credentials.",
+      });
+  next();
+};

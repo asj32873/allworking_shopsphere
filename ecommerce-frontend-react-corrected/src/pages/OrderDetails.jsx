@@ -4,11 +4,14 @@ import OrderTracking from "../components/orders/OrderTracking";
 
 export default function OrderDetails() {
   const { id } = useParams();
+
   const { orders, addresses, user } = useApp();
 
-  const o = orders.find((x) => x.id === id);
+  const o = orders.find((x) => String(x._id) === String(id));
 
-  if (!o || o.userId !== user.id) {
+  const userId = user?._id || user?.id;
+
+  if (!o || String(o.userId) !== String(userId)) {
     return (
       <div className="container py-5">
         <div className="alert alert-danger">Order not found.</div>
@@ -16,7 +19,9 @@ export default function OrderDetails() {
     );
   }
 
-  const a = addresses.find((x) => x.id === o.addressId);
+  const a = addresses.find(
+    (x) => String(x._id || x.id) === String(o.addressId),
+  );
 
   return (
     <div className="container py-4">
@@ -26,29 +31,21 @@ export default function OrderDetails() {
         <div className="col-lg-7">
           <div className="card">
             <div className="card-body">
-              <h3>Order #{o.id}</h3>
+              <h3>Order #{o._id}</h3>
 
-              {o.items.map((i) => (
-                <div className="border-bottom py-3" key={i.id}>
-                  <div className="d-flex justify-content-between">
-                    <span>
-                      {i.name} × {i.quantity}
-                    </span>
+              <p>
+                <strong>Status:</strong>{" "}
+                <span className="badge text-bg-primary">{o.status}</span>
+              </p>
 
-                    <strong>
-                      ₹{(i.unitPrice * i.quantity).toLocaleString("en-IN")}
-                    </strong>
-                  </div>
-
-                  <small>
-                    Vendor status: <strong>{i.vendorStatus}</strong>
-                  </small>
-                </div>
-              ))}
+              <p>
+                <strong>Payment:</strong> {o.paymentStatus}
+              </p>
 
               <div className="d-flex justify-content-between fs-5 mt-3">
                 <strong>Total</strong>
-                <strong>₹{o.totalAmount.toLocaleString("en-IN")}</strong>
+
+                <strong>₹{o.totalAmount?.toLocaleString("en-IN")}</strong>
               </div>
 
               {a && (
@@ -61,14 +58,13 @@ export default function OrderDetails() {
         </div>
 
         <div className="col-lg-5">
-          {o.items.map((i) => (
-            <div className="card mb-3" key={i.id}>
-              <div className="card-body">
-                <h5>{i.name}</h5>
-                <OrderTracking item={i} />
-              </div>
+          <div className="card">
+            <div className="card-body">
+              <h5>Order Tracking</h5>
+
+              <OrderTracking order={o} />
             </div>
-          ))}
+          </div>
         </div>
       </div>
     </div>

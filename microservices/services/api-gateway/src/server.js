@@ -15,53 +15,29 @@ const {
 const app = express();
 
 const services = {
-  auth:
-    process.env.AUTH_SERVICE_URL ||
-    "http://localhost:5002",
+  auth: process.env.AUTH_SERVICE_URL || "http://localhost:5002",
 
-  users:
-    process.env.USER_SERVICE_URL ||
-    "http://localhost:5007",
+  users: process.env.USER_SERVICE_URL || "http://localhost:5007",
 
-  products:
-    process.env.PRODUCT_SERVICE_URL ||
-    "http://localhost:5003",
+  products: process.env.PRODUCT_SERVICE_URL || "http://localhost:5003",
 
-  cart:
-    process.env.CART_SERVICE_URL ||
-    "http://localhost:5004",
+  cart: process.env.CART_SERVICE_URL || "http://localhost:5004",
 
-  orders:
-    process.env.ORDER_SERVICE_URL ||
-    "http://localhost:5005",
+  orders: process.env.ORDER_SERVICE_URL || "http://localhost:5005",
 
-  payments:
-    process.env.PAYMENT_SERVICE_URL ||
-    "http://localhost:5006",
+  payments: process.env.PAYMENT_SERVICE_URL || "http://localhost:5006",
 
-  addresses:
-    process.env.ADDRESS_SERVICE_URL ||
-    "http://localhost:5008",
+  addresses: process.env.ADDRESS_SERVICE_URL || "http://localhost:5008",
 
-  reviews:
-    process.env.REVIEW_SERVICE_URL ||
-    "http://localhost:5009",
+  reviews: process.env.REVIEW_SERVICE_URL || "http://localhost:5009",
 
-  rag:
-    process.env.RAG_SERVICE_URL ||
-    "http://localhost:5010",
+  rag: process.env.RAG_SERVICE_URL || "http://localhost:5010",
 
-  issues:
-    process.env.SUPPORT_SERVICE_URL ||
-    "http://localhost:5011",
+  issues: process.env.SUPPORT_SERVICE_URL || "http://localhost:5011",
 
-  vendor:
-    process.env.VENDOR_SERVICE_URL ||
-    "http://localhost:5012",
+  vendor: process.env.VENDOR_SERVICE_URL || "http://localhost:5012",
 
-  admin:
-    process.env.ADMIN_SERVICE_URL ||
-    "http://localhost:5013",
+  admin: process.env.ADMIN_SERVICE_URL || "http://localhost:5013",
 };
 
 /* -------------------------------------------------------
@@ -72,20 +48,11 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin:
-      process.env.FRONTEND_URL ||
-      "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
 
     credentials: true,
 
-    methods: [
-      "GET",
-      "POST",
-      "PUT",
-      "PATCH",
-      "DELETE",
-      "OPTIONS",
-    ],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 
     allowedHeaders: [
       "Content-Type",
@@ -93,16 +60,10 @@ app.use(
       "x-internal-service-token",
       "stripe-signature",
     ],
-  })
+  }),
 );
 
-app.use(
-  morgan(
-    process.env.NODE_ENV === "production"
-      ? "combined"
-      : "dev"
-  )
-);
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 app.use(
   "/api",
@@ -111,7 +72,7 @@ app.use(
     limit: 3000,
     standardHeaders: true,
     legacyHeaders: false,
-  })
+  }),
 );
 
 /* -------------------------------------------------------
@@ -173,31 +134,25 @@ app.use(
         if (req.headers["stripe-signature"]) {
           proxyReq.setHeader(
             "stripe-signature",
-            req.headers["stripe-signature"]
+            req.headers["stripe-signature"],
           );
         }
 
-        proxyReq.setHeader(
-          "x-gateway-request",
-          "shopsphere"
-        );
+        proxyReq.setHeader("x-gateway-request", "shopsphere");
       },
 
       error: (err, req, res) => {
-        console.error(
-          `[GATEWAY STRIPE ERROR] ${err.message}`
-        );
+        console.error(`[GATEWAY STRIPE ERROR] ${err.message}`);
 
         if (!res.headersSent) {
           res.status(502).json({
             success: false,
-            message:
-              "Payment service unavailable.",
+            message: "Payment service unavailable.",
           });
         }
       },
     },
-  })
+  }),
 );
 
 /* -------------------------------------------------------
@@ -207,13 +162,13 @@ app.use(
 app.use(
   express.json({
     limit: "1mb",
-  })
+  }),
 );
 
 app.use(
   express.urlencoded({
     extended: true,
-  })
+  }),
 );
 
 /* -------------------------------------------------------
@@ -241,44 +196,37 @@ function proxy(target, pathRewrite) {
          * Express body into the outgoing proxy request.
          */
 
-        proxyReq.setHeader(
-          "x-gateway-request",
-          "shopsphere"
-        );
+        proxyReq.setHeader("x-gateway-request", "shopsphere");
 
         /*
          * Only reconstruct the body when Express has
          * already parsed it.
          */
-        if (
-          req.body &&
-          typeof req.body === "object"
-        ) {
+        if (req.body && typeof req.body === "object") {
           fixRequestBody(proxyReq, req);
         }
 
         console.log(
-          `[GATEWAY] ${req.method} ${req.originalUrl} -> ${target}${req.url}`
+          `[GATEWAY] ${req.method} ${req.originalUrl} -> ${target}${req.url}`,
         );
       },
 
       proxyRes: (proxyRes, req) => {
         console.log(
-          `[GATEWAY] ${req.method} ${req.originalUrl} <- ${proxyRes.statusCode}`
+          `[GATEWAY] ${req.method} ${req.originalUrl} <- ${proxyRes.statusCode}`,
         );
       },
 
       error: (err, req, res) => {
         console.error(
           `[GATEWAY PROXY ERROR] ${req.method} ${req.originalUrl}:`,
-          err.message
+          err.message,
         );
 
         if (!res.headersSent) {
           res.status(502).json({
             success: false,
-            message:
-              "Upstream service unavailable.",
+            message: "Upstream service unavailable.",
             error: err.message,
           });
         }
@@ -293,12 +241,9 @@ function proxy(target, pathRewrite) {
 
 app.use(
   "/api/auth",
-  proxy(
-    services.auth,
-    {
-      "^/": "/api/auth/",
-    }
-  )
+  proxy(services.auth, {
+    "^/": "/api/auth/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -307,12 +252,9 @@ app.use(
 
 app.use(
   "/api/users",
-  proxy(
-    services.users,
-    {
-      "^/": "/api/users/",
-    }
-  )
+  proxy(services.users, {
+    "^/": "/api/users/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -321,12 +263,9 @@ app.use(
 
 app.use(
   "/api/products",
-  proxy(
-    services.products,
-    {
-      "^/": "/api/products/",
-    }
-  )
+  proxy(services.products, {
+    "^/": "/api/products/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -335,12 +274,9 @@ app.use(
 
 app.use(
   "/api/cart",
-  proxy(
-    services.cart,
-    {
-      "^/": "/api/cart/",
-    }
-  )
+  proxy(services.cart, {
+    "^/": "/api/cart/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -349,12 +285,9 @@ app.use(
 
 app.use(
   "/api/orders",
-  proxy(
-    services.orders,
-    {
-      "^/": "/api/orders/",
-    }
-  )
+  proxy(services.orders, {
+    "^/": "/api/orders/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -363,12 +296,9 @@ app.use(
 
 app.use(
   "/api/payments",
-  proxy(
-    services.payments,
-    {
-      "^/": "/api/payments/",
-    }
-  )
+  proxy(services.payments, {
+    "^/": "/api/payments/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -377,12 +307,9 @@ app.use(
 
 app.use(
   "/api/addresses",
-  proxy(
-    services.addresses,
-    {
-      "^/": "/api/addresses/",
-    }
-  )
+  proxy(services.addresses, {
+    "^/": "/api/addresses/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -391,12 +318,9 @@ app.use(
 
 app.use(
   "/api/reviews",
-  proxy(
-    services.reviews,
-    {
-      "^/": "/api/reviews/",
-    }
-  )
+  proxy(services.reviews, {
+    "^/": "/api/reviews/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -405,12 +329,9 @@ app.use(
 
 app.use(
   "/api/rag",
-  proxy(
-    services.rag,
-    {
-      "^/": "/api/rag/",
-    }
-  )
+  proxy(services.rag, {
+    "^/": "/api/rag/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -419,12 +340,9 @@ app.use(
 
 app.use(
   "/api/issues",
-  proxy(
-    services.issues,
-    {
-      "^/": "/api/issues/",
-    }
-  )
+  proxy(services.issues, {
+    "^/": "/api/issues/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -433,12 +351,9 @@ app.use(
 
 app.use(
   "/api/vendor",
-  proxy(
-    services.vendor,
-    {
-      "^/": "/api/vendor/",
-    }
-  )
+  proxy(services.vendor, {
+    "^/": "/api/vendor/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -447,28 +362,21 @@ app.use(
 
 app.use(
   "/api/admin",
-  proxy(
-    services.admin,
-    {
-      "^/": "/api/admin/",
-    }
-  )
+  proxy(services.admin, {
+    "^/": "/api/admin/",
+  }),
 );
 
 /* -------------------------------------------------------
    GATEWAY DIAGNOSTIC
 ------------------------------------------------------- */
 
-app.post(
-  "/api/payment-debug",
-  (req, res) => {
-    res.json({
-      success: true,
-      message:
-        "Gateway payment debug route works",
-    });
-  }
-);
+app.post("/api/payment-debug", (req, res) => {
+  res.json({
+    success: true,
+    message: "Gateway payment debug route works",
+  });
+});
 
 /* -------------------------------------------------------
    404
@@ -486,22 +394,11 @@ app.use((req, res) => {
    START
 ------------------------------------------------------- */
 
-const PORT = Number(
-  process.env.GATEWAY_PORT || 5001
-);
+const PORT = Number(process.env.GATEWAY_PORT || 5001);
 
-app.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
-    console.log(
-      `ShopSphere API Gateway running on http://localhost:${PORT}`
-    );
-  }
-);
-
-
-
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`ShopSphere API Gateway running on http://localhost:${PORT}`);
+});
 
 // require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});
 // const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');

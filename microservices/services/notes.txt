@@ -67,63 +67,135 @@ module.exports = { getEnv };
 ===== address.controller.js =====
 const Address = require("../models/Address");
 const { ok, fail } = require("../utils/apiResponse");
-async function list(req, res) {
-  ok(
-    res,
-    await Address.find({ userId: req.user.id }).sort({
-      isDefault: -1,
-      createdAt: -1,
-    }),
-  );
+
+function getUserId(req) {
+  return req.user?._id?.toString() || req.user?.id || req.auth?.id;
 }
+
+async function list(req, res) {
+  const userId = getUserId(req);
+
+  console.log("LIST ADDRESS USER ID:", userId);
+
+  const addresses = await Address.find({ userId }).sort({
+    isDefault: -1,
+    createdAt: -1,
+  });
+
+  console.log("ADDRESSES FOUND:", addresses.length);
+  console.log("ADDRESSES:", addresses);
+
+  ok(res, addresses);
+}
+
 async function create(req, res) {
-  const existing = await Address.exists({ userId: req.user.id });
+  const userId = getUserId(req);
+
+  console.log("CREATE ADDRESS USER ID:", userId);
+
+  if (!userId) {
+    return fail(res, "User ID not found.", 401);
+  }
+
+  const existing = await Address.exists({ userId });
+
   const a = await Address.create({
     ...req.body,
-    userId: req.user.id,
+    userId,
     isDefault: !existing,
   });
+
   ok(res, a, "Address created.", 201);
 }
+
 async function update(req, res) {
+  const userId = getUserId(req);
+
   const a = await Address.findOneAndUpdate(
-    { _id: req.params.id, userId: req.user.id },
+    {
+      _id: req.params.id,
+      userId,
+    },
     req.body,
-    { new: true, runValidators: true },
+    {
+      new: true,
+      runValidators: true,
+    },
   );
-  if (!a) return fail(res, "Address not found.", 404);
+
+  if (!a) {
+    return fail(res, "Address not found.", 404);
+  }
+
   ok(res, a, "Address updated.");
 }
+
 async function remove(req, res) {
+  const userId = getUserId(req);
+
   const a = await Address.findOneAndDelete({
     _id: req.params.id,
-    userId: req.user.id,
+    userId,
   });
-  if (!a) return fail(res, "Address not found.", 404);
-  const replacement = await Address.findOne({ userId: req.user.id }).sort({
+
+  if (!a) {
+    return fail(res, "Address not found.", 404);
+  }
+
+  const replacement = await Address.findOne({ userId }).sort({
     createdAt: 1,
   });
-  if (replacement)
-    await Address.findByIdAndUpdate(replacement._id, { isDefault: true });
+
+  if (replacement) {
+    await Address.findByIdAndUpdate(replacement._id, {
+      isDefault: true,
+    });
+  }
+
   ok(res, null, "Address deleted.");
 }
+
 async function setDefault(req, res) {
-  const a = await Address.findOne({ _id: req.params.id, userId: req.user.id });
-  if (!a) return fail(res, "Address not found.", 404);
-  await Address.updateMany({ userId: req.user.id }, { isDefault: false });
+  const userId = getUserId(req);
+
+  const a = await Address.findOne({
+    _id: req.params.id,
+    userId,
+  });
+
+  if (!a) {
+    return fail(res, "Address not found.", 404);
+  }
+
+  await Address.updateMany({ userId }, { isDefault: false });
+
   a.isDefault = true;
   await a.save();
+
   ok(res, a, "Default address updated.");
 }
+
 async function internalGet(req, res) {
   const a = await Address.findOne({
     _id: req.params.id,
     userId: req.params.userId,
   }).lean();
-  if (!a) return fail(res, "Address not found.", 404);
+
+  if (!a) {
+    return fail(res, "Address not found.", 404);
+  }
+
   ok(res, a);
 }
-module.exports = { list, create, update, remove, setDefault, internalGet };
+
+module.exports = {
+  list,
+  create,
+  update,
+  remove,
+  setDefault,
+  internalGet,
+};
 
 ===== auth.js =====
 const jwt = require('jsonwebtoken');
@@ -245,7 +317,22 @@ module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safe
 const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},type:{type:String,enum:['Home','Office','Other'],default:'Home'},addressLine:{type:String,required:true,trim:true},city:{type:String,required:true,trim:true},state:{type:String,required:true,trim:true},pincode:{type:String,required:true,trim:true},isDefault:{type:Boolean,default:false}},{timestamps:true});schema.index({userId:1,isDefault:1});module.exports=mongoose.model('Address',schema);
 
 ===== index.js =====
-const router=require('express').Router();const c=require('../controllers/address.controller');const {authenticate,authorize}=require('../middleware/auth');const internal=require('../middleware/internal');router.get('/api/addresses',authenticate,authorize('USER'),c.list);router.post('/api/addresses',authenticate,authorize('USER'),c.create);router.put('/api/addresses/:id',authenticate,authorize('USER'),c.update);router.delete('/api/addresses/:id',authenticate,authorize('USER'),c.remove);router.patch('/api/addresses/:id/default',authenticate,authorize('USER'),c.setDefault);router.get('/internal/addresses/:userId/:id',internal,c.internalGet);module.exports=router;
+const router = require("express").Router();
+const c = require("../controllers/address.controller");
+const { authenticate, authorize } = require("../middleware/auth");
+const internal = require("../middleware/internal");
+router.get("/api/addresses", authenticate, authorize("USER"), c.list);
+router.post("/api/addresses", authenticate, authorize("USER"), c.create);
+router.put("/api/addresses/:id", authenticate, authorize("USER"), c.update);
+router.delete("/api/addresses/:id", authenticate, authorize("USER"), c.remove);
+router.patch(
+  "/api/addresses/:id/default",
+  authenticate,
+  authorize("USER"),
+  c.setDefault,
+);
+router.get("/internal/addresses/:userId/:id", internal, c.internalGet);
+module.exports = router;
 
 ===== server.js =====
 require("dotenv").config({
@@ -492,53 +579,29 @@ const {
 const app = express();
 
 const services = {
-  auth:
-    process.env.AUTH_SERVICE_URL ||
-    "http://localhost:5002",
+  auth: process.env.AUTH_SERVICE_URL || "http://localhost:5002",
 
-  users:
-    process.env.USER_SERVICE_URL ||
-    "http://localhost:5007",
+  users: process.env.USER_SERVICE_URL || "http://localhost:5007",
 
-  products:
-    process.env.PRODUCT_SERVICE_URL ||
-    "http://localhost:5003",
+  products: process.env.PRODUCT_SERVICE_URL || "http://localhost:5003",
 
-  cart:
-    process.env.CART_SERVICE_URL ||
-    "http://localhost:5004",
+  cart: process.env.CART_SERVICE_URL || "http://localhost:5004",
 
-  orders:
-    process.env.ORDER_SERVICE_URL ||
-    "http://localhost:5005",
+  orders: process.env.ORDER_SERVICE_URL || "http://localhost:5005",
 
-  payments:
-    process.env.PAYMENT_SERVICE_URL ||
-    "http://localhost:5006",
+  payments: process.env.PAYMENT_SERVICE_URL || "http://localhost:5006",
 
-  addresses:
-    process.env.ADDRESS_SERVICE_URL ||
-    "http://localhost:5008",
+  addresses: process.env.ADDRESS_SERVICE_URL || "http://localhost:5008",
 
-  reviews:
-    process.env.REVIEW_SERVICE_URL ||
-    "http://localhost:5009",
+  reviews: process.env.REVIEW_SERVICE_URL || "http://localhost:5009",
 
-  rag:
-    process.env.RAG_SERVICE_URL ||
-    "http://localhost:5010",
+  rag: process.env.RAG_SERVICE_URL || "http://localhost:5010",
 
-  issues:
-    process.env.SUPPORT_SERVICE_URL ||
-    "http://localhost:5011",
+  issues: process.env.SUPPORT_SERVICE_URL || "http://localhost:5011",
 
-  vendor:
-    process.env.VENDOR_SERVICE_URL ||
-    "http://localhost:5012",
+  vendor: process.env.VENDOR_SERVICE_URL || "http://localhost:5012",
 
-  admin:
-    process.env.ADMIN_SERVICE_URL ||
-    "http://localhost:5013",
+  admin: process.env.ADMIN_SERVICE_URL || "http://localhost:5013",
 };
 
 /* -------------------------------------------------------
@@ -549,20 +612,11 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin:
-      process.env.FRONTEND_URL ||
-      "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
 
     credentials: true,
 
-    methods: [
-      "GET",
-      "POST",
-      "PUT",
-      "PATCH",
-      "DELETE",
-      "OPTIONS",
-    ],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 
     allowedHeaders: [
       "Content-Type",
@@ -570,16 +624,10 @@ app.use(
       "x-internal-service-token",
       "stripe-signature",
     ],
-  })
+  }),
 );
 
-app.use(
-  morgan(
-    process.env.NODE_ENV === "production"
-      ? "combined"
-      : "dev"
-  )
-);
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 app.use(
   "/api",
@@ -588,7 +636,7 @@ app.use(
     limit: 3000,
     standardHeaders: true,
     legacyHeaders: false,
-  })
+  }),
 );
 
 /* -------------------------------------------------------
@@ -650,31 +698,25 @@ app.use(
         if (req.headers["stripe-signature"]) {
           proxyReq.setHeader(
             "stripe-signature",
-            req.headers["stripe-signature"]
+            req.headers["stripe-signature"],
           );
         }
 
-        proxyReq.setHeader(
-          "x-gateway-request",
-          "shopsphere"
-        );
+        proxyReq.setHeader("x-gateway-request", "shopsphere");
       },
 
       error: (err, req, res) => {
-        console.error(
-          `[GATEWAY STRIPE ERROR] ${err.message}`
-        );
+        console.error(`[GATEWAY STRIPE ERROR] ${err.message}`);
 
         if (!res.headersSent) {
           res.status(502).json({
             success: false,
-            message:
-              "Payment service unavailable.",
+            message: "Payment service unavailable.",
           });
         }
       },
     },
-  })
+  }),
 );
 
 /* -------------------------------------------------------
@@ -684,13 +726,13 @@ app.use(
 app.use(
   express.json({
     limit: "1mb",
-  })
+  }),
 );
 
 app.use(
   express.urlencoded({
     extended: true,
-  })
+  }),
 );
 
 /* -------------------------------------------------------
@@ -718,44 +760,37 @@ function proxy(target, pathRewrite) {
          * Express body into the outgoing proxy request.
          */
 
-        proxyReq.setHeader(
-          "x-gateway-request",
-          "shopsphere"
-        );
+        proxyReq.setHeader("x-gateway-request", "shopsphere");
 
         /*
          * Only reconstruct the body when Express has
          * already parsed it.
          */
-        if (
-          req.body &&
-          typeof req.body === "object"
-        ) {
+        if (req.body && typeof req.body === "object") {
           fixRequestBody(proxyReq, req);
         }
 
         console.log(
-          `[GATEWAY] ${req.method} ${req.originalUrl} -> ${target}${req.url}`
+          `[GATEWAY] ${req.method} ${req.originalUrl} -> ${target}${req.url}`,
         );
       },
 
       proxyRes: (proxyRes, req) => {
         console.log(
-          `[GATEWAY] ${req.method} ${req.originalUrl} <- ${proxyRes.statusCode}`
+          `[GATEWAY] ${req.method} ${req.originalUrl} <- ${proxyRes.statusCode}`,
         );
       },
 
       error: (err, req, res) => {
         console.error(
           `[GATEWAY PROXY ERROR] ${req.method} ${req.originalUrl}:`,
-          err.message
+          err.message,
         );
 
         if (!res.headersSent) {
           res.status(502).json({
             success: false,
-            message:
-              "Upstream service unavailable.",
+            message: "Upstream service unavailable.",
             error: err.message,
           });
         }
@@ -770,12 +805,9 @@ function proxy(target, pathRewrite) {
 
 app.use(
   "/api/auth",
-  proxy(
-    services.auth,
-    {
-      "^/": "/api/auth/",
-    }
-  )
+  proxy(services.auth, {
+    "^/": "/api/auth/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -784,12 +816,9 @@ app.use(
 
 app.use(
   "/api/users",
-  proxy(
-    services.users,
-    {
-      "^/": "/api/users/",
-    }
-  )
+  proxy(services.users, {
+    "^/": "/api/users/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -798,12 +827,9 @@ app.use(
 
 app.use(
   "/api/products",
-  proxy(
-    services.products,
-    {
-      "^/": "/api/products/",
-    }
-  )
+  proxy(services.products, {
+    "^/": "/api/products/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -812,12 +838,9 @@ app.use(
 
 app.use(
   "/api/cart",
-  proxy(
-    services.cart,
-    {
-      "^/": "/api/cart/",
-    }
-  )
+  proxy(services.cart, {
+    "^/": "/api/cart/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -826,12 +849,9 @@ app.use(
 
 app.use(
   "/api/orders",
-  proxy(
-    services.orders,
-    {
-      "^/": "/api/orders/",
-    }
-  )
+  proxy(services.orders, {
+    "^/": "/api/orders/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -840,12 +860,9 @@ app.use(
 
 app.use(
   "/api/payments",
-  proxy(
-    services.payments,
-    {
-      "^/": "/api/payments/",
-    }
-  )
+  proxy(services.payments, {
+    "^/": "/api/payments/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -854,12 +871,9 @@ app.use(
 
 app.use(
   "/api/addresses",
-  proxy(
-    services.addresses,
-    {
-      "^/": "/api/addresses/",
-    }
-  )
+  proxy(services.addresses, {
+    "^/": "/api/addresses/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -868,12 +882,9 @@ app.use(
 
 app.use(
   "/api/reviews",
-  proxy(
-    services.reviews,
-    {
-      "^/": "/api/reviews/",
-    }
-  )
+  proxy(services.reviews, {
+    "^/": "/api/reviews/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -882,12 +893,9 @@ app.use(
 
 app.use(
   "/api/rag",
-  proxy(
-    services.rag,
-    {
-      "^/": "/api/rag/",
-    }
-  )
+  proxy(services.rag, {
+    "^/": "/api/rag/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -896,12 +904,9 @@ app.use(
 
 app.use(
   "/api/issues",
-  proxy(
-    services.issues,
-    {
-      "^/": "/api/issues/",
-    }
-  )
+  proxy(services.issues, {
+    "^/": "/api/issues/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -910,12 +915,9 @@ app.use(
 
 app.use(
   "/api/vendor",
-  proxy(
-    services.vendor,
-    {
-      "^/": "/api/vendor/",
-    }
-  )
+  proxy(services.vendor, {
+    "^/": "/api/vendor/",
+  }),
 );
 
 /* -------------------------------------------------------
@@ -924,28 +926,21 @@ app.use(
 
 app.use(
   "/api/admin",
-  proxy(
-    services.admin,
-    {
-      "^/": "/api/admin/",
-    }
-  )
+  proxy(services.admin, {
+    "^/": "/api/admin/",
+  }),
 );
 
 /* -------------------------------------------------------
    GATEWAY DIAGNOSTIC
 ------------------------------------------------------- */
 
-app.post(
-  "/api/payment-debug",
-  (req, res) => {
-    res.json({
-      success: true,
-      message:
-        "Gateway payment debug route works",
-    });
-  }
-);
+app.post("/api/payment-debug", (req, res) => {
+  res.json({
+    success: true,
+    message: "Gateway payment debug route works",
+  });
+});
 
 /* -------------------------------------------------------
    404
@@ -963,22 +958,11 @@ app.use((req, res) => {
    START
 ------------------------------------------------------- */
 
-const PORT = Number(
-  process.env.GATEWAY_PORT || 5001
-);
+const PORT = Number(process.env.GATEWAY_PORT || 5001);
 
-app.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
-    console.log(
-      `ShopSphere API Gateway running on http://localhost:${PORT}`
-    );
-  }
-);
-
-
-
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`ShopSphere API Gateway running on http://localhost:${PORT}`);
+});
 
 // require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});
 // const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
@@ -1503,11 +1487,50 @@ const loginSchema = z.object({
 module.exports = { registerSchema, vendorRegisterSchema, loginSchema };
 
 ===== app.js =====
-const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
-const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
-const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
-app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
-app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-cart',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const { notFound, errorHandler } = require("./middleware/error");
+const app = express();
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-cart",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
 
 ===== db.js =====
 const mongoose = require('mongoose');
@@ -2123,11 +2146,57 @@ module.exports={request,getJson,postJson,patchJson};
 const {z}=require('zod');const createOrderSchema=z.object({addressId:z.string().min(1),paymentMethod:z.string().optional()});const statusSchema=z.object({status:z.enum(['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED']),remarks:z.string().optional()});module.exports={createOrderSchema,statusSchema};
 
 ===== app.js =====
-const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');const routes=require('./routes');const controller=require('./controllers/payment.controller');const {notFound,errorHandler}=require('./middleware/error');
-const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const controller = require("./controllers/payment.controller");
+const { notFound, errorHandler } = require("./middleware/error");
+const app = express();
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
 // Stripe requires the exact raw bytes for signature verification.
-app.post('/api/payments/webhook',express.raw({type:'application/json'}),controller.webhook);
-app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-payment',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+app.post(
+  "/api/payments/webhook",
+  express.raw({ type: "application/json" }),
+  controller.webhook,
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-payment",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
 
 ===== db.js =====
 const mongoose = require('mongoose');
@@ -2150,22 +2219,272 @@ function getEnv(name, fallback = undefined) {
 module.exports = { getEnv };
 
 ===== payment.controller.js =====
-const stripe=require('../services/stripe.service');const Payment=require('../models/Payment');const {getJson,postJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const CART=()=>process.env.CART_SERVICE_URL||'http://localhost:5004';const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ADDRESS=()=>process.env.ADDRESS_SERVICE_URL||'http://localhost:5008';const ORDER=()=>process.env.ORDER_SERVICE_URL||'http://localhost:5005';
-async function createCheckoutSession(req,res){if(!stripe)return fail(res,'Stripe is not configured.',503);const {addressId}=req.body;const ar=await getJson(ADDRESS(),`/internal/addresses/${req.user.id}/${addressId}`);if(!ar.ok)return fail(res,'Delivery address not found.',404);const cr=await getJson(CART(),`/internal/cart/${req.user.id}`);const cart=cr.data?.data||[];if(!cart.length)return fail(res,'Cart is empty.',400);const lineItems=[];const orderItems=[];let total=0;for(const i of cart){const pr=await getJson(PRODUCT(),`/internal/products/${i.productId}`);const p=pr.data?.data;if(!p)return fail(res,'A product in your cart no longer exists.',409);if(p.stock<i.quantity)return fail(res,`Only ${p.stock} item(s) of ${p.name} are available.`,409);lineItems.push({price_data:{currency:'inr',product_data:{name:p.name,description:p.description?.slice(0,500)||undefined},unit_amount:Math.round(p.price*100)},quantity:i.quantity});orderItems.push({productId:p._id,vendorId:p.vendorId,name:p.name,quantity:i.quantity,unitPrice:p.price});total+=i.quantity*p.price;}
-const session=await stripe.checkout.sessions.create({mode:'payment',line_items:lineItems,customer_email:req.user.email,metadata:{userId:req.user.id,addressId},success_url:`${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,cancel_url:`${process.env.FRONTEND_URL}/payment/cancel`,submit_type:'pay',payment_method_types:['card']});await Payment.create({userId:req.user.id,addressId,stripeSessionId:session.id,amount:total,currency:'inr',status:'PENDING'});ok(res,{sessionId:session.id,url:session.url,orderItems},'Checkout session created.');}
-async function webhook(req,res){if(!stripe)return res.status(503).json({success:false,message:'Stripe is not configured.'});const sig=req.headers['stripe-signature'];let event;try{event=stripe.webhooks.constructEvent(req.body,sig,process.env.STRIPE_WEBHOOK_SECRET);}catch(e){return res.status(400).json({success:false,message:`Webhook Error: ${e.message}`});}
-if(event.type==='checkout.session.completed'){const s=event.data.object;const payment=await Payment.findOneAndUpdate({stripeSessionId:s.id},{status:'PAID',stripePaymentIntentId:s.payment_intent},{new:true});if(payment&&!payment.orderId){const cr=await getJson(CART(),`/internal/cart/${payment.userId}`);const cart=cr.data?.data||[];const items=[];for(const i of cart){const pr=await getJson(PRODUCT(),`/internal/products/${i.productId}`);const p=pr.data?.data;if(p)items.push({productId:p._id,vendorId:p.vendorId,name:p.name,quantity:i.quantity,unitPrice:p.price});}if(items.length){const reserve=await postJson(PRODUCT(),'/internal/products/reserve',{items:items.map(i=>({productId:i.productId,quantity:i.quantity}))});if(reserve.ok){const or=await postJson(ORDER(),'/internal/orders/paid',{userId:payment.userId,addressId:payment.addressId,totalAmount:payment.amount,items,stripeSessionId:s.id,stripePaymentIntentId:s.payment_intent});if(or.ok){payment.orderId=or.data.data.order._id;await payment.save();await postJson(CART(),`/internal/cart/${payment.userId}/clear`,{});}}}}}
-if(event.type==='checkout.session.expired'){await Payment.findOneAndUpdate({stripeSessionId:event.data.object.id},{status:'CANCELLED'});}res.json({received:true});}
-async function debug(req,res){res.json({success:true,message:'Payment router works'});}module.exports={createCheckoutSession,webhook,debug};
+const stripe = require("../services/stripe.service");
+const Payment = require("../models/Payment");
+const { getJson, postJson } = require("../utils/serviceClient");
+const { ok, fail } = require("../utils/apiResponse");
+const CART = () => process.env.CART_SERVICE_URL || "http://localhost:5004";
+const PRODUCT = () =>
+  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+const ADDRESS = () =>
+  process.env.ADDRESS_SERVICE_URL || "http://localhost:5008";
+const ORDER = () => process.env.ORDER_SERVICE_URL || "http://localhost:5005";
+
+async function createCheckoutSession(req, res) {
+  if (!stripe) {
+    return fail(res, "Stripe is not configured.", 503);
+  }
+
+  const { addressId } = req.body;
+
+  if (!addressId) {
+    return fail(res, "addressId is required.", 400);
+  }
+
+  const userId = req.auth?.id || req.user?._id?.toString() || req.user?.id;
+
+  if (!userId) {
+    return fail(res, "Authenticated user ID not found.", 401);
+  }
+
+  console.log("CHECKOUT REQUEST:", {
+    userId,
+    addressId,
+  });
+
+  // =========================
+  // VERIFY DELIVERY ADDRESS
+  // =========================
+
+  const ar = await getJson(
+    ADDRESS(),
+    `/internal/addresses/${userId}/${addressId}`,
+  );
+
+  console.log("ADDRESS SERVICE RESPONSE:", {
+    status: ar.status,
+    ok: ar.ok,
+    data: ar.data,
+  });
+
+  if (!ar.ok) {
+    if (ar.status === 404) {
+      return fail(res, "Delivery address not found.", 404);
+    }
+
+    return fail(
+      res,
+      ar.data?.message || "Unable to verify delivery address.",
+      502,
+    );
+  }
+
+  // =========================
+  // GET CART
+  // =========================
+
+  const cr = await getJson(CART(), `/internal/cart/${userId}`);
+
+  const cart = cr.data?.data || [];
+
+  if (!cart.length) {
+    return fail(res, "Cart is empty.", 400);
+  }
+
+  // =========================
+  // GET PRODUCTS
+  // =========================
+
+  const lineItems = [];
+  const orderItems = [];
+  let total = 0;
+
+  for (const i of cart) {
+    const pr = await getJson(PRODUCT(), `/internal/products/${i.productId}`);
+
+    const p = pr.data?.data;
+
+    if (!p) {
+      return fail(res, "A product in your cart no longer exists.", 409);
+    }
+
+    if (p.stock < i.quantity) {
+      return fail(
+        res,
+        `Only ${p.stock} item(s) of ${p.name} are available.`,
+        409,
+      );
+    }
+
+    lineItems.push({
+      price_data: {
+        currency: "inr",
+        product_data: {
+          name: p.name,
+          description: p.description?.slice(0, 500) || undefined,
+        },
+        unit_amount: Math.round(p.price * 100),
+      },
+      quantity: i.quantity,
+    });
+
+    orderItems.push({
+      productId: p._id,
+      vendorId: p.vendorId,
+      name: p.name,
+      quantity: i.quantity,
+      unitPrice: p.price,
+    });
+
+    total += i.quantity * p.price;
+  }
+
+  // =========================
+  // CREATE STRIPE SESSION
+  // =========================
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: lineItems,
+
+    customer_email: req.user.email,
+
+    metadata: {
+      userId: String(userId),
+      addressId: String(addressId),
+    },
+
+    success_url: `${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+
+    cancel_url: `${process.env.FRONTEND_URL}/payment/cancel`,
+
+    submit_type: "pay",
+
+    payment_method_types: ["card"],
+  });
+
+  // =========================
+  // SAVE PAYMENT
+  // =========================
+
+  await Payment.create({
+    userId,
+    addressId,
+    stripeSessionId: session.id,
+    amount: total,
+    currency: "inr",
+    status: "PENDING",
+  });
+
+  return ok(
+    res,
+    {
+      sessionId: session.id,
+      url: session.url,
+      orderItems,
+    },
+    "Checkout session created.",
+  );
+}
+
+async function webhook(req, res) {
+  if (!stripe)
+    return res
+      .status(503)
+      .json({ success: false, message: "Stripe is not configured." });
+  const sig = req.headers["stripe-signature"];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET,
+    );
+  } catch (e) {
+    return res
+      .status(400)
+      .json({ success: false, message: `Webhook Error: ${e.message}` });
+  }
+  if (event.type === "checkout.session.completed") {
+    const s = event.data.object;
+    const payment = await Payment.findOneAndUpdate(
+      { stripeSessionId: s.id },
+      { status: "PAID", stripePaymentIntentId: s.payment_intent },
+      { new: true },
+    );
+    if (payment && !payment.orderId) {
+      const cr = await getJson(CART(), `/internal/cart/${payment.userId}`);
+      const cart = cr.data?.data || [];
+      const items = [];
+      for (const i of cart) {
+        const pr = await getJson(
+          PRODUCT(),
+          `/internal/products/${i.productId}`,
+        );
+        const p = pr.data?.data;
+        if (p)
+          items.push({
+            productId: p._id,
+            vendorId: p.vendorId,
+            name: p.name,
+            quantity: i.quantity,
+            unitPrice: p.price,
+          });
+      }
+      if (items.length) {
+        const reserve = await postJson(
+          PRODUCT(),
+          "/internal/products/reserve",
+          {
+            items: items.map((i) => ({
+              productId: i.productId,
+              quantity: i.quantity,
+            })),
+          },
+        );
+        if (reserve.ok) {
+          const or = await postJson(ORDER(), "/internal/orders/paid", {
+            userId: payment.userId,
+            addressId: payment.addressId,
+            totalAmount: payment.amount,
+            items,
+            stripeSessionId: s.id,
+            stripePaymentIntentId: s.payment_intent,
+          });
+          if (or.ok) {
+            payment.orderId = or.data.data.order._id;
+            await payment.save();
+            await postJson(
+              CART(),
+              `/internal/cart/${payment.userId}/clear`,
+              {},
+            );
+          }
+        }
+      }
+    }
+  }
+  if (event.type === "checkout.session.expired") {
+    await Payment.findOneAndUpdate(
+      { stripeSessionId: event.data.object.id },
+      { status: "CANCELLED" },
+    );
+  }
+  res.json({ received: true });
+}
+async function debug(req, res) {
+  res.json({ success: true, message: "Payment router works" });
+}
+module.exports = { createCheckoutSession, webhook, debug };
 
 ===== auth.js =====
-const jwt = require('jsonwebtoken');
-const jwksClient = require('jwks-rsa');
-const { getJson } = require('../utils/serviceClient');
+const jwt = require("jsonwebtoken");
+const jwksClient = require("jwks-rsa");
+const { getJson } = require("../utils/serviceClient");
 
-const auth0Domain = (process.env.AUTH0_DOMAIN || '')
-  .replace(/^https?:\/\//, '')
-  .replace(/\/$/, '');
+const auth0Domain = (process.env.AUTH0_DOMAIN || "")
+  .replace(/^https?:\/\//, "")
+  .replace(/\/$/, "");
 const auth0Audience = process.env.AUTH0_AUDIENCE;
 const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
 const jwks = auth0Domain
@@ -2180,9 +2499,10 @@ const jwks = auth0Domain
   : null;
 
 function signingKey(header, callback) {
-  if (!jwks) return callback(new Error('Auth0 is not configured.'));
-  if (!header?.kid) return callback(new Error('Token is missing kid.'));
-  jwks.getSigningKey(header.kid)
+  if (!jwks) return callback(new Error("Auth0 is not configured."));
+  if (!header?.kid) return callback(new Error("Token is missing kid."));
+  jwks
+    .getSigningKey(header.kid)
     .then((key) => callback(null, key.getPublicKey()))
     .catch(callback);
 }
@@ -2192,7 +2512,7 @@ function verifyAuth0(token) {
     jwt.verify(
       token,
       signingKey,
-      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      { algorithms: ["RS256"], audience: auth0Audience, issuer: auth0Issuer },
       (error, payload) => (error ? reject(error) : resolve(payload)),
     );
   });
@@ -2200,15 +2520,17 @@ function verifyAuth0(token) {
 
 async function authenticate(req, res, next) {
   try {
-    const header = req.headers.authorization || '';
-    if (!header.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    const header = req.headers.authorization || "";
+    if (!header.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Authentication required." });
     }
 
     const token = header.slice(7);
     let identity;
 
-    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+    if (auth0Domain && auth0Audience && token.split(".").length === 3) {
       try {
         identity = await verifyAuth0(token);
       } catch {
@@ -2220,36 +2542,52 @@ async function authenticate(req, res, next) {
       identity = jwt.verify(token, process.env.JWT_SECRET);
     }
 
-    const userId = identity.id || identity['https://shopsphere/user_id'];
+    const userId = identity.id || identity["https://shopsphere/user_id"];
     if (!userId) {
-      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+      return res
+        .status(401)
+        .json({ success: false, message: "Token does not contain a user id." });
     }
 
-    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
-    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+    const authService = process.env.AUTH_SERVICE_URL || "http://localhost:5002";
+    const result = await getJson(
+      authService,
+      `/internal/users/${encodeURIComponent(userId)}`,
+    );
 
     if (!result.ok || !result.data?.data) {
-      return res.status(401).json({ success: false, message: 'User account not found.' });
+      return res
+        .status(401)
+        .json({ success: false, message: "User account not found." });
     }
 
     const user = result.data.data;
-    if (user.status === 'DISABLED') {
-      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    if (user.status === "DISABLED") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Account disabled." });
     }
 
     req.user = user;
     req.auth = { ...identity, id: String(userId) };
     next();
   } catch (error) {
-    console.error('AUTH ERROR:', error.message);
-    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+    console.error("AUTH ERROR:", error.message);
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token." });
   }
 }
 
 function authorize(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message: "You do not have permission for this resource.",
+        });
     }
     next();
   };
@@ -2258,56 +2596,195 @@ function authorize(...roles) {
 module.exports = { authenticate, authorize };
 
 ===== error.js =====
-function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
-function errorHandler(err,req,res,next){
- console.error(err);
- if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
- if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
- if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
- res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+function notFound(req, res) {
+  res
+    .status(404)
+    .json({
+      success: false,
+      message: `Route not found: ${req.method} ${req.originalUrl}`,
+    });
 }
-module.exports={notFound,errorHandler};
+function errorHandler(err, req, res, next) {
+  console.error(err);
+  if (err.name === "ValidationError")
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "Validation error.",
+        details: Object.values(err.errors).map((e) => e.message),
+      });
+  if (err.code === 11000)
+    return res
+      .status(409)
+      .json({
+        success: false,
+        message: "A record with a unique field already exists.",
+        details: err.keyValue,
+      });
+  if (err.name === "CastError")
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid resource ID." });
+  res
+    .status(err.status || 500)
+    .json({
+      success: false,
+      message: err.status ? err.message : "Internal server error.",
+    });
+}
+module.exports = { notFound, errorHandler };
 
 ===== internal.js =====
-module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+module.exports = (req, res, next) => {
+  const expected = process.env.INTERNAL_SERVICE_TOKEN;
+  if (!expected || req.headers["x-internal-service-token"] !== expected)
+    return res
+      .status(401)
+      .json({
+        success: false,
+        message: "Invalid internal service credentials.",
+      });
+  next();
+};
 
 ===== validate.js =====
-module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+module.exports =
+  (schema, source = "body") =>
+  (req, res, next) => {
+    const result = schema.safeParse(req[source]);
+    if (!result.success)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Invalid request.",
+          details: result.error.issues.map((i) => ({
+            path: i.path,
+            message: i.message,
+          })),
+        });
+    req[source] = result.data;
+    next();
+  };
 
 ===== Payment.js =====
-const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},addressId:{type:mongoose.Schema.Types.ObjectId,required:true},stripeSessionId:{type:String,required:true,unique:true,index:true},stripePaymentIntentId:{type:String,default:null,index:true},amount:{type:Number,required:true,min:0},currency:{type:String,default:'inr'},status:{type:String,enum:['PENDING','PAID','FAILED','CANCELLED'],default:'PENDING',index:true},orderId:{type:mongoose.Schema.Types.ObjectId,default:null,index:true}},{timestamps:true});module.exports=mongoose.model('Payment',schema);
+const mongoose = require("mongoose");
+const schema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    addressId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    stripeSessionId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
+    stripePaymentIntentId: { type: String, default: null, index: true },
+    amount: { type: Number, required: true, min: 0 },
+    currency: { type: String, default: "inr" },
+    status: {
+      type: String,
+      enum: ["PENDING", "PAID", "FAILED", "CANCELLED"],
+      default: "PENDING",
+      index: true,
+    },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+  },
+  { timestamps: true },
+);
+module.exports = mongoose.model("Payment", schema);
 
 ===== index.js =====
-const router=require('express').Router();const c=require('../controllers/payment.controller');const {authenticate,authorize}=require('../middleware/auth');router.post('/api/payments/debug',c.debug);router.post('/api/payments/create-checkout-session',authenticate,authorize('USER'),c.createCheckoutSession);module.exports=router;
+const router = require("express").Router();
+const c = require("../controllers/payment.controller");
+const { authenticate, authorize } = require("../middleware/auth");
+router.post("/api/payments/debug", c.debug);
+router.post(
+  "/api/payments/create-checkout-session",
+  authenticate,
+  authorize("USER"),
+  c.createCheckoutSession,
+);
+module.exports = router;
 
 ===== server.js =====
-require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5006);
-(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere payment service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+const app = require("./app");
+const connectDB = require("./config/db");
+const PORT = Number(process.env.PORT || 5006);
+(async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(
+        "ShopSphere payment service running on http://localhost:" + PORT,
+      ),
+    );
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
 
 ===== stripe.service.js =====
-const Stripe=require('stripe');module.exports=process.env.STRIPE_SECRET_KEY?new Stripe(process.env.STRIPE_SECRET_KEY):null;
+const Stripe = require("stripe");
+module.exports = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
 
 ===== apiResponse.js =====
-function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
-function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
-module.exports={ok,fail};
+function ok(res, data, message = "OK", status = 200) {
+  return res.status(status).json({ success: true, message, data });
+}
+function fail(res, message, status = 400, details) {
+  return res
+    .status(status)
+    .json({ success: false, message, ...(details ? { details } : {}) });
+}
+module.exports = { ok, fail };
 
 ===== serviceClient.js =====
-async function request(baseUrl,path,options={}){
-  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
-  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
-  if(options.body && typeof options.body!=='string'){
-    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+async function request(baseUrl, path, options = {}) {
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+  const headers = {
+    ...(options.headers || {}),
+    "x-internal-service-token": process.env.INTERNAL_SERVICE_TOKEN || "",
+  };
+  if (options.body && typeof options.body !== "string") {
+    headers["content-type"] = "application/json";
+    options.body = JSON.stringify(options.body);
   }
-  const response=await fetch(url,{...options,headers});
-  const text=await response.text();
-  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
-  return {status:response.status,ok:response.ok,data};
+  const response = await fetch(url, { ...options, headers });
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { success: false, message: text || "Invalid service response" };
+  }
+  return { status: response.status, ok: response.ok, data };
 }
-async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
-async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
-async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
-module.exports={request,getJson,postJson,patchJson};
+async function getJson(baseUrl, path, headers = {}) {
+  return request(baseUrl, path, { method: "GET", headers });
+}
+async function postJson(baseUrl, path, body, headers = {}) {
+  return request(baseUrl, path, { method: "POST", body, headers });
+}
+async function patchJson(baseUrl, path, body, headers = {}) {
+  return request(baseUrl, path, { method: "PATCH", body, headers });
+}
+module.exports = { request, getJson, postJson, patchJson };
 
 ===== app.js =====
 const express = require("express");
@@ -4099,11 +4576,50 @@ async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,pa
 module.exports={request,getJson,postJson,patchJson};
 
 ===== app.js =====
-const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
-const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
-const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
-app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
-app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-vendor',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const { notFound, errorHandler } = require("./middleware/error");
+const app = express();
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-vendor",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
 
 ===== db.js =====
 const mongoose = require('mongoose');
@@ -4126,11 +4642,94 @@ function getEnv(name, fallback = undefined) {
 module.exports = { getEnv };
 
 ===== vendor.controller.js =====
-const Vendor=require('../models/Vendor');const {getJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ORDER=()=>process.env.ORDER_SERVICE_URL||'http://localhost:5005';
-async function profile(req,res){const v=await Vendor.findOne({userId:req.user.id}).lean();if(!v)return fail(res,'Vendor profile not found.',404);ok(res,v);}
-async function dashboard(req,res){const pr=await getJson(PRODUCT(),`/api/products?vendorId=${encodeURIComponent(req.user.id)}&limit=100`);const or=await getJson(ORDER(),`/internal/orders/vendor/${req.user.id}/items`);const ir=await getJson(process.env.SUPPORT_SERVICE_URL||'http://localhost:5011',`/internal/issues/vendor/${req.user.id}/count`);const products=pr.data?.data?.items||[];const items=or.data?.data||[];const orderIds=[...new Set(items.map(i=>String(i.orderId)))];const sales=items.reduce((s,i)=>s+i.quantity*i.unitPrice,0);ok(res,{products:products.length,orders:orderIds.length,lowStock:products.filter(p=>p.stock<10).length,openIssues:ir.data?.data?.count||0,sales});}
-async function internalCreate(req,res){const v=await Vendor.create(req.body);ok(res,v,'Vendor created.',201);}async function internalGetByUser(req,res){const v=await Vendor.findOne({userId:req.params.userId}).lean();if(!v)return fail(res,'Vendor not found.',404);ok(res,v);}async function internalList(req,res){ok(res,await Vendor.find().sort({createdAt:-1}).lean());}async function internalUpdate(req,res){const v=await Vendor.findByIdAndUpdate(req.params.id,req.body,{new:true,runValidators:true});if(!v)return fail(res,'Vendor not found.',404);ok(res,v);}async function internalRemove(req,res){const v=await Vendor.findByIdAndDelete(req.params.id);if(!v)return fail(res,'Vendor not found.',404);ok(res,v);}
-module.exports={profile,dashboard,internalCreate,internalGetByUser,internalList,internalUpdate,internalRemove};
+const Vendor = require("../models/Vendor");
+const { getJson } = require("../utils/serviceClient");
+const { ok, fail } = require("../utils/apiResponse");
+const PRODUCT = () =>
+  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+const ORDER = () => process.env.ORDER_SERVICE_URL || "http://localhost:5005";
+async function profile(req, res) {
+  const userId = req.auth?.id;
+
+  if (!userId) {
+    return fail(res, "Authenticated user ID not found.", 401);
+  }
+
+  const v = await Vendor.findOne({ userId }).lean();
+
+  if (!v) {
+    return fail(res, "Vendor profile not found.", 404);
+  }
+
+  return ok(res, v);
+}
+async function dashboard(req, res) {
+  const userId = req.auth?.id;
+
+  const pr = await getJson(
+    PRODUCT(),
+    `/api/products?vendorId=${encodeURIComponent(userId)}&limit=100`,
+  );
+
+  const or = await getJson(ORDER(), `/internal/orders/vendor/${userId}/items`);
+
+  const ir = await getJson(
+    process.env.SUPPORT_SERVICE_URL || "http://localhost:5011",
+    `/internal/issues/vendor/${userId}/count`,
+  );
+
+  const products = pr.data?.data?.items || [];
+  const items = or.data?.data || [];
+
+  const orderIds = [...new Set(items.map((i) => String(i.orderId)))];
+
+  const sales = items.reduce(
+    (sum, item) => sum + item.quantity * item.unitPrice,
+    0,
+  );
+
+  return ok(res, {
+    products: products.length,
+    orders: orderIds.length,
+    lowStock: products.filter((p) => p.stock < 10).length,
+    openIssues: ir.data?.data?.count || 0,
+    sales,
+  });
+}
+async function internalCreate(req, res) {
+  const v = await Vendor.create(req.body);
+  ok(res, v, "Vendor created.", 201);
+}
+async function internalGetByUser(req, res) {
+  const v = await Vendor.findOne({ userId: req.params.userId }).lean();
+  if (!v) return fail(res, "Vendor not found.", 404);
+  ok(res, v);
+}
+async function internalList(req, res) {
+  ok(res, await Vendor.find().sort({ createdAt: -1 }).lean());
+}
+async function internalUpdate(req, res) {
+  const v = await Vendor.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+  });
+  if (!v) return fail(res, "Vendor not found.", 404);
+  ok(res, v);
+}
+async function internalRemove(req, res) {
+  const v = await Vendor.findByIdAndDelete(req.params.id);
+  if (!v) return fail(res, "Vendor not found.", 404);
+  ok(res, v);
+}
+module.exports = {
+  profile,
+  dashboard,
+  internalCreate,
+  internalGetByUser,
+  internalList,
+  internalUpdate,
+  internalRemove,
+};
 
 ===== auth.js =====
 const jwt = require('jsonwebtoken');
