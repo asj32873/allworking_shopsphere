@@ -1,0 +1,433 @@
+﻿===== app.js =====
+const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
+const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
+const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
+app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-order',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== order.controller.js =====
+const Order = require("../models/Order");
+const OrderItem = require("../models/OrderItem");
+const History = require("../models/OrderStatusHistory");
+const { getJson, postJson } = require("../utils/serviceClient");
+const { ok, fail } = require("../utils/apiResponse");
+const CART = () => process.env.CART_SERVICE_URL || "http://localhost:5004";
+const PRODUCT = () =>
+  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+const ADDRESS = () =>
+  process.env.ADDRESS_SERVICE_URL || "http://localhost:5008";
+async function createOrder(req, res) {
+  const { addressId } = req.body;
+  const ar = await getJson(
+    ADDRESS(),
+    `/internal/addresses/${req.user.id}/${addressId}`,
+  );
+  if (!ar.ok) return fail(res, "Delivery address not found.", 404);
+  const cr = await getJson(CART(), `/internal/cart/${req.user.id}`);
+  const cart = cr.data?.data || [];
+  if (!cart.length) return fail(res, "Cart is empty.", 400);
+  const items = [];
+  for (const i of cart) {
+    const pr = await getJson(PRODUCT(), `/internal/products/${i.productId}`);
+    const p = pr.data?.data;
+    if (!p) return fail(res, "A product in your cart no longer exists.", 409);
+    if (p.stock < i.quantity)
+      return fail(
+        res,
+        `Only ${p.stock} item(s) of ${p.name} are available.`,
+        409,
+      );
+    items.push({
+      productId: p._id,
+      vendorId: p.vendorId,
+      name: p.name,
+      quantity: i.quantity,
+      unitPrice: p.price,
+    });
+  }
+  const reserve = await postJson(PRODUCT(), "/internal/products/reserve", {
+    items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+  });
+  if (!reserve.ok) return res.status(reserve.status).json(reserve.data);
+  try {
+    const total = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+    const order = await Order.create({
+      userId: req.user.id,
+      addressId,
+      totalAmount: total,
+      paymentStatus: "PAID",
+      paymentMethod: "STRIPE_TEST",
+    });
+    const docs = await OrderItem.insertMany(
+      items.map((i) => ({ ...i, orderId: order._id })),
+    );
+    await History.create({
+      orderId: order._id,
+      status: "PLACED",
+      updatedBy: req.user.id,
+      remarks: "Order created",
+    });
+    await postJson(CART(), `/internal/cart/${req.user.id}/clear`, {});
+    ok(res, { order, items: docs }, "Order created.", 201);
+  } catch (e) {
+    await postJson(PRODUCT(), "/internal/products/release", { items });
+    throw e;
+  }
+}
+async function listMyOrders(req, res) {
+  try {
+    const userId = req.auth?.id || req.user?._id?.toString() || req.user?.id;
+
+    console.log("========== MY ORDERS ==========");
+    console.log("req.auth:", req.auth);
+    console.log("req.user:", req.user);
+    console.log("Searching orders for userId:", userId);
+
+    if (!userId) {
+      return fail(res, "Authenticated user ID not found.", 401);
+    }
+
+    const orders = await Order.find({
+      userId: userId,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    console.log("Orders found:", orders.length);
+    console.log("Orders:", orders);
+
+    return ok(res, orders, "Orders fetched successfully.");
+  } catch (error) {
+    console.error("LIST MY ORDERS ERROR:", error);
+
+    return fail(res, error.message || "Failed to fetch orders.", 500);
+  }
+}
+async function getById(req, res) {
+  const o = await Order.findById(req.params.id).lean();
+  if (!o) return fail(res, "Order not found.", 404);
+  if (
+    req.user.role === "USER" &&
+    o.userId.toString() !== req.user.id.toString()
+  )
+    return fail(res, "Order not found.", 404);
+  const items = await OrderItem.find({ orderId: o._id }).lean();
+  ok(res, { ...o, items });
+}
+async function tracking(req, res) {
+  const o = await Order.findById(req.params.id).lean();
+  if (!o) return fail(res, "Order not found.", 404);
+  if (
+    req.user.role === "USER" &&
+    o.userId.toString() !== req.user.id.toString()
+  )
+    return fail(res, "Order not found.", 404);
+  ok(res, {
+    order: o,
+    history: await History.find({ orderId: o._id })
+      .sort({ timestamp: 1 })
+      .lean(),
+  });
+}
+async function vendorList(req, res) {
+  const items = await OrderItem.find({ vendorId: req.user.id }).lean();
+  const ids = [...new Set(items.map((i) => i.orderId.toString()))];
+  ok(res, await Order.find({ _id: { $in: ids } }).sort({ createdAt: -1 }));
+}
+async function vendorUpdateStatus(req, res) {
+  const item = await OrderItem.findOne({
+    _id: req.params.itemId,
+    orderId: req.params.orderId,
+    vendorId: req.user.id,
+  });
+  if (!item) return fail(res, "Order item not found.", 404);
+  item.vendorStatus = req.body.status;
+  await item.save();
+  await History.create({
+    orderId: item.orderId,
+    orderItemId: item._id,
+    status: item.vendorStatus,
+    updatedBy: req.user.id,
+    remarks: req.body.remarks,
+  });
+  await refreshOrderStatus(item.orderId);
+  ok(res, item, "Order item status updated.");
+}
+async function adminList(req, res) {
+  ok(res, await Order.find().sort({ createdAt: -1 }));
+}
+async function adminUpdateStatus(req, res) {
+  const item = await OrderItem.findOne({
+    _id: req.params.itemId,
+    orderId: req.params.orderId,
+  });
+  if (!item) return fail(res, "Order item not found.", 404);
+  item.vendorStatus = req.body.status;
+  await item.save();
+  await History.create({
+    orderId: item.orderId,
+    orderItemId: item._id,
+    status: item.vendorStatus,
+    updatedBy: req.user.id,
+    remarks: req.body.remarks,
+  });
+  await refreshOrderStatus(item.orderId);
+  ok(res, item, "Order item status updated.");
+}
+async function refreshOrderStatus(orderId) {
+  const items = await OrderItem.find({ orderId }).lean();
+  if (!items.length) return;
+  const statuses = items.map((i) => i.vendorStatus);
+  let status = "PLACED";
+  if (statuses.every((s) => s === "DELIVERED")) status = "DELIVERED";
+  else if (statuses.some((s) => s === "OUT_FOR_DELIVERY"))
+    status = "OUT_FOR_DELIVERY";
+  else if (statuses.some((s) => s === "DISPATCHED")) status = "DISPATCHED";
+  else if (statuses.some((s) => s === "PACKED")) status = "PACKED";
+  else if (statuses.some((s) => s === "CONFIRMED")) status = "CONFIRMED";
+  else if (statuses.every((s) => s === "CANCELLED")) status = "CANCELLED";
+  await Order.findByIdAndUpdate(orderId, { status });
+}
+async function internalCreatePaid(req, res) {
+  const {
+    userId,
+    addressId,
+    totalAmount,
+    items,
+    stripeSessionId,
+    stripePaymentIntentId,
+  } = req.body;
+  const order = await Order.create({
+    userId,
+    addressId,
+    totalAmount,
+    paymentStatus: "PAID",
+    paymentMethod: "STRIPE_TEST",
+    stripeSessionId,
+    stripePaymentIntentId,
+  });
+  const docs = await OrderItem.insertMany(
+    items.map((i) => ({ ...i, orderId: order._id })),
+  );
+  await History.create({
+    orderId: order._id,
+    status: "PLACED",
+    updatedBy: userId,
+    remarks: "Stripe payment confirmed",
+  });
+  ok(res, { order, items: docs }, "Order created.", 201);
+}
+async function internalReviewEligibility(req, res) {
+  const orderIds = await Order.find({
+    userId: req.params.userId,
+    status: "DELIVERED",
+  }).distinct("_id");
+  const exists = await OrderItem.exists({
+    orderId: { $in: orderIds },
+    productId: req.params.productId,
+  });
+  ok(res, { eligible: Boolean(exists) });
+}
+async function internalVendorOrders(req, res) {
+  const ids = await OrderItem.find({ vendorId: req.params.vendorId }).distinct(
+    "orderId",
+  );
+  ok(res, ids);
+}
+async function internalVendorItems(req, res) {
+  ok(res, await OrderItem.find({ vendorId: req.params.vendorId }).lean());
+}
+module.exports = {
+  createOrder,
+  listMyOrders,
+  getById,
+  tracking,
+  vendorList,
+  vendorUpdateStatus,
+  adminList,
+  adminUpdateStatus,
+  internalCreatePaid,
+  internalReviewEligibility,
+  internalVendorOrders,
+  internalVendorItems,
+};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+
+===== Order.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},addressId:{type:mongoose.Schema.Types.ObjectId,required:true},status:{type:String,enum:['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED'],default:'PLACED',index:true},totalAmount:{type:Number,required:true,min:0},paymentStatus:{type:String,enum:['PENDING','PAID','FAILED','REFUNDED'],default:'PAID',index:true},paymentMethod:{type:String,enum:['STRIPE_TEST'],default:'STRIPE_TEST'},stripeSessionId:{type:String,unique:true,sparse:true,index:true},stripePaymentIntentId:{type:String,default:null},orderedAt:{type:Date,default:Date.now}},{timestamps:true});module.exports=mongoose.model('Order',schema);
+
+===== OrderItem.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({orderId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},productId:{type:mongoose.Schema.Types.ObjectId,required:true},vendorId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},name:{type:String,required:true},quantity:{type:Number,required:true,min:1},unitPrice:{type:Number,required:true,min:0},vendorStatus:{type:String,enum:['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED'],default:'PLACED'}},{timestamps:true});module.exports=mongoose.model('OrderItem',schema);
+
+===== OrderStatusHistory.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({orderId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},orderItemId:{type:mongoose.Schema.Types.ObjectId},status:{type:String,enum:['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED'],required:true},updatedBy:{type:mongoose.Schema.Types.ObjectId,required:true},timestamp:{type:Date,default:Date.now},remarks:String},{timestamps:false});schema.index({orderItemId:1,timestamp:1});module.exports=mongoose.model('OrderStatusHistory',schema);
+
+===== index.js =====
+const router=require('express').Router();const c=require('../controllers/order.controller');const validate=require('../middleware/validate');const {authenticate,authorize}=require('../middleware/auth');const internal=require('../middleware/internal');const {createOrderSchema,statusSchema}=require('../validators/order');
+router.post('/api/orders',authenticate,authorize('USER'),validate(createOrderSchema),c.createOrder);router.get('/api/orders',authenticate,authorize('USER'),c.listMyOrders);router.get('/api/orders/vendor/list',authenticate,authorize('VENDOR'),c.vendorList);router.patch('/api/orders/vendor/:orderId/items/:itemId/status',authenticate,authorize('VENDOR'),validate(statusSchema),c.vendorUpdateStatus);router.get('/api/orders/admin/list',authenticate,authorize('ADMIN'),c.adminList);router.patch('/api/orders/admin/:orderId/items/:itemId/status',authenticate,authorize('ADMIN'),validate(statusSchema),c.adminUpdateStatus);router.get('/api/orders/:id',authenticate,authorize('USER','VENDOR','ADMIN'),c.getById);router.get('/api/orders/:id/tracking',authenticate,authorize('USER','VENDOR','ADMIN'),c.tracking);
+router.post('/internal/orders/paid',internal,c.internalCreatePaid);router.get('/internal/orders/review-eligibility/:userId/:productId',internal,c.internalReviewEligibility);router.get('/internal/orders/vendor/:vendorId/order-ids',internal,c.internalVendorOrders);router.get('/internal/orders/vendor/:vendorId/items',internal,c.internalVendorItems);module.exports=router;
+
+===== server.js =====
+require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5005);
+(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere order service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== order.js =====
+const {z}=require('zod');const createOrderSchema=z.object({addressId:z.string().min(1),paymentMethod:z.string().optional()});const statusSchema=z.object({status:z.enum(['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED']),remarks:z.string().optional()});module.exports={createOrderSchema,statusSchema};
+

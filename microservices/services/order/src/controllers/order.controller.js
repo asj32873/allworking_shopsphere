@@ -85,10 +85,19 @@ async function listMyOrders(req, res) {
       .sort({ createdAt: -1 })
       .lean();
 
-    console.log("Orders found:", orders.length);
-    console.log("Orders:", orders);
+    const orderIds = orders.map((order) => order._id);
 
-    return ok(res, orders, "Orders fetched successfully.");
+    const items = await OrderItem.find({
+      orderId: { $in: orderIds },
+    }).lean();
+
+    const ordersWithItems = orders.map((order) => ({
+      ...order,
+      id: order._id.toString(),
+      items: items.filter((item) => String(item.orderId) === String(order._id)),
+    }));
+
+    return ok(res, ordersWithItems, "Orders fetched successfully.");
   } catch (error) {
     console.error("LIST MY ORDERS ERROR:", error);
 

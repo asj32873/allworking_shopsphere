@@ -12,7 +12,7 @@ export default function Issues() {
     addIssue({
       subject: s,
       description: d,
-      orderId: o ? +o : null,
+      orderId: o || undefined,
       priority: p,
     });
     setS("");

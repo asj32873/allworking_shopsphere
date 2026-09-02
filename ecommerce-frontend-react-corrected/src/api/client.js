@@ -44,15 +44,15 @@ async function request(path, options = {}) {
   }
 
   if (!response.ok) {
-    const error = new Error(
-      payload?.message || `Request failed with status ${response.status}`,
+    const errorData = payload;
+
+    console.error("API ERROR:", errorData);
+
+    throw new Error(
+      errorData.details
+        ? JSON.stringify(errorData.details)
+        : errorData.message || "Request failed",
     );
-
-    error.status = response.status;
-
-    error.details = payload?.details;
-
-    throw error;
   }
 
   return payload?.data !== undefined ? payload.data : payload;

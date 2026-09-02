@@ -10,7 +10,7 @@ export default function ProductDetails() {
 
   const { products, reviews, orders, addToCart, user } = useApp();
 
-  const p = products.find((x) => String(x.id) === String(id));
+  const p = products.find((x) => String(x.id || x._id) === String(id));
 
   const vendor = p?.vendor;
   const [qty, setQty] = useState(1);
@@ -23,19 +23,30 @@ export default function ProductDetails() {
     );
   }
 
-  const mine = reviews.filter((r) => r.productId === p.id);
+  const productId = p.id || p._id;
+  const userId = user?.id || user?._id;
 
-  const purchased = orders.some(
-    (o) =>
-      String(o.userId) === String(user.id) &&
+  const mine = reviews.filter((r) => String(r.productId) === String(productId));
+
+  const purchased = orders.some((o) => {
+    const orderUserId = o.userId?.id || o.userId?._id || o.userId;
+    const items = o.items || [];
+
+    return (
+      String(orderUserId) === String(userId) &&
       o.status === "DELIVERED" &&
-      o.items.some((i) => String(i.productId) === String(p.id)),
-  );
+      items.some(
+        (i) =>
+          String(i.productId?.id || i.productId?._id || i.productId) ===
+          String(productId),
+      )
+    );
+  });
 
   const myReview = reviews.find(
     (r) =>
-      String(r.productId) === String(p.id) &&
-      String(r.userId) === String(user.id),
+      String(r.productId) === String(productId) &&
+      String(r.userId) === String(userId),
   );
 
   const canReview = user?.role === "USER" && purchased;
@@ -45,7 +56,6 @@ export default function ProductDetails() {
       <Link to="/products">← Back</Link>
 
       <div className="row g-5 mt-1">
-        {/* Product Image */}
         <div className="col-lg-6">
           <img
             src={p.image}
@@ -54,7 +64,6 @@ export default function ProductDetails() {
           />
         </div>
 
-        {/* Product Details */}
         <div className="col-lg-6">
           <small className="text-muted">
             {p.brand} · {p.category}
@@ -80,7 +89,6 @@ export default function ProductDetails() {
             <strong>Stock:</strong> {p.stock || "Out of stock"}
           </p>
 
-          {/* Cart / Buy Actions */}
           {user?.role === "USER" && (
             <div className="d-flex gap-2">
               <input
@@ -116,7 +124,6 @@ export default function ProductDetails() {
             </div>
           )}
 
-          {/* Vendor */}
           <div className="card mt-3">
             <div className="card-body">
               <h5>Sold By</h5>
@@ -124,29 +131,39 @@ export default function ProductDetails() {
             </div>
           </div>
 
-          <ProductQA productId={p.id} />
+          <ProductQA productId={productId} />
         </div>
       </div>
 
-      {/* Reviews */}
       <section className="mt-5">
         <h3>Reviews</h3>
 
+        {mine.length === 0 && <p className="text-muted">No reviews yet.</p>}
+
         {mine.map((r) => (
-          <div className="card mb-2" key={r.id}>
+          <div className="card mb-2" key={r.id || r._id}>
             <div className="card-body">
               <div className="text-warning">{"★".repeat(r.rating)}</div>
 
               <p>{r.review}</p>
 
-              <small>{r.createdAt}</small>
+              <small>{new Date(r.createdAt).toLocaleString()}</small>
             </div>
           </div>
         ))}
 
-        {canReview && !myReview && <ReviewForm productId={p.id} />}
+        {canReview && !myReview && <ReviewForm productId={productId} />}
 
-        {myReview && <ReviewForm productId={p.id} existingReview={myReview} />}
+        {myReview && (
+          <ReviewForm productId={productId} existingReview={myReview} />
+        )}
+
+        {user?.role === "USER" && !purchased && (
+          <div className="alert alert-info mt-3">
+            You can review this product after purchasing it and receiving a
+            delivered order.
+          </div>
+        )}
       </section>
     </div>
   );
