@@ -22,10 +22,7 @@ async function createOrder(req, res) {
 
   if (!ar.ok) return fail(res, "Delivery address not found.", 404);
 
-  const cr = await getJson(
-    CART(),
-    `/internal/cart/${req.user.id}`,
-  );
+  const cr = await getJson(CART(), `/internal/cart/${req.user.id}`);
 
   const cart = cr.data?.data || [];
 
@@ -34,19 +31,12 @@ async function createOrder(req, res) {
   const items = [];
 
   for (const i of cart) {
-    const pr = await getJson(
-      PRODUCT(),
-      `/internal/products/${i.productId}`,
-    );
+    const pr = await getJson(PRODUCT(), `/internal/products/${i.productId}`);
 
     const p = pr.data?.data;
 
     if (!p) {
-      return fail(
-        res,
-        "A product in your cart no longer exists.",
-        409,
-      );
+      return fail(res, "A product in your cart no longer exists.", 409);
     }
 
     if (p.stock < i.quantity) {
@@ -66,26 +56,19 @@ async function createOrder(req, res) {
     });
   }
 
-  const reserve = await postJson(
-    PRODUCT(),
-    "/internal/products/reserve",
-    {
-      items: items.map((i) => ({
-        productId: i.productId,
-        quantity: i.quantity,
-      })),
-    },
-  );
+  const reserve = await postJson(PRODUCT(), "/internal/products/reserve", {
+    items: items.map((i) => ({
+      productId: i.productId,
+      quantity: i.quantity,
+    })),
+  });
 
   if (!reserve.ok) {
     return res.status(reserve.status).json(reserve.data);
   }
 
   try {
-    const total = items.reduce(
-      (s, i) => s + i.quantity * i.unitPrice,
-      0,
-    );
+    const total = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
 
     const order = await Order.create({
       userId: req.user.id,
@@ -109,11 +92,7 @@ async function createOrder(req, res) {
       remarks: "Order created",
     });
 
-    await postJson(
-      CART(),
-      `/internal/cart/${req.user.id}/clear`,
-      {},
-    );
+    await postJson(CART(), `/internal/cart/${req.user.id}/clear`, {});
 
     ok(
       res,
@@ -125,11 +104,7 @@ async function createOrder(req, res) {
       201,
     );
   } catch (e) {
-    await postJson(
-      PRODUCT(),
-      "/internal/products/release",
-      { items },
-    );
+    await postJson(PRODUCT(), "/internal/products/release", { items });
 
     throw e;
   }
@@ -137,17 +112,10 @@ async function createOrder(req, res) {
 
 async function listMyOrders(req, res) {
   try {
-    const userId =
-      req.auth?.id ||
-      req.user?._id?.toString() ||
-      req.user?.id;
+    const userId = req.auth?.id || req.user?._id?.toString() || req.user?.id;
 
     if (!userId) {
-      return fail(
-        res,
-        "Authenticated user ID not found.",
-        401,
-      );
+      return fail(res, "Authenticated user ID not found.", 401);
     }
 
     const orders = await Order.find({
@@ -176,10 +144,7 @@ async function listMyOrders(req, res) {
       id: order._id.toString(),
 
       items: items
-        .filter(
-          (item) =>
-            String(item.orderId) === String(order._id),
-        )
+        .filter((item) => String(item.orderId) === String(order._id))
         .map((item) => ({
           ...item,
 
@@ -187,8 +152,7 @@ async function listMyOrders(req, res) {
             .filter(
               (history) =>
                 history.orderItemId &&
-                history.orderItemId.toString() ===
-                  item._id.toString(),
+                history.orderItemId.toString() === item._id.toString(),
             )
             .map((history) => ({
               status: history.status,
@@ -198,19 +162,11 @@ async function listMyOrders(req, res) {
         })),
     }));
 
-    return ok(
-      res,
-      ordersWithItems,
-      "Orders fetched successfully.",
-    );
+    return ok(res, ordersWithItems, "Orders fetched successfully.");
   } catch (error) {
     console.error("LIST MY ORDERS ERROR:", error);
 
-    return fail(
-      res,
-      error.message || "Failed to fetch orders.",
-      500,
-    );
+    return fail(res, error.message || "Failed to fetch orders.", 500);
   }
 }
 
@@ -223,8 +179,7 @@ async function tracking(req, res) {
 
   if (
     req.user.role === "USER" &&
-    o.userId.toString() !==
-      req.user.id.toString()
+    o.userId.toString() !== req.user.id.toString()
   ) {
     return fail(res, "Order not found.", 404);
   }
@@ -248,8 +203,7 @@ async function getById(req, res) {
 
   if (
     req.user.role === "USER" &&
-    o.userId.toString() !==
-      (req.user._id || req.user.id).toString()
+    o.userId.toString() !== (req.user._id || req.user.id).toString()
   ) {
     return fail(res, "Order not found.", 404);
   }
@@ -276,8 +230,7 @@ async function getById(req, res) {
         .filter(
           (history) =>
             history.orderItemId &&
-            history.orderItemId.toString() ===
-              item._id.toString(),
+            history.orderItemId.toString() === item._id.toString(),
         )
         .map((history) => ({
           status: history.status,
@@ -297,11 +250,7 @@ async function vendorList(req, res) {
     vendorId: userId,
   }).lean();
 
-  const ids = [
-    ...new Set(
-      items.map((i) => i.orderId.toString()),
-    ),
-  ];
+  const ids = [...new Set(items.map((i) => i.orderId.toString()))];
 
   const orders = await Order.find({
     _id: { $in: ids },
@@ -323,8 +272,7 @@ async function vendorList(req, res) {
 
   const result = orders.map((order) => ({
     ...order,
-    items:
-      itemsByOrder.get(order._id.toString()) || [],
+    items: itemsByOrder.get(order._id.toString()) || [],
   }));
 
   ok(res, result);
@@ -340,11 +288,7 @@ async function vendorUpdateStatus(req, res) {
   });
 
   if (!item) {
-    return fail(
-      res,
-      "Order item not found.",
-      404,
-    );
+    return fail(res, "Order item not found.", 404);
   }
 
   item.vendorStatus = req.body.status;
@@ -361,18 +305,42 @@ async function vendorUpdateStatus(req, res) {
 
   await refreshOrderStatus(item.orderId);
 
-  ok(
-    res,
-    item,
-    "Order item status updated.",
-  );
+  ok(res, item, "Order item status updated.");
 }
 
 async function adminList(req, res) {
-  ok(
-    res,
-    await Order.find().sort({ createdAt: -1 }),
-  );
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 }).lean();
+
+    const orderIds = orders.map((order) => order._id);
+
+    const items = await OrderItem.find({
+      orderId: { $in: orderIds },
+    }).lean();
+
+    const ordersWithItems = orders.map((order) => ({
+      ...order,
+
+      // Frontend expects id
+      id: order._id.toString(),
+
+      // Attach items belonging to this order
+      items: items
+        .filter((item) => String(item.orderId) === String(order._id))
+        .map((item) => ({
+          ...item,
+
+          // Frontend expects i.id
+          id: item._id.toString(),
+        })),
+    }));
+
+    return ok(res, ordersWithItems, "Orders fetched successfully.");
+  } catch (error) {
+    console.error("ADMIN LIST ORDERS ERROR:", error);
+
+    return fail(res, "Failed to fetch orders.", 500);
+  }
 }
 
 async function adminUpdateStatus(req, res) {
@@ -382,11 +350,7 @@ async function adminUpdateStatus(req, res) {
   });
 
   if (!item) {
-    return fail(
-      res,
-      "Order item not found.",
-      404,
-    );
+    return fail(res, "Order item not found.", 404);
   }
 
   item.vendorStatus = req.body.status;
@@ -403,11 +367,7 @@ async function adminUpdateStatus(req, res) {
 
   await refreshOrderStatus(item.orderId);
 
-  ok(
-    res,
-    item,
-    "Order item status updated.",
-  );
+  ok(res, item, "Order item status updated.");
 }
 
 async function refreshOrderStatus(orderId) {
@@ -417,54 +377,25 @@ async function refreshOrderStatus(orderId) {
 
   if (!items.length) return;
 
-  const statuses = items.map(
-    (i) => i.vendorStatus,
-  );
+  const statuses = items.map((i) => i.vendorStatus);
 
   let status = "PLACED";
 
-  if (
-    statuses.every(
-      (s) => s === "DELIVERED",
-    )
-  ) {
+  if (statuses.every((s) => s === "DELIVERED")) {
     status = "DELIVERED";
-  } else if (
-    statuses.some(
-      (s) => s === "OUT_FOR_DELIVERY",
-    )
-  ) {
+  } else if (statuses.some((s) => s === "OUT_FOR_DELIVERY")) {
     status = "OUT_FOR_DELIVERY";
-  } else if (
-    statuses.some(
-      (s) => s === "DISPATCHED",
-    )
-  ) {
+  } else if (statuses.some((s) => s === "DISPATCHED")) {
     status = "DISPATCHED";
-  } else if (
-    statuses.some(
-      (s) => s === "PACKED",
-    )
-  ) {
+  } else if (statuses.some((s) => s === "PACKED")) {
     status = "PACKED";
-  } else if (
-    statuses.some(
-      (s) => s === "CONFIRMED",
-    )
-  ) {
+  } else if (statuses.some((s) => s === "CONFIRMED")) {
     status = "CONFIRMED";
-  } else if (
-    statuses.every(
-      (s) => s === "CANCELLED",
-    )
-  ) {
+  } else if (statuses.every((s) => s === "CANCELLED")) {
     status = "CANCELLED";
   }
 
-  await Order.findByIdAndUpdate(
-    orderId,
-    { status },
-  );
+  await Order.findByIdAndUpdate(orderId, { status });
 }
 
 async function internalCreatePaid(req, res) {
