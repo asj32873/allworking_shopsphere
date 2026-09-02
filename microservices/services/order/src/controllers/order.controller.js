@@ -66,46 +66,110 @@ async function createOrder(req, res) {
     throw e;
   }
 }
+// async function listMyOrders(req, res) {
+//   try {
+//     const userId = req.auth?.id || req.user?._id?.toString() || req.user?.id;
+
+//     console.log("========== MY ORDERS ==========");
+//     console.log("req.auth:", req.auth);
+//     console.log("req.user:", req.user);
+//     console.log("Searching orders for userId:", userId);
+
+//     if (!userId) {
+//       return fail(res, "Authenticated user ID not found.", 401);
+//     }
+
+//     const orders = await Order.find({
+//       userId: userId,
+//     })
+//       .sort({ createdAt: -1 })
+//       .lean();
+
+//     console.log("Orders found:", orders.length);
+//     console.log("Orders:", orders);
+
+//     return ok(res, orders, "Orders fetched successfully.");
+//   } catch (error) {
+//     console.error("LIST MY ORDERS ERROR:", error);
+
+//     return fail(res, error.message || "Failed to fetch orders.", 500);
+//   }
+// }
+
 async function listMyOrders(req, res) {
   try {
-    const userId = req.auth?.id || req.user?._id?.toString() || req.user?.id;
-
-    console.log("========== MY ORDERS ==========");
-    console.log("req.auth:", req.auth);
-    console.log("req.user:", req.user);
-    console.log("Searching orders for userId:", userId);
+    const userId =
+      req.auth?.id ||
+      req.user?._id?.toString() ||
+      req.user?.id;
 
     if (!userId) {
       return fail(res, "Authenticated user ID not found.", 401);
     }
 
     const orders = await Order.find({
-      userId: userId,
+      userId,
     })
-      .sort({ createdAt: -1 })
+      .sort({ orderedAt: -1 })
       .lean();
 
-    console.log("Orders found:", orders.length);
-    console.log("Orders:", orders);
+    const result = [];
 
-    return ok(res, orders, "Orders fetched successfully.");
+    for (const order of orders) {
+      const items = await OrderItem.find({
+        orderId: order._id,
+      }).lean();
+
+      const itemIds = items.map((item) => item._id);
+
+      const histories = await History.find({
+        orderItemId: { $in: itemIds },
+      })
+        .sort({ timestamp: 1 })
+        .lean();
+
+      result.push({
+        ...order,
+        items: items.map((item) => ({
+          ...item,
+          tracking: histories
+            .filter(
+              (history) =>
+                history.orderItemId.toString() ===
+                item._id.toString()
+            )
+            .map((history) => ({
+              status: history.status,
+              date: history.timestamp,
+              remarks: history.remarks,
+            })),
+        })),
+      });
+    }
+
+    return ok(res, result, "Orders fetched successfully.");
   } catch (error) {
     console.error("LIST MY ORDERS ERROR:", error);
 
-    return fail(res, error.message || "Failed to fetch orders.", 500);
+    return fail(
+      res,
+      error.message || "Failed to fetch orders.",
+      500
+    );
   }
 }
-async function getById(req, res) {
-  const o = await Order.findById(req.params.id).lean();
-  if (!o) return fail(res, "Order not found.", 404);
-  if (
-    req.user.role === "USER" &&
-    o.userId.toString() !== req.user.id.toString()
-  )
-    return fail(res, "Order not found.", 404);
-  const items = await OrderItem.find({ orderId: o._id }).lean();
-  ok(res, { ...o, items });
-}
+
+// async function getById(req, res) {
+//   const o = await Order.findById(req.params.id).lean();
+//   if (!o) return fail(res, "Order not found.", 404);
+//   if (
+//     req.user.role === "USER" &&
+//     o.userId.toString() !== req.user.id.toString()
+//   )
+//     return fail(res, "Order not found.", 404);
+//   const items = await OrderItem.find({ orderId: o._id }).lean();
+//   ok(res, { ...o, items });
+// }
 async function tracking(req, res) {
   const o = await Order.findById(req.params.id).lean();
   if (!o) return fail(res, "Order not found.", 404);
@@ -121,30 +185,186 @@ async function tracking(req, res) {
       .lean(),
   });
 }
-async function vendorList(req, res) {
-  const items = await OrderItem.find({ vendorId: req.user.id }).lean();
-  const ids = [...new Set(items.map((i) => i.orderId.toString()))];
-  ok(res, await Order.find({ _id: { $in: ids } }).sort({ createdAt: -1 }));
+
+async function getById(req, res) {
+  const o = await Order.findById(req.params.id).lean();
+
+  if (!o) {
+    return fail(res, "Order not found.", 404);
+  }
+
+  if (
+    req.user.role === "USER" &&
+    o.userId.toString() !==
+      (req.user._id || req.user.id).toString()
+  ) {
+    return fail(res, "Order not found.", 404);
+  }
+
+  const items = await OrderItem.find({
+    orderId: o._id,
+  }).lean();
+
+  const itemIds = items.map((item) => item._id);
+
+  const histories = await History.find({
+    orderItemId: { $in: itemIds },
+  })
+    .sort({ timestamp: 1 })
+    .lean();
+
+  const result = {
+    ...o,
+
+    items: items.map((item) => ({
+      ...item,
+
+      tracking: histories
+        .filter(
+          (history) =>
+            history.orderItemId.toString() ===
+            item._id.toString()
+        )
+        .map((history) => ({
+          status: history.status,
+          date: history.timestamp,
+          remarks: history.remarks,
+        })),
+    })),
+  };
+
+  ok(res, result);
 }
+
+// async function vendorList(req, res) {
+//   const userId = req.user?._id || req.user?.id;
+
+//   const items = await OrderItem.find({
+//     vendorId: userId,
+//   }).lean();
+
+//   const ids = [
+//     ...new Set(items.map((i) => i.orderId.toString())),
+//   ];
+
+//   const orders = await Order.find({
+//     _id: { $in: ids },
+//   })
+//     .sort({ createdAt: -1 })
+//     .lean();
+
+//   const itemsByOrder = new Map();
+
+//   for (const item of items) {
+//     const key = item.orderId.toString();
+
+//     if (!itemsByOrder.has(key)) {
+//       itemsByOrder.set(key, []);
+//     }
+
+//     itemsByOrder.get(key).push(item);
+//   }
+
+//   const result = orders.map((order) => ({
+//     ...order,
+//     items: itemsByOrder.get(order._id.toString()) || [],
+//   }));
+
+//   ok(res, result);
+// }
+
+
+async function vendorList(req, res) {
+  const userId = req.user?._id || req.user?.id;
+
+  const items = await OrderItem.find({
+    vendorId: userId,
+  }).lean();
+
+  const ids = [
+    ...new Set(items.map((i) => i.orderId.toString())),
+  ];
+
+  const orders = await Order.find({
+    _id: { $in: ids },
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const itemsByOrder = new Map();
+
+  for (const item of items) {
+    const key = item.orderId.toString();
+
+    if (!itemsByOrder.has(key)) {
+      itemsByOrder.set(key, []);
+    }
+
+    itemsByOrder.get(key).push(item);
+  }
+
+  const result = orders.map((order) => ({
+    ...order,
+    items: itemsByOrder.get(order._id.toString()) || [],
+  }));
+
+  ok(res, result);
+}
+
 async function vendorUpdateStatus(req, res) {
+  const userId = req.user?._id || req.user?.id;
+
   const item = await OrderItem.findOne({
     _id: req.params.itemId,
     orderId: req.params.orderId,
-    vendorId: req.user.id,
+    vendorId: userId,
   });
+
   if (!item) return fail(res, "Order item not found.", 404);
+
   item.vendorStatus = req.body.status;
   await item.save();
+
   await History.create({
     orderId: item.orderId,
     orderItemId: item._id,
     status: item.vendorStatus,
-    updatedBy: req.user.id,
+    updatedBy: userId,
     remarks: req.body.remarks,
   });
+
   await refreshOrderStatus(item.orderId);
+
   ok(res, item, "Order item status updated.");
 }
+
+// async function vendorList(req, res) {
+//   const items = await OrderItem.find({ vendorId: req.user.id }).lean();
+//   const ids = [...new Set(items.map((i) => i.orderId.toString()))];
+//   ok(res, await Order.find({ _id: { $in: ids } }).sort({ createdAt: -1 }));
+// }
+// async function vendorUpdateStatus(req, res) {
+//   const item = await OrderItem.findOne({
+//     _id: req.params.itemId,
+//     orderId: req.params.orderId,
+//     vendorId: req.user.id,
+//   });
+//   if (!item) return fail(res, "Order item not found.", 404);
+//   item.vendorStatus = req.body.status;
+//   await item.save();
+//   await History.create({
+//     orderId: item.orderId,
+//     orderItemId: item._id,
+//     status: item.vendorStatus,
+//     updatedBy: req.user.id,
+//     remarks: req.body.remarks,
+//   });
+//   await refreshOrderStatus(item.orderId);
+//   ok(res, item, "Order item status updated.");
+// }
+
+
+
 async function adminList(req, res) {
   ok(res, await Order.find().sort({ createdAt: -1 }));
 }
