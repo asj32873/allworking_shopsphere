@@ -15,6 +15,7 @@ router.post(
   validate(productSchema),
   c.create,
 );
+router.get("/internal/products", internal, c.internalList);
 router.put(
   "/api/products/:id",
   authenticate,

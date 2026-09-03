@@ -26,7 +26,46 @@ function getEnv(name, fallback = undefined) {
 module.exports = { getEnv };
 
 ===== rag.controller.js =====
-const graph=require('../rag/graph');const {ingestProduct}=require('../rag/ingest');const {ok,fail}=require('../utils/apiResponse');async function qa(req,res){const {question}=req.body;if(!question||question.trim().length<2)return fail(res,'Question is required.');const result=await graph.invoke({question:question.trim(),productId:req.params.id});ok(res,{answer:result.answer});}async function ingest(req,res){await ingestProduct(req.params.id);ok(res,null,'Product indexed.');}module.exports={qa,ingest};
+const graph = require("../rag/graph");
+const {
+  ingestProduct,
+  deleteProductFromVectorStore,
+} = require("../rag/ingest");
+
+const { ok, fail } = require("../utils/apiResponse");
+
+async function qa(req, res) {
+  const { question } = req.body;
+
+  if (!question || question.trim().length < 2) {
+    return fail(res, "Question is required.");
+  }
+
+  const result = await graph.invoke({
+    question: question.trim(),
+    productId: req.params.id,
+  });
+
+  ok(res, {
+    answer: result.answer,
+  });
+}
+
+async function ingest(req, res) {
+  await ingestProduct(req.params.id);
+  ok(res, null, "Product indexed.");
+}
+
+async function remove(req, res) {
+  await deleteProductFromVectorStore(req.params.id);
+  ok(res, null, "Product removed from index.");
+}
+
+module.exports = {
+  qa,
+  ingest,
+  remove,
+};
 
 ===== auth.js =====
 const jwt = require('jsonwebtoken');
@@ -151,29 +190,219 @@ const {HuggingFaceInferenceEmbeddings}=require('@langchain/community/embeddings/
 const {StateGraph,StateSchema,START,END}=require('@langchain/langgraph');const {z}=require('zod');const {getVectorStore}=require('./vectorStore');const {generateAnswer}=require('../utils/hfClient');const State=new StateSchema({question:z.string(),productId:z.string(),context:z.string().default(''),answer:z.string().default('')});async function retrieve(s){const v=await getVectorStore();const docs=await v.similaritySearch(s.question,4,{productId:s.productId});return {context:docs.map(d=>d.pageContent).join('\n\n---\n\n')};}async function generate(s){const prompt=`You are ShopSphere's Product Q&A assistant. Answer using ONLY the product context. Do not invent specifications. If unavailable, say "I don't have enough information about that." Keep it concise.\n\nPRODUCT CONTEXT:\n${s.context}\n\nUSER QUESTION:\n${s.question}\n\nANSWER:`;return {answer:(await generateAnswer(prompt)).trim()};}module.exports=new StateGraph(State).addNode('retrieve',retrieve).addNode('generate',generate).addEdge(START,'retrieve').addEdge('retrieve','generate').addEdge('generate',END).compile();
 
 ===== ingest.js =====
-const {Document}=require('@langchain/core/documents');const {getVectorStore}=require('./vectorStore');const {getJson}=require('../utils/serviceClient');const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const REVIEWS=()=>process.env.REVIEW_SERVICE_URL||'http://localhost:5009';function id(p){return `product-${p._id||p.id}`;}async function buildProductDocument(productId){const p=await getJson(PRODUCT(),`/internal/products/${productId}`);if(!p.ok)throw new Error('Product not found');const product=p.data.data;const r=await getJson(REVIEWS(),`/api/reviews/product/${productId}`);const reviews=r.data?.data||[];const text=`Product Name: ${product.name}
+const { Document } = require("@langchain/core/documents");
+const { getVectorStore } = require("./vectorStore");
+const { getJson } = require("../utils/serviceClient");
+
+const PRODUCT = () =>
+  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+
+const REVIEWS = () => process.env.REVIEW_SERVICE_URL || "http://localhost:5009";
+
+function id(p) {
+  return `product-${p._id || p.id}`;
+}
+
+async function buildProductDocument(productId) {
+  const p = await getJson(PRODUCT(), `/internal/products/${productId}`);
+
+  if (!p.ok) throw new Error("Product not found");
+
+  const product = p.data.data;
+
+  const r = await getJson(REVIEWS(), `/api/reviews/product/${productId}`);
+
+  const reviews = r.data?.data || [];
+
+  const text = `Product Name: ${product.name}
 Brand: ${product.brand}
 Category: ${product.category}
 Price: â‚¹${product.price}
 Stock: ${product.stock}
-Rating: ${product.rating||0}/5
-Review Count: ${product.reviewCount||0}
+Rating: ${product.rating || 0}/5
+Review Count: ${product.reviewCount || 0}
 
 Description:
 ${product.description}
 
 Customer Reviews:
-${reviews.length?reviews.map(x=>`Rating: ${x.rating}/5\nReview: ${x.review}`).join('\n\n'):'No reviews available.'}`;return new Document({pageContent:text,metadata:{productId:String(product._id),type:'product',name:product.name,brand:product.brand,category:product.category}});}async function ingestProduct(productId){const v=await getVectorStore();const d=await buildProductDocument(productId);const docId=id(d.metadata);try{await v.delete({ids:[docId]});}catch{}await v.addDocuments([d],{ids:[docId]});return d;}module.exports={buildProductDocument,ingestProduct};
+${
+  reviews.length
+    ? reviews
+        .map(
+          (x) => `Rating: ${x.rating}/5
+Review: ${x.review}`,
+        )
+        .join("\n\n")
+    : "No reviews available."
+}`;
+
+  return new Document({
+    pageContent: text,
+    metadata: {
+      productId: String(product._id || product.id),
+      type: "product",
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+    },
+  });
+}
+
+async function ingestProduct(productId) {
+  const vectorStore = await getVectorStore();
+  const document = await buildProductDocument(productId);
+  const docId = id(document.metadata);
+
+  try {
+    await vectorStore.delete({
+      ids: [docId],
+    });
+  } catch (error) {
+    // Document may not exist yet
+  }
+
+  await vectorStore.addDocuments([document], { ids: [docId] });
+
+  return document;
+}
+
+async function deleteProductFromVectorStore(productId) {
+  const vectorStore = await getVectorStore();
+
+  try {
+    await vectorStore.delete({
+      ids: [`product-${productId}`],
+    });
+  } catch (error) {
+    console.error(
+      `Failed to delete product ${productId} from vector store:`,
+      error.message,
+    );
+  }
+}
+
+async function ingestAllProducts() {
+  console.log("Starting product ingestion...");
+
+  const response = await getJson(PRODUCT(), "/internal/products");
+
+  if (!response.ok) {
+    throw new Error(response.data?.message || "Failed to fetch products");
+  }
+
+  const products = response.data?.data || [];
+
+  console.log(`Found ${products.length} products to ingest.`);
+
+  for (const product of products) {
+    const productId = product._id || product.id;
+
+    try {
+      await ingestProduct(productId);
+      console.log(`âœ“ Ingested product: ${productId}`);
+    } catch (error) {
+      console.error(`âœ— Failed to ingest product ${productId}:`, error.message);
+    }
+  }
+
+  console.log("Product ingestion completed.");
+}
+
+module.exports = {
+  buildProductDocument,
+  ingestProduct,
+  ingestAllProducts,
+  deleteProductFromVectorStore,
+};
 
 ===== vectorStore.js =====
-const {Chroma}=require('@langchain/community/vectorstores/chroma');const {CloudClient,ChromaClient}=require('chromadb');const embeddings=require('./embeddings');let vectorStore=null;async function getVectorStore(){if(vectorStore)return vectorStore;if(process.env.NODE_ENV==='production'){if(!process.env.CHROMA_API_KEY||!process.env.CHROMA_TENANT||!process.env.CHROMA_DATABASE)throw new Error('CHROMA_API_KEY, CHROMA_TENANT and CHROMA_DATABASE are required in production');const client=new CloudClient({apiKey:process.env.CHROMA_API_KEY,tenant:process.env.CHROMA_TENANT,database:process.env.CHROMA_DATABASE});vectorStore=new Chroma(embeddings,{collectionName:'shopsphere-products',index:client});}else{const client=new ChromaClient({path:process.env.CHROMA_URL||'http://localhost:8000'});vectorStore=new Chroma(embeddings,{collectionName:'shopsphere-products',index:client});}return vectorStore;}module.exports={getVectorStore};
+const { Chroma } = require("@langchain/community/vectorstores/chroma");
+const { CloudClient } = require("chromadb");
+const embeddings = require("./embeddings");
+
+let vectorStore = null;
+
+async function getVectorStore() {
+  if (vectorStore) return vectorStore;
+
+  const { CHROMA_API_KEY, CHROMA_TENANT, CHROMA_DATABASE } = process.env;
+
+  if (!CHROMA_API_KEY) {
+    throw new Error("CHROMA_API_KEY is not configured");
+  }
+
+  if (!CHROMA_TENANT) {
+    throw new Error("CHROMA_TENANT is not configured");
+  }
+
+  if (!CHROMA_DATABASE) {
+    throw new Error("CHROMA_DATABASE is not configured");
+  }
+
+  console.log("Connecting to Chroma Cloud...");
+
+  const client = new CloudClient({
+    apiKey: CHROMA_API_KEY,
+    tenant: CHROMA_TENANT,
+    database: CHROMA_DATABASE,
+  });
+
+  vectorStore = new Chroma(embeddings, {
+    collectionName: "shopsphere-products",
+    index: client,
+  });
+
+  return vectorStore;
+}
+
+module.exports = { getVectorStore };
 
 ===== index.js =====
-const router=require('express').Router();const c=require('../controllers/rag.controller');const internal=require('../middleware/internal');router.post('/internal/products/:id/qa',internal,c.qa);router.post('/internal/products/:id/ingest',internal,c.ingest);module.exports=router;
+const router = require("express").Router();
+
+const c = require("../controllers/rag.controller");
+const internal = require("../middleware/internal");
+
+router.post("/internal/products/:id/qa", internal, c.qa);
+
+router.post("/internal/products/:id/ingest", internal, c.ingest);
+
+router.delete("/internal/products/:id", internal, c.remove);
+
+module.exports = router;
 
 ===== server.js =====
-require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5010);
-(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere rag service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+
+const app = require("./app");
+const connectDB = require("./config/db");
+const { ingestAllProducts } = require("./rag/ingest");
+
+const PORT = Number(process.env.PORT || 5010);
+
+(async () => {
+  try {
+    await connectDB();
+
+    // Start the HTTP server first
+    app.listen(PORT, "0.0.0.0", async () => {
+      console.log("ShopSphere rag service running on http://localhost:" + PORT);
+
+      // Run startup ingestion in the background
+      try {
+        await ingestAllProducts();
+      } catch (error) {
+        console.error("Startup product ingestion failed:", error.message);
+      }
+    });
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
 
 ===== apiResponse.js =====
 function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}

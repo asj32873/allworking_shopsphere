@@ -1,0 +1,700 @@
+﻿===== app.js =====
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const { notFound, errorHandler } = require("./middleware/error");
+const app = express();
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-product",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
+
+===== db.js =====
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+===== env.js =====
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+===== product.controller.js =====
+const Product = require("../models/Product");
+const { ok, fail } = require("../utils/apiResponse");
+const {
+  pagination,
+  buildProductFilter,
+  productSort,
+} = require("../services/query.service");
+
+const {
+  getVendorByUserId,
+  getAllVendors,
+} = require("../services/vendor.service");
+
+async function list(req, res) {
+  const { page, limit, skip } = pagination(req);
+  const filter = buildProductFilter(req.query);
+
+  const [items, total] = await Promise.all([
+    Product.find(filter)
+      .sort(productSort(req.query.sort))
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+
+    Product.countDocuments(filter),
+  ]);
+
+  /*
+   * Product.vendorId contains the authenticated user's ID.
+   *
+   * Vendor.userId contains the same ID.
+   *
+   * Fetch all vendors once instead of making one HTTP
+   * request for every product.
+   */
+  const vendors = await getAllVendors();
+
+  const vendorMap = new Map(
+    vendors.map((vendor) => [String(vendor.userId), vendor]),
+  );
+
+  const productsWithVendor = items.map((product) => ({
+    ...product,
+    vendor: vendorMap.get(String(product.vendorId)) || null,
+  }));
+
+  return ok(res, {
+    items: productsWithVendor,
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  });
+}
+
+async function getById(req, res) {
+  const product = await Product.findById(req.params.id).lean();
+
+  if (!product) {
+    return fail(res, "Product not found.", 404);
+  }
+
+  /*
+   * For a single product, directly resolve its vendor
+   * through the Vendor Service using the Product.vendorId,
+   * which is the user's ID.
+   */
+  const vendor = await getVendorByUserId(product.vendorId);
+
+  return ok(res, {
+    ...product,
+    vendor,
+  });
+}
+
+async function create(req, res) {
+  const product = await Product.create({
+    ...req.body,
+    vendorId: req.user._id,
+  });
+
+  return ok(res, product, "Product created.", 201);
+}
+
+async function update(req, res) {
+  const product = await Product.findOneAndUpdate(
+    {
+      _id: req.params.id,
+      vendorId: req.user._id,
+    },
+    req.body,
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
+
+  if (!product) {
+    return fail(res, "Product not found or not owned by you.", 404);
+  }
+
+  return ok(res, product, "Product updated.");
+}
+
+async function remove(req, res) {
+  const product = await Product.findOneAndDelete({
+    _id: req.params.id,
+    vendorId: req.user._id,
+  });
+
+  if (!product) {
+    return fail(res, "Product not found or not owned by you.", 404);
+  }
+
+  return ok(res, null, "Product deleted.");
+}
+
+async function updateStock(req, res) {
+  const stock = Number(req.body.stock);
+
+  if (!Number.isInteger(stock) || stock < 0) {
+    return fail(res, "Stock must be a non-negative integer.");
+  }
+
+  const product = await Product.findOneAndUpdate(
+    {
+      _id: req.params.id,
+      vendorId: req.user._id,
+    },
+    {
+      stock,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
+
+  if (!product) {
+    return fail(res, "Product not found or not owned by you.", 404);
+  }
+
+  return ok(res, product, "Stock updated.");
+}
+
+async function internalGet(req, res) {
+  const product = await Product.findById(req.params.id).lean();
+
+  if (!product) {
+    return fail(res, "Product not found.", 404);
+  }
+
+  return ok(res, product);
+}
+
+async function internalReserve(req, res) {
+  const { items } = req.body;
+
+  if (!Array.isArray(items) || !items.length) {
+    return fail(res, "items are required.");
+  }
+
+  const session = await Product.startSession();
+
+  try {
+    const result = [];
+
+    await session.withTransaction(async () => {
+      for (const item of items) {
+        const product = await Product.findOneAndUpdate(
+          {
+            _id: item.productId,
+            stock: {
+              $gte: item.quantity,
+            },
+          },
+          {
+            $inc: {
+              stock: -item.quantity,
+            },
+          },
+          {
+            new: true,
+            session,
+          },
+        );
+
+        if (!product) {
+          const error = new Error(
+            `Insufficient stock for product ${item.productId}`,
+          );
+
+          error.status = 409;
+
+          throw error;
+        }
+
+        result.push(product);
+      }
+    });
+
+    return ok(res, result, "Stock reserved.");
+  } finally {
+    await session.endSession();
+  }
+}
+
+async function internalRelease(req, res) {
+  const { items } = req.body;
+
+  if (!Array.isArray(items)) {
+    return fail(res, "items are required.");
+  }
+
+  await Product.bulkWrite(
+    items.map((item) => ({
+      updateOne: {
+        filter: {
+          _id: item.productId,
+        },
+        update: {
+          $inc: {
+            stock: item.quantity,
+          },
+        },
+      },
+    })),
+  );
+
+  return ok(res, null, "Stock released.");
+}
+
+async function internalRating(req, res) {
+  const { rating, reviewCount } = req.body;
+
+  const product = await Product.findByIdAndUpdate(
+    req.params.id,
+    {
+      rating: Number(rating) || 0,
+      reviewCount: Number(reviewCount) || 0,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
+
+  if (!product) {
+    return fail(res, "Product not found.", 404);
+  }
+
+  return ok(res, product);
+}
+
+module.exports = {
+  list,
+  getById,
+  create,
+  update,
+  remove,
+  updateStock,
+  internalGet,
+  internalReserve,
+  internalRelease,
+  internalRating,
+};
+
+===== qa.controller.js =====
+const {postJson}=require('../utils/serviceClient');const {fail}=require('../utils/apiResponse');async function ask(req,res){const r=await postJson(process.env.RAG_SERVICE_URL||'http://localhost:5010',`/internal/products/${req.params.id}/qa`,{question:req.body.question});if(!r.ok)return res.status(r.status).json(r.data);res.json(r.data);}module.exports={ask};
+
+===== auth.js =====
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+===== error.js =====
+function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
+function errorHandler(err,req,res,next){
+ console.error(err);
+ if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
+ if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
+ if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
+ res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+}
+module.exports={notFound,errorHandler};
+
+===== internal.js =====
+module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+
+===== validate.js =====
+module.exports =
+  (schema, source = "body") =>
+  (req, res, next) => {
+    const result = schema.safeParse(req[source]);
+    if (!result.success)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Invalid request.",
+          details: result.error.issues.map((i) => ({
+            path: i.path,
+            message: i.message,
+          })),
+        });
+    req[source] = result.data;
+    next();
+  };
+
+===== Product.js =====
+const mongoose = require("mongoose");
+const schema = new mongoose.Schema(
+  {
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    name: { type: String, required: true, trim: true, index: true },
+    description: { type: String, required: true },
+    brand: { type: String, required: true, trim: true, index: true },
+    category: {
+      type: String,
+      enum: [
+        "ELECTRONICS",
+        "MOBILE",
+        "LAPTOP",
+        "AUDIO",
+        "TV",
+        "HOME_APPLIANCES",
+        "ACCESSORIES",
+        "OTHER",
+      ],
+      required: true,
+      index: true,
+    },
+    price: { type: Number, required: true, min: 0 },
+    stock: { type: Number, required: true, min: 0, default: 0 },
+    imageUrl: String,
+    rating: { type: Number, min: 0, max: 5, default: 0 },
+    reviewCount: { type: Number, default: 0 },
+  },
+  { timestamps: true },
+);
+schema.index({ name: "text", brand: "text", description: "text" });
+schema.index({ category: 1, price: 1, rating: -1 });
+module.exports = mongoose.model("Product", schema);
+
+===== index.js =====
+const router = require("express").Router();
+const c = require("../controllers/product.controller");
+const qa = require("../controllers/qa.controller");
+const validate = require("../middleware/validate");
+const { authenticate, authorize } = require("../middleware/auth");
+const internal = require("../middleware/internal");
+const { productSchema } = require("../validators/product");
+router.get("/api/products", c.list);
+router.get("/api/products/:id", c.getById);
+router.post("/api/products/:id/qa", qa.ask);
+router.post(
+  "/api/products",
+  authenticate,
+  authorize("VENDOR"),
+  validate(productSchema),
+  c.create,
+);
+router.put(
+  "/api/products/:id",
+  authenticate,
+  authorize("VENDOR"),
+  validate(productSchema.partial()),
+  c.update,
+);
+router.delete("/api/products/:id", authenticate, authorize("VENDOR"), c.remove);
+router.patch(
+  "/api/products/:id/stock",
+  authenticate,
+  authorize("VENDOR"),
+  c.updateStock,
+);
+router.get("/internal/products/:id", internal, c.internalGet);
+router.post("/internal/products/reserve", internal, c.internalReserve);
+router.post("/internal/products/release", internal, c.internalRelease);
+router.patch("/internal/products/:id/rating", internal, c.internalRating);
+module.exports = router;
+
+===== server.js =====
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+const app = require("./app");
+const connectDB = require("./config/db");
+const PORT = Number(process.env.PORT || 5003);
+(async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(
+        "ShopSphere product service running on http://localhost:" + PORT,
+      ),
+    );
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
+
+===== query.service.js =====
+function pagination(req){const page=Math.max(parseInt(req.query.page||'1',10),1);const limit=Math.min(Math.max(parseInt(req.query.limit||'9',10),1),100);return {page,limit,skip:(page-1)*limit};}
+function buildProductFilter(q){const f={};if(q.q){const e=q.q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');f.$or=[{name:{$regex:e,$options:'i'}},{brand:{$regex:e,$options:'i'}},{description:{$regex:e,$options:'i'}}];}if(q.brand)f.brand=q.brand;if(q.category)f.category=q.category;if(q.minPrice!==undefined||q.maxPrice!==undefined){f.price={};if(q.minPrice!==undefined)f.price.$gte=Number(q.minPrice);if(q.maxPrice!==undefined)f.price.$lte=Number(q.maxPrice);}if(q.rating)f.rating={$gte:Number(q.rating)};if(q.stock==='in')f.stock={$gt:0};if(q.stock==='out')f.stock=0;if(q.vendorId)f.vendorId=q.vendorId;return f;}
+function productSort(v){if(v==='low')return {price:1};if(v==='high')return {price:-1};if(v==='rating')return {rating:-1};return {createdAt:-1};}module.exports={pagination,buildProductFilter,productSort};
+
+===== vendor.service.js =====
+const { getJson } = require('../utils/serviceClient');
+
+const VENDOR_SERVICE =
+  process.env.VENDOR_SERVICE_URL || 'http://localhost:5012';
+
+/**
+ * Product.vendorId stores the authenticated user's ID.
+ * Vendor.userId stores the same ID.
+ *
+ * Therefore Product Service resolves a vendor through:
+ *
+ * GET /internal/vendors/by-user/:userId
+ */
+async function getVendorByUserId(userId) {
+  if (!userId) {
+    return null;
+  }
+
+  try {
+    const result = await getJson(
+      VENDOR_SERVICE,
+      `/internal/vendors/by-user/${encodeURIComponent(String(userId))}`,
+    );
+
+    if (!result.ok) {
+      console.error(
+        `Vendor lookup failed for user ${userId}: HTTP ${result.status}`,
+      );
+
+      return null;
+    }
+
+    return result.data?.data || null;
+  } catch (error) {
+    console.error(
+      `Vendor service request failed for user ${userId}:`,
+      error.message,
+    );
+
+    return null;
+  }
+}
+
+/**
+ * Gets all vendors through the internal Vendor Service endpoint.
+ *
+ * This is used for product LIST responses so we do not make
+ * one HTTP request per product.
+ */
+async function getAllVendors() {
+  try {
+    const result = await getJson(
+      VENDOR_SERVICE,
+      '/internal/vendors',
+    );
+
+    if (!result.ok) {
+      console.error(
+        `Vendor list lookup failed: HTTP ${result.status}`,
+      );
+
+      return [];
+    }
+
+    return Array.isArray(result.data?.data)
+      ? result.data.data
+      : [];
+  } catch (error) {
+    console.error(
+      'Vendor service list request failed:',
+      error.message,
+    );
+
+    return [];
+  }
+}
+
+module.exports = {
+  getVendorByUserId,
+  getAllVendors,
+};
+
+===== apiResponse.js =====
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+===== serviceClient.js =====
+async function request(baseUrl,path,options={}){
+  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
+  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
+  if(options.body && typeof options.body!=='string'){
+    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+  }
+  const response=await fetch(url,{...options,headers});
+  const text=await response.text();
+  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
+  return {status:response.status,ok:response.ok,data};
+}
+async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
+async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
+async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
+module.exports={request,getJson,postJson,patchJson};
+
+===== product.js =====
+const { z } = require("zod");
+const productSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  brand: z.string().min(1),
+  category: z.enum([
+    "ELECTRONICS",
+    "MOBILE",
+    "LAPTOP",
+    "AUDIO",
+    "TV",
+    "HOME_APPLIANCES",
+    "ACCESSORIES",
+    "OTHER",
+  ]),
+  price: z.number().nonnegative(),
+  stock: z.number().int().nonnegative().optional(),
+  imageUrl: z.string().optional(),
+});
+module.exports = { productSchema };
+
