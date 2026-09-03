@@ -5,13 +5,24 @@ export default function Auth0ProviderWithNavigate({ children }) {
   const navigate = useNavigate();
 
   const domain = import.meta.env.VITE_AUTH0_DOMAIN;
-
   const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
-
   const audience = import.meta.env.VITE_AUTH0_AUDIENCE;
 
   const onRedirectCallback = (appState) => {
-    navigate(appState?.returnTo || "/user/home", {
+    /*
+     * Do not immediately navigate to /user/home.
+     *
+     * Store where the user wanted to go.
+     * AppContext will exchange the Auth0 token
+     * for the ShopSphere JWT.
+     */
+
+    sessionStorage.setItem(
+      "auth0_return_to",
+      appState?.returnTo || "/user/home",
+    );
+
+    navigate("/auth/callback", {
       replace: true,
     });
   };

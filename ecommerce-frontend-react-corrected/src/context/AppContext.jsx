@@ -90,15 +90,17 @@ export function AppProvider({ children }) {
   } = useAuth0();
 
   /*
-   * This token is only for legacy ShopSphere
-   * email/password accounts.
+   * This is ALWAYS the ShopSphere JWT.
    *
-   * Auth0 accounts use getAccessTokenSilently().
+   * Both:
+   * - email/password login
+   * - Auth0 / Google login
+   *
+   * eventually receive a ShopSphere JWT.
    */
   const [token, setToken] = useState(() =>
     localStorage.getItem("shopsphere_token"),
   );
-
   const [user, setUser] = useState(null);
 
   const [products, setProducts] = useState([]);
@@ -128,29 +130,9 @@ export function AppProvider({ children }) {
    */
   useEffect(() => {
     configureAccessTokenGetter(async () => {
-      /*
-       * Legacy local JWT first.
-       */
-      if (token) {
-        return token;
-      }
-
-      /*
-       * Auth0 access token.
-       */
-      if (!isAuthenticated) {
-        return null;
-      }
-
-      return getAccessTokenSilently({
-        authorizationParams: {
-          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-          scope: "openid profile email",
-        },
-      });
+      return token || null;
     });
-  }, [token, isAuthenticated, getAccessTokenSilently]);
-
+  }, [token]);
   /*
    * ---------------------------------------------------------
    * PRODUCTS
@@ -217,9 +199,100 @@ export function AppProvider({ children }) {
    * AUTHENTICATED SHOPSPHERE USER
    * ---------------------------------------------------------
    */
+  const exchangeAuth0Token = useCallback(async () => {
+    try {
+      /*
+       * Get Auth0 Access Token.
+       *
+       * This token is ONLY used to exchange identity
+       * with the ShopSphere Auth Service.
+       */
+
+      const auth0Token = await getAccessTokenSilently({
+        authorizationParams: {
+          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+
+          scope: "openid profile email",
+        },
+      });
+
+      if (!auth0Token) {
+        throw new Error("Unable to obtain Auth0 access token.");
+      }
+
+      /*
+       * Exchange Auth0 Access Token for
+       * ShopSphere JWT.
+       */
+
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_URL || "http://localhost:5001/api"
+        }/auth/auth0/login`,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            token: auth0Token,
+          }),
+        },
+      );
+
+      let result;
+
+      try {
+        result = await response.json();
+      } catch {
+        throw new Error(
+          "ShopSphere Auth Service returned an invalid response.",
+        );
+      }
+
+      if (!response.ok || !result?.success) {
+        throw new Error(
+          result?.message || "Unable to authenticate with ShopSphere.",
+        );
+      }
+
+      const shopsphereToken = result?.data?.token;
+
+      const shopsphereUser = normalizeUser(result?.data?.user);
+
+      if (!shopsphereToken) {
+        throw new Error(
+          "ShopSphere Auth Service did not return an authentication token.",
+        );
+      }
+
+      /*
+       * Store ONLY the ShopSphere JWT.
+       */
+
+      localStorage.setItem("shopsphere_token", shopsphereToken);
+
+      setToken(shopsphereToken);
+
+      setUser(shopsphereUser);
+
+      return shopsphereUser;
+    } catch (error) {
+      console.error("Auth0 token exchange failed:", error);
+
+      throw error;
+    }
+  }, [getAccessTokenSilently]);
+
   const loadAuthenticatedUser = useCallback(async () => {
-    if (!isAuthenticated && !token) {
+    /*
+     * We only use ShopSphere JWT for API authentication.
+     */
+    if (!token) {
       setUser(null);
+
       return null;
     }
 
@@ -244,7 +317,7 @@ export function AppProvider({ children }) {
 
       return null;
     }
-  }, [isAuthenticated, token]);
+  }, [token]);
 
   /*
    * ---------------------------------------------------------
@@ -364,10 +437,30 @@ export function AppProvider({ children }) {
       try {
         await loadProducts();
 
-        const me = await loadAuthenticatedUser();
+        let authenticatedUser = null;
 
-        if (active && me) {
-          setUser(me);
+        /*
+         * STEP 1:
+         * Try existing ShopSphere JWT first.
+         */
+
+        if (token) {
+          authenticatedUser = await loadAuthenticatedUser();
+        }
+
+        /*
+         * STEP 2:
+         * If no valid ShopSphere user exists,
+         * but Auth0 is authenticated,
+         * exchange the Auth0 token.
+         */
+
+        if (!authenticatedUser && isAuthenticated) {
+          authenticatedUser = await exchangeAuth0Token();
+        }
+
+        if (active && authenticatedUser) {
+          setUser(authenticatedUser);
         }
       } catch (error) {
         console.error("ShopSphere authentication bootstrap failed:", error);
@@ -385,8 +478,14 @@ export function AppProvider({ children }) {
     return () => {
       active = false;
     };
-  }, [authLoading, loadProducts, loadAuthenticatedUser]);
-
+  }, [
+    authLoading,
+    isAuthenticated,
+    token,
+    loadProducts,
+    loadAuthenticatedUser,
+    exchangeAuth0Token,
+  ]);
   useEffect(() => {
     if (!loading && user) {
       loadUserData().catch(console.error);

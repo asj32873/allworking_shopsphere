@@ -70,22 +70,43 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { postJson, getJson } = require("../utils/serviceClient");
 const { ok, fail } = require("../utils/apiResponse");
+const { verifyAuth0Token } = require("../utils/auth0");
 function publicUser(u) {
   return {
-    id: u._id,
+    id: u._id.toString(),
+
     name: u.name,
+
     email: u.email,
+
     phone: u.phone,
+
     role: u.role,
+
     status: u.status,
-    auth0Sub: u.auth0Sub,
+
+    hasPassword: Boolean(u.passwordHash),
+
+    auth0Sub: u.auth0Sub || null,
   };
 }
 function tokenFor(u) {
   return jwt.sign(
-    { id: u._id.toString(), role: u.role },
+    {
+      id: u._id.toString(),
+
+      role: u.role,
+
+      type: "shopsphere",
+    },
+
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
+
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+
+      algorithm: "HS256",
+    },
   );
 }
 async function register(req, res) {
@@ -164,6 +185,132 @@ async function login(req, res) {
   }
   ok(res, { user: publicUser(u), token: tokenFor(u) }, "Login successful.");
 }
+
+async function auth0Login(req, res) {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return fail(res, "Auth0 token is required.", 400);
+    }
+
+    /*
+     * 1. Verify Auth0 token using RS256 + JWKS
+     */
+
+    const identity = await verifyAuth0Token(token);
+
+    /*
+     * Auth0's unique user identifier.
+     *
+     * Examples:
+     *
+     * google-oauth2|12345
+     * github|12345
+     * auth0|12345
+     */
+
+    const auth0Sub = identity.sub;
+
+    if (!auth0Sub) {
+      return fail(res, "Auth0 token does not contain a subject.", 401);
+    }
+
+    /*
+     * Get email.
+     */
+
+    const email = identity.email?.trim().toLowerCase();
+
+    if (!email) {
+      return fail(
+        res,
+        "Your Auth0 account did not provide an email address.",
+        400,
+      );
+    }
+
+    /*
+     * 2. Find user by Auth0 identity
+     */
+
+    let user = await User.findOne({
+      auth0Sub,
+    }).select("+passwordHash");
+
+    /*
+     * 3. If not found, check whether a traditional
+     * account already exists with this email.
+     */
+
+    if (!user) {
+      user = await User.findOne({
+        email,
+      }).select("+passwordHash");
+
+      /*
+       * Link existing ShopSphere account
+       * to this Auth0 identity.
+       */
+
+      if (user) {
+        user.auth0Sub = auth0Sub;
+
+        await user.save();
+      }
+    }
+
+    /*
+     * 4. Create a new ShopSphere account
+     */
+
+    if (!user) {
+      user = await User.create({
+        name: identity.name || identity.nickname || email.split("@")[0],
+
+        email,
+
+        auth0Sub,
+
+        role: "USER",
+
+        status: "ACTIVE",
+      });
+    }
+
+    /*
+     * 5. Check account status
+     */
+
+    if (user.status === "DISABLED") {
+      return fail(res, "Account disabled.", 403);
+    }
+
+    /*
+     * 6. Generate YOUR ShopSphere JWT
+     */
+
+    const shopsphereToken = tokenFor(user);
+
+    /*
+     * 7. Return your JWT
+     */
+
+    return ok(
+      res,
+      {
+        user: publicUser(user),
+
+        token: shopsphereToken,
+      },
+      "Login successful.",
+    );
+  } catch (error) {
+    console.error("[AUTH0 LOGIN ERROR]", error.message);
+
+    return fail(res, "Invalid or expired Auth0 token.", 401);
+  }
+}
 async function me(req, res) {
   ok(res, req.user);
 }
@@ -204,110 +351,195 @@ module.exports = {
   register,
   registerVendor,
   login,
+
+  auth0Login,
+
   me,
   internalUser,
   internalUsers,
   updateInternal,
 };
 
+===== create-admin.js =====
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const User = require("./models/User"); // adjust if needed
+
+const ADMIN_EMAIL = "admin@shopsphere.com";
+const ADMIN_PASSWORD = "admin123";
+
+async function createAdmin() {
+  try {
+    if (!process.env.MONGODB_URI) {
+      throw new Error("MONGODB_URI is not configured");
+    }
+
+    await mongoose.connect(process.env.MONGODB_URI);
+
+    console.log("Connected to MongoDB");
+
+    const existingAdmin = await User.findOne({
+      email: ADMIN_EMAIL.toLowerCase(),
+    }).select("+passwordHash");
+
+    if (existingAdmin) {
+      console.log(`User already exists: ${ADMIN_EMAIL}`);
+
+      // Ensure the existing user is an admin
+      existingAdmin.role = "ADMIN";
+      existingAdmin.status = "ACTIVE";
+      existingAdmin.passwordHash = await bcrypt.hash(
+        ADMIN_PASSWORD,
+        Number(process.env.BCRYPT_SALT_ROUNDS || 12),
+      );
+
+      await existingAdmin.save();
+
+      console.log("Existing user updated to ADMIN.");
+    } else {
+      const passwordHash = await bcrypt.hash(
+        ADMIN_PASSWORD,
+        Number(process.env.BCRYPT_SALT_ROUNDS || 12),
+      );
+
+      const admin = await User.create({
+        name: "Administrator",
+        email: ADMIN_EMAIL.toLowerCase(),
+        passwordHash,
+        role: "ADMIN",
+        status: "ACTIVE",
+      });
+
+      console.log("Admin created successfully!");
+      console.log("ID:", admin._id.toString());
+    }
+
+    console.log("Email:", ADMIN_EMAIL);
+    console.log("Password:", ADMIN_PASSWORD);
+    console.log("Role: ADMIN");
+
+    await mongoose.disconnect();
+    process.exit(0);
+  } catch (error) {
+    console.error("Failed to create admin:", error);
+
+    await mongoose.disconnect().catch(() => {});
+    process.exit(1);
+  }
+}
+
+createAdmin();
+
 ===== auth.js =====
-const jwt = require('jsonwebtoken');
-const jwksClient = require('jwks-rsa');
-const { getJson } = require('../utils/serviceClient');
+const jwt = require("jsonwebtoken");
 
-const auth0Domain = (process.env.AUTH0_DOMAIN || '')
-  .replace(/^https?:\/\//, '')
-  .replace(/\/$/, '');
-const auth0Audience = process.env.AUTH0_AUDIENCE;
-const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
-const jwks = auth0Domain
-  ? jwksClient({
-      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
-      cache: true,
-      cacheMaxEntries: 5,
-      cacheMaxAge: 10 * 60 * 1000,
-      rateLimit: true,
-      jwksRequestsPerMinute: 10,
-    })
-  : null;
-
-function signingKey(header, callback) {
-  if (!jwks) return callback(new Error('Auth0 is not configured.'));
-  if (!header?.kid) return callback(new Error('Token is missing kid.'));
-  jwks.getSigningKey(header.kid)
-    .then((key) => callback(null, key.getPublicKey()))
-    .catch(callback);
-}
-
-function verifyAuth0(token) {
-  return new Promise((resolve, reject) => {
-    jwt.verify(
-      token,
-      signingKey,
-      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
-      (error, payload) => (error ? reject(error) : resolve(payload)),
-    );
-  });
-}
+const { getJson } = require("../utils/serviceClient");
 
 async function authenticate(req, res, next) {
   try {
-    const header = req.headers.authorization || '';
-    if (!header.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    const header = req.headers.authorization || "";
+
+    if (!header.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
     }
 
     const token = header.slice(7);
-    let identity;
 
-    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
-      try {
-        identity = await verifyAuth0(token);
-      } catch {
-        identity = null;
-      }
+    /*
+     * ONLY accept ShopSphere-issued JWTs.
+     *
+     * Auth0 tokens should NEVER reach
+     * normal microservices.
+     */
+
+    const identity = jwt.verify(
+      token,
+
+      process.env.JWT_SECRET,
+
+      {
+        algorithms: ["HS256"],
+      },
+    );
+
+    if (!identity.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token.",
+      });
     }
 
-    if (!identity) {
-      identity = jwt.verify(token, process.env.JWT_SECRET);
-    }
+    /*
+     * Get current user from Auth Service
+     */
 
-    const userId = identity.id || identity['https://shopsphere/user_id'];
-    if (!userId) {
-      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
-    }
+    const authService = process.env.AUTH_SERVICE_URL || "http://localhost:5002";
 
-    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
-    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+    const result = await getJson(
+      authService,
+
+      `/internal/users/${encodeURIComponent(identity.id)}`,
+    );
 
     if (!result.ok || !result.data?.data) {
-      return res.status(401).json({ success: false, message: 'User account not found.' });
+      return res.status(401).json({
+        success: false,
+        message: "User account not found.",
+      });
     }
 
     const user = result.data.data;
-    if (user.status === 'DISABLED') {
-      return res.status(403).json({ success: false, message: 'Account disabled.' });
+
+    if (user.status === "DISABLED") {
+      return res.status(403).json({
+        success: false,
+        message: "Account disabled.",
+      });
     }
 
     req.user = user;
-    req.auth = { ...identity, id: String(userId) };
+
+    req.auth = {
+      ...identity,
+
+      id: String(identity.id),
+    };
+
     next();
   } catch (error) {
-    console.error('AUTH ERROR:', error.message);
-    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+    console.error("[AUTH ERROR]", error.message);
+
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token.",
+    });
   }
 }
 
 function authorize(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+      return res.status(403).json({
+        success: false,
+        message: "You do not have permission for this resource.",
+      });
     }
+
     next();
   };
 }
 
-module.exports = { authenticate, authorize };
+module.exports = {
+  authenticate,
+  authorize,
+};
 
 ===== error.js =====
 function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
@@ -327,7 +559,71 @@ module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKE
 module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
 
 ===== User.js =====
-const mongoose=require('mongoose');const schema=new mongoose.Schema({name:{type:String,required:true,trim:true},email:{type:String,required:true,unique:true,lowercase:true,trim:true,index:true},phone:{type:String,trim:true},passwordHash:{type:String,select:false},auth0Sub:{type:String,unique:true,sparse:true,index:true},role:{type:String,enum:['USER','VENDOR','ADMIN'],default:'USER',index:true},status:{type:String,enum:['ACTIVE','DISABLED'],default:'ACTIVE',index:true}},{timestamps:true});module.exports=mongoose.model('User',schema);
+const mongoose = require("mongoose");
+
+const schema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
+
+    phone: {
+      type: String,
+      trim: true,
+    },
+
+    passwordHash: {
+      type: String,
+      select: false,
+    },
+
+    /*
+     * Auth0 identity.
+     *
+     * Examples:
+     *
+     * google-oauth2|123456789
+     * auth0|abc123
+     * github|123456
+     */
+    auth0Sub: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+
+    role: {
+      type: String,
+      enum: ["USER", "VENDOR", "ADMIN"],
+      default: "USER",
+      index: true,
+    },
+
+    status: {
+      type: String,
+      enum: ["ACTIVE", "DISABLED"],
+      default: "ACTIVE",
+      index: true,
+    },
+  },
+  {
+    timestamps: true,
+  },
+);
+
+module.exports = mongoose.model("User", schema);
 
 ===== index.js =====
 const router = require("express").Router();
@@ -336,9 +632,7 @@ const controller = require("../controllers/auth.controller");
 
 const validate = require("../middleware/validate");
 
-const {
-  authenticate,
-} = require("../middleware/auth");
+const { authenticate } = require("../middleware/auth");
 
 const internal = require("../middleware/internal");
 
@@ -346,6 +640,7 @@ const {
   registerSchema,
   vendorRegisterSchema,
   loginSchema,
+  auth0LoginSchema,
 } = require("../validators/auth");
 
 /* -------------------------------------------------------
@@ -355,41 +650,35 @@ const {
 router.post(
   "/api/auth/register",
   validate(registerSchema),
-  controller.register
+  controller.register,
 );
 
 router.post(
   "/api/auth/vendor/register",
   validate(vendorRegisterSchema),
-  controller.registerVendor
+  controller.registerVendor,
 );
 
+router.post("/api/auth/login", validate(loginSchema), controller.login);
 router.post(
-  "/api/auth/login",
-  validate(loginSchema),
-  controller.login
-);
+  "/api/auth/auth0/login",
 
+  validate(auth0LoginSchema),
+
+  controller.auth0Login,
+);
 /* -------------------------------------------------------
    AUTHENTICATED USER ROUTES
 ------------------------------------------------------- */
 
-router.get(
-  "/api/auth/me",
-  authenticate,
-  controller.me
-);
+router.get("/api/auth/me", authenticate, controller.me);
 
-router.post(
-  "/api/auth/logout",
-  authenticate,
-  (req, res) => {
-    return res.json({
-      success: true,
-      message: "Logged out.",
-    });
-  }
-);
+router.post("/api/auth/logout", authenticate, (req, res) => {
+  return res.json({
+    success: true,
+    message: "Logged out.",
+  });
+});
 
 /* -------------------------------------------------------
    INTERNAL SERVICE ROUTES
@@ -398,27 +687,13 @@ router.post(
    normal user JWT authentication.
 ------------------------------------------------------- */
 
-router.get(
-  "/internal/users/:id",
-  internal,
-  controller.internalUser
-);
+router.get("/internal/users/:id", internal, controller.internalUser);
 
-router.get(
-  "/internal/admin/users",
-  internal,
-  controller.internalUsers
-);
+router.get("/internal/admin/users", internal, controller.internalUsers);
 
-router.patch(
-  "/internal/users/:id",
-  internal,
-  controller.updateInternal
-);
+router.patch("/internal/users/:id", internal, controller.updateInternal);
 
 module.exports = router;
-
-
 
 // const router=require('express').Router();const c=require('../controllers/auth.controller');const validate=require('../middleware/validate');const {authenticate}=require('../middleware/auth');const internal=require('../middleware/internal');const {registerSchema,vendorRegisterSchema,loginSchema}=require('../validators/auth');
 // router.post('/api/auth/register',validate(registerSchema),c.register);router.post('/api/auth/vendor/register',validate(vendorRegisterSchema),c.registerVendor);router.post('/api/auth/login',validate(loginSchema),c.login);router.get('/api/auth/me',authenticate,c.me);router.post('/api/auth/logout',authenticate,(req,res)=>res.json({success:true,message:'Logged out.'}));
@@ -450,6 +725,89 @@ function ok(res,data,message='OK',status=200){return res.status(status).json({su
 function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
 module.exports={ok,fail};
 
+===== auth0.js =====
+const jwt = require("jsonwebtoken");
+const jwksClient = require("jwks-rsa");
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || "")
+  .replace(/^https?:\/\//, "")
+  .replace(/\/$/, "");
+
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+
+if (!auth0Domain) {
+  console.warn("[AUTH0] AUTH0_DOMAIN is not configured.");
+}
+
+if (!auth0Audience) {
+  console.warn("[AUTH0] AUTH0_AUDIENCE is not configured.");
+}
+
+const issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+
+const client = auth0Domain
+  ? jwksClient({
+      jwksUri: `${issuer}.well-known/jwks.json`,
+
+      cache: true,
+
+      cacheMaxEntries: 5,
+
+      cacheMaxAge: 10 * 60 * 1000,
+
+      rateLimit: true,
+
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function getSigningKey(header, callback) {
+  if (!client) {
+    return callback(new Error("Auth0 is not configured."));
+  }
+
+  if (!header.kid) {
+    return callback(new Error("Auth0 token does not contain a kid."));
+  }
+
+  client
+    .getSigningKey(header.kid)
+    .then((key) => {
+      callback(null, key.getPublicKey());
+    })
+    .catch(callback);
+}
+
+function verifyAuth0Token(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+
+      getSigningKey,
+
+      {
+        algorithms: ["RS256"],
+
+        audience: auth0Audience,
+
+        issuer,
+      },
+
+      (error, payload) => {
+        if (error) {
+          return reject(error);
+        }
+
+        resolve(payload);
+      },
+    );
+  });
+}
+
+module.exports = {
+  verifyAuth0Token,
+};
+
 ===== serviceClient.js =====
 async function request(baseUrl,path,options={}){
   const url=`${baseUrl.replace(/\/$/,'')}${path}`;
@@ -469,23 +827,45 @@ module.exports={request,getJson,postJson,patchJson};
 
 ===== auth.js =====
 const { z } = require("zod");
+
 const registerSchema = z.object({
   name: z.string().min(2),
+
   email: z.string().email(),
+
   phone: z.string().optional(),
+
   password: z.string().min(6),
 });
+
 const vendorRegisterSchema = z.object({
   ownerName: z.string().min(2),
+
   storeName: z.string().min(2),
+
   email: z.string().email(),
+
   phone: z.string().optional(),
+
   storeAddress: z.string().min(5),
+
   password: z.string().min(6),
 });
+
 const loginSchema = z.object({
   email: z.string().email(),
+
   password: z.string().min(1),
 });
-module.exports = { registerSchema, vendorRegisterSchema, loginSchema };
+
+const auth0LoginSchema = z.object({
+  token: z.string().min(1),
+});
+
+module.exports = {
+  registerSchema,
+  vendorRegisterSchema,
+  loginSchema,
+  auth0LoginSchema,
+};
 

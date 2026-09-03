@@ -405,16 +405,140 @@ function getEnv(name, fallback = undefined) {
 module.exports = { getEnv };
 
 ===== admin.controller.js =====
-const {getJson,patchJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const AUTH=()=>process.env.AUTH_SERVICE_URL||'http://localhost:5002';const VENDOR=()=>process.env.VENDOR_SERVICE_URL||'http://localhost:5012';const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ORDER=()=>process.env.ORDER_SERVICE_URL||'http://localhost:5005';const SUPPORT=()=>process.env.SUPPORT_SERVICE_URL||'http://localhost:5011';
-async function dashboard(req,res){const [u,v,p,o]=await Promise.all([getJson(AUTH(),'/internal/admin/users'),getJson(VENDOR(),'/internal/vendors'),getJson(PRODUCT(),'/api/products?limit=1'),getJson(ORDER(),'/api/orders/admin/list',{'authorization':req.headers.authorization||''})]);ok(res,{users:u.data?.data?.length||0,vendors:v.data?.data?.length||0,products:p.data?.data?.total||0,orders:o.data?.data?.length||0});}
-async function vendors(req,res){const r=await getJson(VENDOR(),'/internal/vendors');if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data);}
-async function approveVendor(req,res){const r=await patchJson(VENDOR(),`/internal/vendors/${req.params.id}`,{status:'VERIFIED',verifiedAt:new Date()});if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data,'Vendor approved.');}
-async function rejectVendor(req,res){const r=await patchJson(VENDOR(),`/internal/vendors/${req.params.id}`,{status:'REJECTED',verifiedAt:null});if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data,'Vendor rejected.');}
-async function deleteVendor(req,res){const vr=await getJson(VENDOR(),'/internal/vendors');const v=(vr.data?.data||[]).find(x=>String(x._id)===String(req.params.id));if(!v)return fail(res,'Vendor not found.',404);await patchJson(AUTH(),`/internal/users/${v.userId}`,{status:'DISABLED'});const r=await fetch(`${VENDOR()}/internal/vendors/${req.params.id}`,{method:'DELETE',headers:{'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''}});const d=await r.json();if(!r.ok)return res.status(r.status).json(d);ok(res,null,'Vendor deleted.');}
-async function users(req,res){const r=await getJson(AUTH(),'/internal/admin/users');if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data);}
-async function updateUserStatus(req,res){if(req.params.id===req.user.id)return fail(res,'You cannot disable your own admin account.',400);if(!['ACTIVE','DISABLED'].includes(req.body.status))return fail(res,'Invalid user status.');const r=await patchJson(AUTH(),`/internal/users/${req.params.id}`,{status:req.body.status});if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data,'User status updated.');}
-async function issues(req,res){const r=await getJson(SUPPORT(),'/api/issues',{'authorization':req.headers.authorization||''});if(!r.ok)return res.status(r.status).json(r.data);ok(res,r.data.data);}
-module.exports={dashboard,vendors,approveVendor,rejectVendor,deleteVendor,users,updateUserStatus,issues};
+const { getJson, patchJson } = require("../utils/serviceClient");
+const { ok, fail } = require("../utils/apiResponse");
+const AUTH = () => process.env.AUTH_SERVICE_URL || "http://localhost:5002";
+const VENDOR = () => process.env.VENDOR_SERVICE_URL || "http://localhost:5012";
+const PRODUCT = () =>
+  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+const ORDER = () => process.env.ORDER_SERVICE_URL || "http://localhost:5005";
+const SUPPORT = () =>
+  process.env.SUPPORT_SERVICE_URL || "http://localhost:5011";
+async function dashboard(req, res) {
+  const [u, v, p, o] = await Promise.all([
+    getJson(AUTH(), "/internal/admin/users"),
+    getJson(VENDOR(), "/internal/vendors"),
+    getJson(PRODUCT(), "/api/products?limit=1"),
+    getJson(ORDER(), "/api/orders/admin/list", {
+      authorization: req.headers.authorization || "",
+    }),
+  ]);
+  ok(res, {
+    users: u.data?.data?.length || 0,
+    vendors: v.data?.data?.length || 0,
+    products: p.data?.data?.total || 0,
+    orders: o.data?.data?.length || 0,
+  });
+}
+async function vendors(req, res) {
+  const r = await getJson(VENDOR(), "/internal/vendors");
+  if (!r.ok) return res.status(r.status).json(r.data);
+  ok(res, r.data.data);
+}
+async function approveVendor(req, res) {
+  const r = await patchJson(VENDOR(), `/internal/vendors/${req.params.id}`, {
+    status: "VERIFIED",
+    verifiedAt: new Date(),
+  });
+  if (!r.ok) return res.status(r.status).json(r.data);
+  ok(res, r.data.data, "Vendor approved.");
+}
+async function rejectVendor(req, res) {
+  const r = await patchJson(VENDOR(), `/internal/vendors/${req.params.id}`, {
+    status: "REJECTED",
+    verifiedAt: null,
+  });
+  if (!r.ok) return res.status(r.status).json(r.data);
+  ok(res, r.data.data, "Vendor rejected.");
+}
+async function deleteVendor(req, res) {
+  const vr = await getJson(VENDOR(), "/internal/vendors");
+  const v = (vr.data?.data || []).find(
+    (x) => String(x._id) === String(req.params.id),
+  );
+  if (!v) return fail(res, "Vendor not found.", 404);
+  await patchJson(AUTH(), `/internal/users/${v.userId}`, {
+    status: "DISABLED",
+  });
+  const r = await fetch(`${VENDOR()}/internal/vendors/${req.params.id}`, {
+    method: "DELETE",
+    headers: {
+      "x-internal-service-token": process.env.INTERNAL_SERVICE_TOKEN || "",
+    },
+  });
+  const d = await r.json();
+  if (!r.ok) return res.status(r.status).json(d);
+  ok(res, null, "Vendor deleted.");
+}
+async function users(req, res) {
+  const r = await getJson(AUTH(), "/internal/admin/users");
+  if (!r.ok) return res.status(r.status).json(r.data);
+  ok(res, r.data.data);
+}
+async function updateUserStatus(req, res) {
+  if (req.params.id === req.user.id)
+    return fail(res, "You cannot disable your own admin account.", 400);
+  if (!["ACTIVE", "DISABLED"].includes(req.body.status))
+    return fail(res, "Invalid user status.");
+  const r = await patchJson(AUTH(), `/internal/users/${req.params.id}`, {
+    status: req.body.status,
+  });
+  if (!r.ok) return res.status(r.status).json(r.data);
+  ok(res, r.data.data, "User status updated.");
+}
+async function issues(req, res) {
+  const r = await getJson(SUPPORT(), "/api/issues", {
+    authorization: req.headers.authorization || "",
+  });
+  if (!r.ok) return res.status(r.status).json(r.data);
+  ok(res, r.data.data);
+}
+async function orders(req, res) {
+  const r = await getJson(ORDER(), "/api/orders/admin/list", {
+    authorization: req.headers.authorization || "",
+  });
+  console.log("ORDER SERVICE RESPONSE:", JSON.stringify(r.data, null, 2));
+
+  if (!r.ok) {
+    return res.status(r.status).json(r.data);
+  }
+
+  return ok(res, r.data.data);
+}
+async function assignVendor(req, res) {
+  const { vendorId } = req.body;
+
+  if (!vendorId) {
+    return fail(res, "Vendor ID is required.", 400);
+  }
+
+  const r = await patchJson(
+    SUPPORT(),
+    `/api/issues/${req.params.id}/assign`,
+    { vendorId },
+    {
+      authorization: req.headers.authorization || "",
+    },
+  );
+
+  if (!r.ok) {
+    return res.status(r.status).json(r.data);
+  }
+
+  return ok(res, r.data.data, "Vendor assigned successfully.");
+}
+module.exports = {
+  dashboard,
+  vendors,
+  approveVendor,
+  rejectVendor,
+  deleteVendor,
+  users,
+  updateUserStatus,
+  issues,
+  orders,
+  assignVendor,
+};
 
 ===== auth.js =====
 const jwt = require('jsonwebtoken');
@@ -533,7 +657,21 @@ module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKE
 module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
 
 ===== index.js =====
-const router=require('express').Router();const c=require('../controllers/admin.controller');const {authenticate,authorize}=require('../middleware/auth');router.use(authenticate,authorize('ADMIN'));router.get('/api/admin/dashboard',c.dashboard);router.get('/api/admin/vendors',c.vendors);router.patch('/api/admin/vendors/:id/approve',c.approveVendor);router.patch('/api/admin/vendors/:id/reject',c.rejectVendor);router.delete('/api/admin/vendors/:id',c.deleteVendor);router.get('/api/admin/users',c.users);router.patch('/api/admin/users/:id/status',c.updateUserStatus);router.get('/api/admin/issues',c.issues);module.exports=router;
+const router = require("express").Router();
+const c = require("../controllers/admin.controller");
+const { authenticate, authorize } = require("../middleware/auth");
+router.use(authenticate, authorize("ADMIN"));
+router.get("/api/admin/dashboard", c.dashboard);
+router.get("/api/admin/vendors", c.vendors);
+router.patch("/api/admin/vendors/:id/approve", c.approveVendor);
+router.patch("/api/admin/vendors/:id/reject", c.rejectVendor);
+router.delete("/api/admin/vendors/:id", c.deleteVendor);
+router.get("/api/admin/users", c.users);
+router.patch("/api/admin/users/:id/status", c.updateUserStatus);
+router.get("/api/admin/orders", c.orders);
+router.get("/api/admin/issues", c.issues);
+router.patch("/api/admin/issues/:id/assign", c.assignVendor);
+module.exports = router;
 
 ===== server.js =====
 require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5013);
@@ -1206,6 +1344,80 @@ module.exports = {
   internalUsers,
   updateInternal,
 };
+
+===== create-admin.js =====
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const User = require("./models/User"); // adjust if needed
+
+const ADMIN_EMAIL = "admin@shopsphere.com";
+const ADMIN_PASSWORD = "admin123";
+
+async function createAdmin() {
+  try {
+    if (!process.env.MONGODB_URI) {
+      throw new Error("MONGODB_URI is not configured");
+    }
+
+    await mongoose.connect(process.env.MONGODB_URI);
+
+    console.log("Connected to MongoDB");
+
+    const existingAdmin = await User.findOne({
+      email: ADMIN_EMAIL.toLowerCase(),
+    }).select("+passwordHash");
+
+    if (existingAdmin) {
+      console.log(`User already exists: ${ADMIN_EMAIL}`);
+
+      // Ensure the existing user is an admin
+      existingAdmin.role = "ADMIN";
+      existingAdmin.status = "ACTIVE";
+      existingAdmin.passwordHash = await bcrypt.hash(
+        ADMIN_PASSWORD,
+        Number(process.env.BCRYPT_SALT_ROUNDS || 12),
+      );
+
+      await existingAdmin.save();
+
+      console.log("Existing user updated to ADMIN.");
+    } else {
+      const passwordHash = await bcrypt.hash(
+        ADMIN_PASSWORD,
+        Number(process.env.BCRYPT_SALT_ROUNDS || 12),
+      );
+
+      const admin = await User.create({
+        name: "Administrator",
+        email: ADMIN_EMAIL.toLowerCase(),
+        passwordHash,
+        role: "ADMIN",
+        status: "ACTIVE",
+      });
+
+      console.log("Admin created successfully!");
+      console.log("ID:", admin._id.toString());
+    }
+
+    console.log("Email:", ADMIN_EMAIL);
+    console.log("Password:", ADMIN_PASSWORD);
+    console.log("Role: ADMIN");
+
+    await mongoose.disconnect();
+    process.exit(0);
+  } catch (error) {
+    console.error("Failed to create admin:", error);
+
+    await mongoose.disconnect().catch(() => {});
+    process.exit(1);
+  }
+}
+
+createAdmin();
 
 ===== auth.js =====
 const jwt = require('jsonwebtoken');
@@ -1973,32 +2185,50 @@ const OrderItem = require("../models/OrderItem");
 const History = require("../models/OrderStatusHistory");
 const { getJson, postJson } = require("../utils/serviceClient");
 const { ok, fail } = require("../utils/apiResponse");
+
 const CART = () => process.env.CART_SERVICE_URL || "http://localhost:5004";
+
 const PRODUCT = () =>
   process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+
 const ADDRESS = () =>
   process.env.ADDRESS_SERVICE_URL || "http://localhost:5008";
+
 async function createOrder(req, res) {
   const { addressId } = req.body;
+
   const ar = await getJson(
     ADDRESS(),
     `/internal/addresses/${req.user.id}/${addressId}`,
   );
+
   if (!ar.ok) return fail(res, "Delivery address not found.", 404);
+
   const cr = await getJson(CART(), `/internal/cart/${req.user.id}`);
+
   const cart = cr.data?.data || [];
+
   if (!cart.length) return fail(res, "Cart is empty.", 400);
+
   const items = [];
+
   for (const i of cart) {
     const pr = await getJson(PRODUCT(), `/internal/products/${i.productId}`);
+
     const p = pr.data?.data;
-    if (!p) return fail(res, "A product in your cart no longer exists.", 409);
-    if (p.stock < i.quantity)
+
+    if (!p) {
+      return fail(res, "A product in your cart no longer exists.", 409);
+    }
+
+    if (p.stock < i.quantity) {
       return fail(
         res,
         `Only ${p.stock} item(s) of ${p.name} are available.`,
         409,
       );
+    }
+
     items.push({
       productId: p._id,
       vendorId: p.vendorId,
@@ -2007,12 +2237,21 @@ async function createOrder(req, res) {
       unitPrice: p.price,
     });
   }
+
   const reserve = await postJson(PRODUCT(), "/internal/products/reserve", {
-    items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+    items: items.map((i) => ({
+      productId: i.productId,
+      quantity: i.quantity,
+    })),
   });
-  if (!reserve.ok) return res.status(reserve.status).json(reserve.data);
+
+  if (!reserve.ok) {
+    return res.status(reserve.status).json(reserve.data);
+  }
+
   try {
     const total = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+
     const order = await Order.create({
       userId: req.user.id,
       addressId,
@@ -2020,112 +2259,286 @@ async function createOrder(req, res) {
       paymentStatus: "PAID",
       paymentMethod: "STRIPE_TEST",
     });
+
     const docs = await OrderItem.insertMany(
-      items.map((i) => ({ ...i, orderId: order._id })),
+      items.map((i) => ({
+        ...i,
+        orderId: order._id,
+      })),
     );
+
     await History.create({
       orderId: order._id,
       status: "PLACED",
       updatedBy: req.user.id,
       remarks: "Order created",
     });
+
     await postJson(CART(), `/internal/cart/${req.user.id}/clear`, {});
-    ok(res, { order, items: docs }, "Order created.", 201);
+
+    ok(
+      res,
+      {
+        order,
+        items: docs,
+      },
+      "Order created.",
+      201,
+    );
   } catch (e) {
     await postJson(PRODUCT(), "/internal/products/release", { items });
+
     throw e;
   }
 }
+
 async function listMyOrders(req, res) {
   try {
     const userId = req.auth?.id || req.user?._id?.toString() || req.user?.id;
-
-    console.log("========== MY ORDERS ==========");
-    console.log("req.auth:", req.auth);
-    console.log("req.user:", req.user);
-    console.log("Searching orders for userId:", userId);
 
     if (!userId) {
       return fail(res, "Authenticated user ID not found.", 401);
     }
 
     const orders = await Order.find({
-      userId: userId,
+      userId,
     })
-      .sort({ createdAt: -1 })
+      .sort({ orderedAt: -1 })
       .lean();
 
-    console.log("Orders found:", orders.length);
-    console.log("Orders:", orders);
+    const orderIds = orders.map((order) => order._id);
 
-    return ok(res, orders, "Orders fetched successfully.");
+    const items = await OrderItem.find({
+      orderId: { $in: orderIds },
+    }).lean();
+
+    const itemIds = items.map((item) => item._id);
+
+    const histories = await History.find({
+      orderItemId: { $in: itemIds },
+    })
+      .sort({ timestamp: 1 })
+      .lean();
+
+    const ordersWithItems = orders.map((order) => ({
+      ...order,
+
+      id: order._id.toString(),
+
+      items: items
+        .filter((item) => String(item.orderId) === String(order._id))
+        .map((item) => ({
+          ...item,
+
+          tracking: histories
+            .filter(
+              (history) =>
+                history.orderItemId &&
+                history.orderItemId.toString() === item._id.toString(),
+            )
+            .map((history) => ({
+              status: history.status,
+              date: history.timestamp,
+              remarks: history.remarks,
+            })),
+        })),
+    }));
+
+    return ok(res, ordersWithItems, "Orders fetched successfully.");
   } catch (error) {
     console.error("LIST MY ORDERS ERROR:", error);
 
     return fail(res, error.message || "Failed to fetch orders.", 500);
   }
 }
-async function getById(req, res) {
-  const o = await Order.findById(req.params.id).lean();
-  if (!o) return fail(res, "Order not found.", 404);
-  if (
-    req.user.role === "USER" &&
-    o.userId.toString() !== req.user.id.toString()
-  )
-    return fail(res, "Order not found.", 404);
-  const items = await OrderItem.find({ orderId: o._id }).lean();
-  ok(res, { ...o, items });
-}
+
 async function tracking(req, res) {
   const o = await Order.findById(req.params.id).lean();
-  if (!o) return fail(res, "Order not found.", 404);
+
+  if (!o) {
+    return fail(res, "Order not found.", 404);
+  }
+
   if (
     req.user.role === "USER" &&
     o.userId.toString() !== req.user.id.toString()
-  )
+  ) {
     return fail(res, "Order not found.", 404);
+  }
+
   ok(res, {
     order: o,
-    history: await History.find({ orderId: o._id })
+    history: await History.find({
+      orderId: o._id,
+    })
       .sort({ timestamp: 1 })
       .lean(),
   });
 }
-async function vendorList(req, res) {
-  const items = await OrderItem.find({ vendorId: req.user.id }).lean();
-  const ids = [...new Set(items.map((i) => i.orderId.toString()))];
-  ok(res, await Order.find({ _id: { $in: ids } }).sort({ createdAt: -1 }));
+
+async function getById(req, res) {
+  const o = await Order.findById(req.params.id).lean();
+
+  if (!o) {
+    return fail(res, "Order not found.", 404);
+  }
+
+  if (
+    req.user.role === "USER" &&
+    o.userId.toString() !== (req.user._id || req.user.id).toString()
+  ) {
+    return fail(res, "Order not found.", 404);
+  }
+
+  const items = await OrderItem.find({
+    orderId: o._id,
+  }).lean();
+
+  const itemIds = items.map((item) => item._id);
+
+  const histories = await History.find({
+    orderItemId: { $in: itemIds },
+  })
+    .sort({ timestamp: 1 })
+    .lean();
+
+  const result = {
+    ...o,
+
+    items: items.map((item) => ({
+      ...item,
+
+      tracking: histories
+        .filter(
+          (history) =>
+            history.orderItemId &&
+            history.orderItemId.toString() === item._id.toString(),
+        )
+        .map((history) => ({
+          status: history.status,
+          date: history.timestamp,
+          remarks: history.remarks,
+        })),
+    })),
+  };
+
+  ok(res, result);
 }
+
+async function vendorList(req, res) {
+  const userId = req.user?._id || req.user?.id;
+
+  const items = await OrderItem.find({
+    vendorId: userId,
+  }).lean();
+
+  const ids = [...new Set(items.map((i) => i.orderId.toString()))];
+
+  const orders = await Order.find({
+    _id: { $in: ids },
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const itemsByOrder = new Map();
+
+  for (const item of items) {
+    const key = item.orderId.toString();
+
+    if (!itemsByOrder.has(key)) {
+      itemsByOrder.set(key, []);
+    }
+
+    itemsByOrder.get(key).push(item);
+  }
+
+  const result = orders.map((order) => ({
+    ...order,
+    items: itemsByOrder.get(order._id.toString()) || [],
+  }));
+
+  ok(res, result);
+}
+
 async function vendorUpdateStatus(req, res) {
+  const userId = req.user?._id || req.user?.id;
+
   const item = await OrderItem.findOne({
     _id: req.params.itemId,
     orderId: req.params.orderId,
-    vendorId: req.user.id,
+    vendorId: userId,
   });
-  if (!item) return fail(res, "Order item not found.", 404);
+
+  if (!item) {
+    return fail(res, "Order item not found.", 404);
+  }
+
   item.vendorStatus = req.body.status;
+
   await item.save();
+
   await History.create({
     orderId: item.orderId,
     orderItemId: item._id,
     status: item.vendorStatus,
-    updatedBy: req.user.id,
+    updatedBy: userId,
     remarks: req.body.remarks,
   });
+
   await refreshOrderStatus(item.orderId);
+
   ok(res, item, "Order item status updated.");
 }
+
 async function adminList(req, res) {
-  ok(res, await Order.find().sort({ createdAt: -1 }));
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 }).lean();
+
+    const orderIds = orders.map((order) => order._id);
+
+    const items = await OrderItem.find({
+      orderId: { $in: orderIds },
+    }).lean();
+
+    const ordersWithItems = orders.map((order) => ({
+      ...order,
+
+      // Frontend expects id
+      id: order._id.toString(),
+
+      // Attach items belonging to this order
+      items: items
+        .filter((item) => String(item.orderId) === String(order._id))
+        .map((item) => ({
+          ...item,
+
+          // Frontend expects i.id
+          id: item._id.toString(),
+        })),
+    }));
+
+    return ok(res, ordersWithItems, "Orders fetched successfully.");
+  } catch (error) {
+    console.error("ADMIN LIST ORDERS ERROR:", error);
+
+    return fail(res, "Failed to fetch orders.", 500);
+  }
 }
+
 async function adminUpdateStatus(req, res) {
   const item = await OrderItem.findOne({
     _id: req.params.itemId,
     orderId: req.params.orderId,
   });
-  if (!item) return fail(res, "Order item not found.", 404);
+
+  if (!item) {
+    return fail(res, "Order item not found.", 404);
+  }
+
   item.vendorStatus = req.body.status;
+
   await item.save();
+
   await History.create({
     orderId: item.orderId,
     orderItemId: item._id,
@@ -2133,23 +2546,40 @@ async function adminUpdateStatus(req, res) {
     updatedBy: req.user.id,
     remarks: req.body.remarks,
   });
+
   await refreshOrderStatus(item.orderId);
+
   ok(res, item, "Order item status updated.");
 }
+
 async function refreshOrderStatus(orderId) {
-  const items = await OrderItem.find({ orderId }).lean();
+  const items = await OrderItem.find({
+    orderId,
+  }).lean();
+
   if (!items.length) return;
+
   const statuses = items.map((i) => i.vendorStatus);
+
   let status = "PLACED";
-  if (statuses.every((s) => s === "DELIVERED")) status = "DELIVERED";
-  else if (statuses.some((s) => s === "OUT_FOR_DELIVERY"))
+
+  if (statuses.every((s) => s === "DELIVERED")) {
+    status = "DELIVERED";
+  } else if (statuses.some((s) => s === "OUT_FOR_DELIVERY")) {
     status = "OUT_FOR_DELIVERY";
-  else if (statuses.some((s) => s === "DISPATCHED")) status = "DISPATCHED";
-  else if (statuses.some((s) => s === "PACKED")) status = "PACKED";
-  else if (statuses.some((s) => s === "CONFIRMED")) status = "CONFIRMED";
-  else if (statuses.every((s) => s === "CANCELLED")) status = "CANCELLED";
+  } else if (statuses.some((s) => s === "DISPATCHED")) {
+    status = "DISPATCHED";
+  } else if (statuses.some((s) => s === "PACKED")) {
+    status = "PACKED";
+  } else if (statuses.some((s) => s === "CONFIRMED")) {
+    status = "CONFIRMED";
+  } else if (statuses.every((s) => s === "CANCELLED")) {
+    status = "CANCELLED";
+  }
+
   await Order.findByIdAndUpdate(orderId, { status });
 }
+
 async function internalCreatePaid(req, res) {
   const {
     userId,
@@ -2159,6 +2589,7 @@ async function internalCreatePaid(req, res) {
     stripeSessionId,
     stripePaymentIntentId,
   } = req.body;
+
   const order = await Order.create({
     userId,
     addressId,
@@ -2168,37 +2599,65 @@ async function internalCreatePaid(req, res) {
     stripeSessionId,
     stripePaymentIntentId,
   });
+
   const docs = await OrderItem.insertMany(
-    items.map((i) => ({ ...i, orderId: order._id })),
+    items.map((i) => ({
+      ...i,
+      orderId: order._id,
+    })),
   );
+
   await History.create({
     orderId: order._id,
     status: "PLACED",
     updatedBy: userId,
     remarks: "Stripe payment confirmed",
   });
-  ok(res, { order, items: docs }, "Order created.", 201);
+
+  ok(
+    res,
+    {
+      order,
+      items: docs,
+    },
+    "Order created.",
+    201,
+  );
 }
+
 async function internalReviewEligibility(req, res) {
   const orderIds = await Order.find({
     userId: req.params.userId,
     status: "DELIVERED",
   }).distinct("_id");
+
   const exists = await OrderItem.exists({
     orderId: { $in: orderIds },
     productId: req.params.productId,
   });
-  ok(res, { eligible: Boolean(exists) });
+
+  ok(res, {
+    eligible: Boolean(exists),
+  });
 }
+
 async function internalVendorOrders(req, res) {
-  const ids = await OrderItem.find({ vendorId: req.params.vendorId }).distinct(
-    "orderId",
-  );
+  const ids = await OrderItem.find({
+    vendorId: req.params.vendorId,
+  }).distinct("orderId");
+
   ok(res, ids);
 }
+
 async function internalVendorItems(req, res) {
-  ok(res, await OrderItem.find({ vendorId: req.params.vendorId }).lean());
+  ok(
+    res,
+    await OrderItem.find({
+      vendorId: req.params.vendorId,
+    }).lean(),
+  );
 }
+
 module.exports = {
   createOrder,
   listMyOrders,
@@ -2334,15 +2793,115 @@ module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safe
 const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},addressId:{type:mongoose.Schema.Types.ObjectId,required:true},status:{type:String,enum:['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED'],default:'PLACED',index:true},totalAmount:{type:Number,required:true,min:0},paymentStatus:{type:String,enum:['PENDING','PAID','FAILED','REFUNDED'],default:'PAID',index:true},paymentMethod:{type:String,enum:['STRIPE_TEST'],default:'STRIPE_TEST'},stripeSessionId:{type:String,unique:true,sparse:true,index:true},stripePaymentIntentId:{type:String,default:null},orderedAt:{type:Date,default:Date.now}},{timestamps:true});module.exports=mongoose.model('Order',schema);
 
 ===== OrderItem.js =====
-const mongoose=require('mongoose');const schema=new mongoose.Schema({orderId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},productId:{type:mongoose.Schema.Types.ObjectId,required:true},vendorId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},name:{type:String,required:true},quantity:{type:Number,required:true,min:1},unitPrice:{type:Number,required:true,min:0},vendorStatus:{type:String,enum:['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED'],default:'PLACED'}},{timestamps:true});module.exports=mongoose.model('OrderItem',schema);
+const mongoose = require("mongoose");
+const schema = new mongoose.Schema(
+  {
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    productId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    name: { type: String, required: true },
+    quantity: { type: Number, required: true, min: 1 },
+    unitPrice: { type: Number, required: true, min: 0 },
+    vendorStatus: {
+      type: String,
+      enum: [
+        "PLACED",
+        "CONFIRMED",
+        "PACKED",
+        "DISPATCHED",
+        "OUT_FOR_DELIVERY",
+        "DELIVERED",
+        "CANCELLED",
+        "RETURNED",
+      ],
+      default: "PLACED",
+    },
+  },
+  { timestamps: true },
+);
+module.exports = mongoose.model("OrderItem", schema);
 
 ===== OrderStatusHistory.js =====
 const mongoose=require('mongoose');const schema=new mongoose.Schema({orderId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},orderItemId:{type:mongoose.Schema.Types.ObjectId},status:{type:String,enum:['PLACED','CONFIRMED','PACKED','DISPATCHED','OUT_FOR_DELIVERY','DELIVERED','CANCELLED','RETURNED'],required:true},updatedBy:{type:mongoose.Schema.Types.ObjectId,required:true},timestamp:{type:Date,default:Date.now},remarks:String},{timestamps:false});schema.index({orderItemId:1,timestamp:1});module.exports=mongoose.model('OrderStatusHistory',schema);
 
 ===== index.js =====
-const router=require('express').Router();const c=require('../controllers/order.controller');const validate=require('../middleware/validate');const {authenticate,authorize}=require('../middleware/auth');const internal=require('../middleware/internal');const {createOrderSchema,statusSchema}=require('../validators/order');
-router.post('/api/orders',authenticate,authorize('USER'),validate(createOrderSchema),c.createOrder);router.get('/api/orders',authenticate,authorize('USER'),c.listMyOrders);router.get('/api/orders/vendor/list',authenticate,authorize('VENDOR'),c.vendorList);router.patch('/api/orders/vendor/:orderId/items/:itemId/status',authenticate,authorize('VENDOR'),validate(statusSchema),c.vendorUpdateStatus);router.get('/api/orders/admin/list',authenticate,authorize('ADMIN'),c.adminList);router.patch('/api/orders/admin/:orderId/items/:itemId/status',authenticate,authorize('ADMIN'),validate(statusSchema),c.adminUpdateStatus);router.get('/api/orders/:id',authenticate,authorize('USER','VENDOR','ADMIN'),c.getById);router.get('/api/orders/:id/tracking',authenticate,authorize('USER','VENDOR','ADMIN'),c.tracking);
-router.post('/internal/orders/paid',internal,c.internalCreatePaid);router.get('/internal/orders/review-eligibility/:userId/:productId',internal,c.internalReviewEligibility);router.get('/internal/orders/vendor/:vendorId/order-ids',internal,c.internalVendorOrders);router.get('/internal/orders/vendor/:vendorId/items',internal,c.internalVendorItems);module.exports=router;
+const router = require("express").Router();
+const c = require("../controllers/order.controller");
+const validate = require("../middleware/validate");
+const { authenticate, authorize } = require("../middleware/auth");
+const internal = require("../middleware/internal");
+const { createOrderSchema, statusSchema } = require("../validators/order");
+router.post(
+  "/api/orders",
+  authenticate,
+  authorize("USER"),
+  validate(createOrderSchema),
+  c.createOrder,
+);
+router.get("/api/orders", authenticate, authorize("USER"), c.listMyOrders);
+router.get(
+  "/api/orders/vendor/list",
+  authenticate,
+  authorize("VENDOR"),
+  c.vendorList,
+);
+router.patch(
+  "/api/orders/vendor/:orderId/items/:itemId/status",
+  authenticate,
+  authorize("VENDOR"),
+  validate(statusSchema),
+  c.vendorUpdateStatus,
+);
+router.get(
+  "/api/orders/admin/list",
+  authenticate,
+  authorize("ADMIN"),
+  c.adminList,
+);
+router.patch(
+  "/api/orders/admin/:orderId/items/:itemId/status",
+  authenticate,
+  authorize("ADMIN"),
+  validate(statusSchema),
+  c.adminUpdateStatus,
+);
+router.get(
+  "/api/orders/:id",
+  authenticate,
+  authorize("USER", "VENDOR", "ADMIN"),
+  c.getById,
+);
+router.get(
+  "/api/orders/:id/tracking",
+  authenticate,
+  authorize("USER", "VENDOR", "ADMIN"),
+  c.tracking,
+);
+router.post("/internal/orders/paid", internal, c.internalCreatePaid);
+router.get(
+  "/internal/orders/review-eligibility/:userId/:productId",
+  internal,
+  c.internalReviewEligibility,
+);
+router.get(
+  "/internal/orders/vendor/:vendorId/order-ids",
+  internal,
+  c.internalVendorOrders,
+);
+router.get(
+  "/internal/orders/vendor/:vendorId/items",
+  internal,
+  c.internalVendorItems,
+);
+module.exports = router;
 
 ===== server.js =====
 require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5005);
@@ -3109,19 +3668,18 @@ function getEnv(name, fallback = undefined) {
 module.exports = { getEnv };
 
 ===== product.controller.js =====
-const Product = require('../models/Product');
-const { ok, fail } = require('../utils/apiResponse');
+const Product = require("../models/Product");
+const { ok, fail } = require("../utils/apiResponse");
 const {
   pagination,
   buildProductFilter,
   productSort,
-} = require('../services/query.service');
-
+} = require("../services/query.service");
+const { ingestProduct, deleteProduct } = require("../services/rag.service");
 const {
   getVendorByUserId,
   getAllVendors,
-} = require('../services/vendor.service');
-
+} = require("../services/vendor.service");
 
 async function list(req, res) {
   const { page, limit, skip } = pagination(req);
@@ -3148,16 +3706,12 @@ async function list(req, res) {
   const vendors = await getAllVendors();
 
   const vendorMap = new Map(
-    vendors.map((vendor) => [
-      String(vendor.userId),
-      vendor,
-    ]),
+    vendors.map((vendor) => [String(vendor.userId), vendor]),
   );
 
   const productsWithVendor = items.map((product) => ({
     ...product,
-    vendor:
-      vendorMap.get(String(product.vendorId)) || null,
+    vendor: vendorMap.get(String(product.vendorId)) || null,
   }));
 
   return ok(res, {
@@ -3169,18 +3723,11 @@ async function list(req, res) {
   });
 }
 
-
 async function getById(req, res) {
-  const product = await Product
-    .findById(req.params.id)
-    .lean();
+  const product = await Product.findById(req.params.id).lean();
 
   if (!product) {
-    return fail(
-      res,
-      'Product not found.',
-      404,
-    );
+    return fail(res, "Product not found.", 404);
   }
 
   /*
@@ -3188,9 +3735,7 @@ async function getById(req, res) {
    * through the Vendor Service using the Product.vendorId,
    * which is the user's ID.
    */
-  const vendor = await getVendorByUserId(
-    product.vendorId,
-  );
+  const vendor = await getVendorByUserId(product.vendorId);
 
   return ok(res, {
     ...product,
@@ -3198,27 +3743,22 @@ async function getById(req, res) {
   });
 }
 
-
 async function create(req, res) {
   const product = await Product.create({
     ...req.body,
-    vendorId: req.user.id,
+    vendorId: req.user._id,
   });
 
-  return ok(
-    res,
-    product,
-    'Product created.',
-    201,
-  );
-}
+  await ingestProduct(product._id);
 
+  return ok(res, product, "Product created.", 201);
+}
 
 async function update(req, res) {
   const product = await Product.findOneAndUpdate(
     {
       _id: req.params.id,
-      vendorId: req.user.id,
+      vendorId: req.user._id,
     },
     req.body,
     {
@@ -3228,60 +3768,40 @@ async function update(req, res) {
   );
 
   if (!product) {
-    return fail(
-      res,
-      'Product not found or not owned by you.',
-      404,
-    );
+    return fail(res, "Product not found or not owned by you.", 404);
   }
 
-  return ok(
-    res,
-    product,
-    'Product updated.',
-  );
-}
+  await ingestProduct(product._id);
 
+  return ok(res, product, "Product updated.");
+}
 
 async function remove(req, res) {
   const product = await Product.findOneAndDelete({
     _id: req.params.id,
-    vendorId: req.user.id,
+    vendorId: req.user._id,
   });
 
   if (!product) {
-    return fail(
-      res,
-      'Product not found or not owned by you.',
-      404,
-    );
+    return fail(res, "Product not found or not owned by you.", 404);
   }
 
-  return ok(
-    res,
-    null,
-    'Product deleted.',
-  );
-}
+  await deleteProduct(product._id);
 
+  return ok(res, null, "Product deleted.");
+}
 
 async function updateStock(req, res) {
   const stock = Number(req.body.stock);
 
-  if (
-    !Number.isInteger(stock) ||
-    stock < 0
-  ) {
-    return fail(
-      res,
-      'Stock must be a non-negative integer.',
-    );
+  if (!Number.isInteger(stock) || stock < 0) {
+    return fail(res, "Stock must be a non-negative integer.");
   }
 
   const product = await Product.findOneAndUpdate(
     {
       _id: req.params.id,
-      vendorId: req.user.id,
+      vendorId: req.user._id,
     },
     {
       stock,
@@ -3293,49 +3813,35 @@ async function updateStock(req, res) {
   );
 
   if (!product) {
-    return fail(
-      res,
-      'Product not found or not owned by you.',
-      404,
-    );
+    return fail(res, "Product not found or not owned by you.", 404);
   }
 
-  return ok(
-    res,
-    product,
-    'Stock updated.',
-  );
+  await ingestProduct(product._id);
+
+  return ok(res, product, "Stock updated.");
 }
 
-
 async function internalGet(req, res) {
-  const product = await Product
-    .findById(req.params.id)
-    .lean();
+  const product = await Product.findById(req.params.id).lean();
 
   if (!product) {
-    return fail(
-      res,
-      'Product not found.',
-      404,
-    );
+    return fail(res, "Product not found.", 404);
   }
 
   return ok(res, product);
 }
 
+async function internalList(req, res) {
+  const products = await Product.find().select("_id").lean();
+
+  return ok(res, products);
+}
 
 async function internalReserve(req, res) {
   const { items } = req.body;
 
-  if (
-    !Array.isArray(items) ||
-    !items.length
-  ) {
-    return fail(
-      res,
-      'items are required.',
-    );
+  if (!Array.isArray(items) || !items.length) {
+    return fail(res, "items are required.");
   }
 
   const session = await Product.startSession();
@@ -3345,24 +3851,23 @@ async function internalReserve(req, res) {
 
     await session.withTransaction(async () => {
       for (const item of items) {
-        const product =
-          await Product.findOneAndUpdate(
-            {
-              _id: item.productId,
-              stock: {
-                $gte: item.quantity,
-              },
+        const product = await Product.findOneAndUpdate(
+          {
+            _id: item.productId,
+            stock: {
+              $gte: item.quantity,
             },
-            {
-              $inc: {
-                stock: -item.quantity,
-              },
+          },
+          {
+            $inc: {
+              stock: -item.quantity,
             },
-            {
-              new: true,
-              session,
-            },
-          );
+          },
+          {
+            new: true,
+            session,
+          },
+        );
 
         if (!product) {
           const error = new Error(
@@ -3370,7 +3875,6 @@ async function internalReserve(req, res) {
           );
 
           error.status = 409;
-
           throw error;
         }
 
@@ -3378,25 +3882,22 @@ async function internalReserve(req, res) {
       }
     });
 
-    return ok(
-      res,
-      result,
-      'Stock reserved.',
-    );
+    // Sync updated stock to RAG
+    for (const product of result) {
+      await ingestProduct(product._id);
+    }
+
+    return ok(res, result, "Stock reserved.");
   } finally {
     await session.endSession();
   }
 }
 
-
 async function internalRelease(req, res) {
   const { items } = req.body;
 
   if (!Array.isArray(items)) {
-    return fail(
-      res,
-      'items are required.',
-    );
+    return fail(res, "items are required.");
   }
 
   await Product.bulkWrite(
@@ -3414,44 +3915,36 @@ async function internalRelease(req, res) {
     })),
   );
 
-  return ok(
-    res,
-    null,
-    'Stock released.',
-  );
+  // Sync all changed products to RAG
+  for (const item of items) {
+    await ingestProduct(item.productId);
+  }
+
+  return ok(res, null, "Stock released.");
 }
 
-
 async function internalRating(req, res) {
-  const {
-    rating,
-    reviewCount,
-  } = req.body;
+  const { rating, reviewCount } = req.body;
 
-  const product =
-    await Product.findByIdAndUpdate(
-      req.params.id,
-      {
-        rating: Number(rating) || 0,
-        reviewCount: Number(reviewCount) || 0,
-      },
-      {
-        new: true,
-        runValidators: true,
-      },
-    );
+  const product = await Product.findByIdAndUpdate(
+    req.params.id,
+    {
+      rating: Number(rating) || 0,
+      reviewCount: Number(reviewCount) || 0,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
 
   if (!product) {
-    return fail(
-      res,
-      'Product not found.',
-      404,
-    );
+    return fail(res, "Product not found.", 404);
   }
+  await ingestProduct(product._id);
 
   return ok(res, product);
 }
-
 
 module.exports = {
   list,
@@ -3461,6 +3954,7 @@ module.exports = {
   remove,
   updateStock,
   internalGet,
+  internalList,
   internalReserve,
   internalRelease,
   internalRating,
@@ -3583,15 +4077,102 @@ module.exports={notFound,errorHandler};
 module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
 
 ===== validate.js =====
-module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+module.exports =
+  (schema, source = "body") =>
+  (req, res, next) => {
+    const result = schema.safeParse(req[source]);
+    if (!result.success)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Invalid request.",
+          details: result.error.issues.map((i) => ({
+            path: i.path,
+            message: i.message,
+          })),
+        });
+    req[source] = result.data;
+    next();
+  };
 
 ===== Product.js =====
-const mongoose=require('mongoose');const schema=new mongoose.Schema({vendorId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},name:{type:String,required:true,trim:true,index:true},description:{type:String,required:true},brand:{type:String,required:true,trim:true,index:true},category:{type:String,enum:['ELECTRONICS','MOBILE','LAPTOP','AUDIO','TV','HOME_APPLIANCES','ACCESSORIES','OTHER'],required:true,index:true},price:{type:Number,required:true,min:0},stock:{type:Number,required:true,min:0,default:0},imageUrl:String,rating:{type:Number,min:0,max:5,default:0},reviewCount:{type:Number,default:0}},{timestamps:true});schema.index({name:'text',brand:'text',description:'text'});schema.index({category:1,price:1,rating:-1});module.exports=mongoose.model('Product',schema);
+const mongoose = require("mongoose");
+const schema = new mongoose.Schema(
+  {
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    name: { type: String, required: true, trim: true, index: true },
+    description: { type: String, required: true },
+    brand: { type: String, required: true, trim: true, index: true },
+    category: {
+      type: String,
+      enum: [
+        "ELECTRONICS",
+        "MOBILE",
+        "LAPTOP",
+        "AUDIO",
+        "TV",
+        "HOME_APPLIANCES",
+        "ACCESSORIES",
+        "OTHER",
+      ],
+      required: true,
+      index: true,
+    },
+    price: { type: Number, required: true, min: 0 },
+    stock: { type: Number, required: true, min: 0, default: 0 },
+    imageUrl: String,
+    rating: { type: Number, min: 0, max: 5, default: 0 },
+    reviewCount: { type: Number, default: 0 },
+  },
+  { timestamps: true },
+);
+schema.index({ name: "text", brand: "text", description: "text" });
+schema.index({ category: 1, price: 1, rating: -1 });
+module.exports = mongoose.model("Product", schema);
 
 ===== index.js =====
-const router=require('express').Router();const c=require('../controllers/product.controller');const qa=require('../controllers/qa.controller');const validate=require('../middleware/validate');const {authenticate,authorize}=require('../middleware/auth');const internal=require('../middleware/internal');const {productSchema}=require('../validators/product');
-router.get('/api/products',c.list);router.get('/api/products/:id',c.getById);router.post('/api/products/:id/qa',qa.ask);router.post('/api/products',authenticate,authorize('VENDOR'),validate(productSchema),c.create);router.put('/api/products/:id',authenticate,authorize('VENDOR'),validate(productSchema.partial()),c.update);router.delete('/api/products/:id',authenticate,authorize('VENDOR'),c.remove);router.patch('/api/products/:id/stock',authenticate,authorize('VENDOR'),c.updateStock);
-router.get('/internal/products/:id',internal,c.internalGet);router.post('/internal/products/reserve',internal,c.internalReserve);router.post('/internal/products/release',internal,c.internalRelease);router.patch('/internal/products/:id/rating',internal,c.internalRating);module.exports=router;
+const router = require("express").Router();
+const c = require("../controllers/product.controller");
+const qa = require("../controllers/qa.controller");
+const validate = require("../middleware/validate");
+const { authenticate, authorize } = require("../middleware/auth");
+const internal = require("../middleware/internal");
+const { productSchema } = require("../validators/product");
+router.get("/api/products", c.list);
+router.get("/api/products/:id", c.getById);
+router.post("/api/products/:id/qa", qa.ask);
+router.post(
+  "/api/products",
+  authenticate,
+  authorize("VENDOR"),
+  validate(productSchema),
+  c.create,
+);
+router.get("/internal/products", internal, c.internalList);
+router.put(
+  "/api/products/:id",
+  authenticate,
+  authorize("VENDOR"),
+  validate(productSchema.partial()),
+  c.update,
+);
+router.delete("/api/products/:id", authenticate, authorize("VENDOR"), c.remove);
+router.patch(
+  "/api/products/:id/stock",
+  authenticate,
+  authorize("VENDOR"),
+  c.updateStock,
+);
+router.get("/internal/products/:id", internal, c.internalGet);
+router.post("/internal/products/reserve", internal, c.internalReserve);
+router.post("/internal/products/release", internal, c.internalRelease);
+router.patch("/internal/products/:id/rating", internal, c.internalRating);
+module.exports = router;
 
 ===== server.js =====
 require("dotenv").config({
@@ -3618,6 +4199,70 @@ const PORT = Number(process.env.PORT || 5003);
 function pagination(req){const page=Math.max(parseInt(req.query.page||'1',10),1);const limit=Math.min(Math.max(parseInt(req.query.limit||'9',10),1),100);return {page,limit,skip:(page-1)*limit};}
 function buildProductFilter(q){const f={};if(q.q){const e=q.q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');f.$or=[{name:{$regex:e,$options:'i'}},{brand:{$regex:e,$options:'i'}},{description:{$regex:e,$options:'i'}}];}if(q.brand)f.brand=q.brand;if(q.category)f.category=q.category;if(q.minPrice!==undefined||q.maxPrice!==undefined){f.price={};if(q.minPrice!==undefined)f.price.$gte=Number(q.minPrice);if(q.maxPrice!==undefined)f.price.$lte=Number(q.maxPrice);}if(q.rating)f.rating={$gte:Number(q.rating)};if(q.stock==='in')f.stock={$gt:0};if(q.stock==='out')f.stock=0;if(q.vendorId)f.vendorId=q.vendorId;return f;}
 function productSort(v){if(v==='low')return {price:1};if(v==='high')return {price:-1};if(v==='rating')return {rating:-1};return {createdAt:-1};}module.exports={pagination,buildProductFilter,productSort};
+
+===== rag.service.js =====
+const { postJson, request } = require("../utils/serviceClient");
+
+const RAG_SERVICE = process.env.RAG_SERVICE_URL || "http://localhost:5010";
+
+async function ingestProduct(productId) {
+  try {
+    const result = await postJson(
+      RAG_SERVICE,
+      `/internal/products/${productId}/ingest`,
+      {},
+    );
+
+    if (!result.ok) {
+      console.error(
+        `RAG ingestion failed for product ${productId}:`,
+        result.data?.message || `HTTP ${result.status}`,
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error(
+      `Could not connect to RAG service for product ${productId}:`,
+      error.message,
+    );
+
+    return null;
+  }
+}
+
+async function deleteProduct(productId) {
+  try {
+    const result = await request(
+      RAG_SERVICE,
+      `/internal/products/${productId}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    if (!result.ok) {
+      console.error(
+        `RAG delete failed for product ${productId}:`,
+        result.data?.message || `HTTP ${result.status}`,
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error(
+      `Could not connect to RAG service for deleting product ${productId}:`,
+      error.message,
+    );
+
+    return null;
+  }
+}
+
+module.exports = {
+  ingestProduct,
+  deleteProduct,
+};
 
 ===== vendor.service.js =====
 const { getJson } = require('../utils/serviceClient');
@@ -3725,7 +4370,26 @@ async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,pa
 module.exports={request,getJson,postJson,patchJson};
 
 ===== product.js =====
-const {z}=require('zod');const productSchema=z.object({name:z.string().min(1),description:z.string().min(1),brand:z.string().min(1),category:z.enum(['ELECTRONICS','MOBILE','LAPTOP','AUDIO','TV','HOME_APPLIANCES','ACCESSORIES','OTHER']),price:z.number().nonnegative(),stock:z.number().int().nonnegative().optional(),imageUrl:z.string().optional()});module.exports={productSchema};
+const { z } = require("zod");
+const productSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  brand: z.string().min(1),
+  category: z.enum([
+    "ELECTRONICS",
+    "MOBILE",
+    "LAPTOP",
+    "AUDIO",
+    "TV",
+    "HOME_APPLIANCES",
+    "ACCESSORIES",
+    "OTHER",
+  ]),
+  price: z.number().nonnegative(),
+  stock: z.number().int().nonnegative().optional(),
+  imageUrl: z.string().optional(),
+});
+module.exports = { productSchema };
 
 ===== app.js =====
 const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
@@ -3755,7 +4419,46 @@ function getEnv(name, fallback = undefined) {
 module.exports = { getEnv };
 
 ===== rag.controller.js =====
-const graph=require('../rag/graph');const {ingestProduct}=require('../rag/ingest');const {ok,fail}=require('../utils/apiResponse');async function qa(req,res){const {question}=req.body;if(!question||question.trim().length<2)return fail(res,'Question is required.');const result=await graph.invoke({question:question.trim(),productId:req.params.id});ok(res,{answer:result.answer});}async function ingest(req,res){await ingestProduct(req.params.id);ok(res,null,'Product indexed.');}module.exports={qa,ingest};
+const graph = require("../rag/graph");
+const {
+  ingestProduct,
+  deleteProductFromVectorStore,
+} = require("../rag/ingest");
+
+const { ok, fail } = require("../utils/apiResponse");
+
+async function qa(req, res) {
+  const { question } = req.body;
+
+  if (!question || question.trim().length < 2) {
+    return fail(res, "Question is required.");
+  }
+
+  const result = await graph.invoke({
+    question: question.trim(),
+    productId: req.params.id,
+  });
+
+  ok(res, {
+    answer: result.answer,
+  });
+}
+
+async function ingest(req, res) {
+  await ingestProduct(req.params.id);
+  ok(res, null, "Product indexed.");
+}
+
+async function remove(req, res) {
+  await deleteProductFromVectorStore(req.params.id);
+  ok(res, null, "Product removed from index.");
+}
+
+module.exports = {
+  qa,
+  ingest,
+  remove,
+};
 
 ===== auth.js =====
 const jwt = require('jsonwebtoken');
@@ -3880,19 +4583,131 @@ const {HuggingFaceInferenceEmbeddings}=require('@langchain/community/embeddings/
 const {StateGraph,StateSchema,START,END}=require('@langchain/langgraph');const {z}=require('zod');const {getVectorStore}=require('./vectorStore');const {generateAnswer}=require('../utils/hfClient');const State=new StateSchema({question:z.string(),productId:z.string(),context:z.string().default(''),answer:z.string().default('')});async function retrieve(s){const v=await getVectorStore();const docs=await v.similaritySearch(s.question,4,{productId:s.productId});return {context:docs.map(d=>d.pageContent).join('\n\n---\n\n')};}async function generate(s){const prompt=`You are ShopSphere's Product Q&A assistant. Answer using ONLY the product context. Do not invent specifications. If unavailable, say "I don't have enough information about that." Keep it concise.\n\nPRODUCT CONTEXT:\n${s.context}\n\nUSER QUESTION:\n${s.question}\n\nANSWER:`;return {answer:(await generateAnswer(prompt)).trim()};}module.exports=new StateGraph(State).addNode('retrieve',retrieve).addNode('generate',generate).addEdge(START,'retrieve').addEdge('retrieve','generate').addEdge('generate',END).compile();
 
 ===== ingest.js =====
-const {Document}=require('@langchain/core/documents');const {getVectorStore}=require('./vectorStore');const {getJson}=require('../utils/serviceClient');const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const REVIEWS=()=>process.env.REVIEW_SERVICE_URL||'http://localhost:5009';function id(p){return `product-${p._id||p.id}`;}async function buildProductDocument(productId){const p=await getJson(PRODUCT(),`/internal/products/${productId}`);if(!p.ok)throw new Error('Product not found');const product=p.data.data;const r=await getJson(REVIEWS(),`/api/reviews/product/${productId}`);const reviews=r.data?.data||[];const text=`Product Name: ${product.name}
+const { Document } = require("@langchain/core/documents");
+const { getVectorStore } = require("./vectorStore");
+const { getJson } = require("../utils/serviceClient");
+
+const PRODUCT = () =>
+  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+
+const REVIEWS = () => process.env.REVIEW_SERVICE_URL || "http://localhost:5009";
+
+function id(p) {
+  return `product-${p._id || p.id}`;
+}
+
+async function buildProductDocument(productId) {
+  const p = await getJson(PRODUCT(), `/internal/products/${productId}`);
+
+  if (!p.ok) throw new Error("Product not found");
+
+  const product = p.data.data;
+
+  const r = await getJson(REVIEWS(), `/api/reviews/product/${productId}`);
+
+  const reviews = r.data?.data || [];
+
+  const text = `Product Name: ${product.name}
 Brand: ${product.brand}
 Category: ${product.category}
 Price: â‚¹${product.price}
 Stock: ${product.stock}
-Rating: ${product.rating||0}/5
-Review Count: ${product.reviewCount||0}
+Rating: ${product.rating || 0}/5
+Review Count: ${product.reviewCount || 0}
 
 Description:
 ${product.description}
 
 Customer Reviews:
-${reviews.length?reviews.map(x=>`Rating: ${x.rating}/5\nReview: ${x.review}`).join('\n\n'):'No reviews available.'}`;return new Document({pageContent:text,metadata:{productId:String(product._id),type:'product',name:product.name,brand:product.brand,category:product.category}});}async function ingestProduct(productId){const v=await getVectorStore();const d=await buildProductDocument(productId);const docId=id(d.metadata);try{await v.delete({ids:[docId]});}catch{}await v.addDocuments([d],{ids:[docId]});return d;}module.exports={buildProductDocument,ingestProduct};
+${
+  reviews.length
+    ? reviews
+        .map(
+          (x) => `Rating: ${x.rating}/5
+Review: ${x.review}`,
+        )
+        .join("\n\n")
+    : "No reviews available."
+}`;
+
+  return new Document({
+    pageContent: text,
+    metadata: {
+      productId: String(product._id || product.id),
+      type: "product",
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+    },
+  });
+}
+
+async function ingestProduct(productId) {
+  const vectorStore = await getVectorStore();
+  const document = await buildProductDocument(productId);
+  const docId = id(document.metadata);
+
+  try {
+    await vectorStore.delete({
+      ids: [docId],
+    });
+  } catch (error) {
+    // Document may not exist yet
+  }
+
+  await vectorStore.addDocuments([document], { ids: [docId] });
+
+  return document;
+}
+
+async function deleteProductFromVectorStore(productId) {
+  const vectorStore = await getVectorStore();
+
+  try {
+    await vectorStore.delete({
+      ids: [`product-${productId}`],
+    });
+  } catch (error) {
+    console.error(
+      `Failed to delete product ${productId} from vector store:`,
+      error.message,
+    );
+  }
+}
+
+async function ingestAllProducts() {
+  console.log("Starting product ingestion...");
+
+  const response = await getJson(PRODUCT(), "/internal/products");
+
+  if (!response.ok) {
+    throw new Error(response.data?.message || "Failed to fetch products");
+  }
+
+  const products = response.data?.data || [];
+
+  console.log(`Found ${products.length} products to ingest.`);
+
+  for (const product of products) {
+    const productId = product._id || product.id;
+
+    try {
+      await ingestProduct(productId);
+      console.log(`âœ“ Ingested product: ${productId}`);
+    } catch (error) {
+      console.error(`âœ— Failed to ingest product ${productId}:`, error.message);
+    }
+  }
+
+  console.log("Product ingestion completed.");
+}
+
+module.exports = {
+  buildProductDocument,
+  ingestProduct,
+  ingestAllProducts,
+  deleteProductFromVectorStore,
+};
 
 ===== vectorStore.js =====
 const { Chroma } = require("@langchain/community/vectorstores/chroma");
@@ -3937,11 +4752,41 @@ async function getVectorStore() {
 module.exports = { getVectorStore };
 
 ===== index.js =====
-const router=require('express').Router();const c=require('../controllers/rag.controller');const internal=require('../middleware/internal');router.post('/internal/products/:id/qa',internal,c.qa);router.post('/internal/products/:id/ingest',internal,c.ingest);module.exports=router;
+const router = require("express").Router();
+
+const c = require("../controllers/rag.controller");
+const internal = require("../middleware/internal");
+
+router.post("/internal/products/:id/qa", internal, c.qa);
+
+router.post("/internal/products/:id/ingest", internal, c.ingest);
+
+router.delete("/internal/products/:id", internal, c.remove);
+
+module.exports = router;
 
 ===== server.js =====
-require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5010);
-(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere rag service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+
+const app = require("./app");
+const connectDB = require("./config/db");
+
+const PORT = Number(process.env.PORT || 5010);
+
+(async () => {
+  try {
+    await connectDB();
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`ShopSphere RAG service running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("Startup failed:", error);
+    process.exit(1);
+  }
+})();
 
 ===== apiResponse.js =====
 function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
@@ -3996,14 +4841,139 @@ function getEnv(name, fallback = undefined) {
 module.exports = { getEnv };
 
 ===== review.controller.js =====
-const mongoose=require('mongoose');const Review=require('../models/Review');const {getJson,patchJson,postJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ORDER=()=>process.env.ORDER_SERVICE_URL||'http://localhost:5005';const RAG=()=>process.env.RAG_SERVICE_URL||'http://localhost:5010';
-async function listForProduct(req,res){const reviews=await Review.find({productId:req.params.productId}).sort({createdAt:-1}).lean();ok(res,reviews);}
-async function recalc(productId){const stats=await Review.aggregate([{$match:{productId:new mongoose.Types.ObjectId(productId)}},{$group:{_id:'$productId',averageRating:{$avg:'$rating'},reviewCount:{$sum:1}}}]);const rating=stats.length?Number(stats[0].averageRating.toFixed(2)):0;const count=stats.length?stats[0].reviewCount:0;const r=await patchJson(PRODUCT(),`/internal/products/${productId}/rating`,{rating,reviewCount:count});if(!r.ok)throw new Error('Unable to update product rating');}
-async function notifyRag(productId){try{await postJson(RAG(),`/internal/products/${productId}/ingest`,{});}catch(e){console.error('RAG reindex failed:',e.message);}}
-async function create(req,res){const product=await getJson(PRODUCT(),`/internal/products/${req.params.productId}`);if(!product.ok)return fail(res,'Product not found.',404);const numeric=Number(req.body.rating);if(!Number.isInteger(numeric)||numeric<1||numeric>5)return fail(res,'Rating must be an integer between 1 and 5.',400);if(!req.body.review||req.body.review.trim().length<2)return fail(res,'Review must contain at least 2 characters.',400);const elig=await getJson(ORDER(),`/internal/orders/review-eligibility/${req.user.id}/${req.params.productId}`);if(!elig.data?.data?.eligible)return fail(res,'You can review this product only after purchasing it and receiving a delivered order.',403);if(await Review.exists({productId:req.params.productId,userId:req.user.id}))return fail(res,'You have already reviewed this product.',409);const created=await Review.create({productId:req.params.productId,userId:req.user.id,rating:numeric,review:req.body.review.trim()});await recalc(created.productId);notifyRag(created.productId);ok(res,created,'Review submitted successfully.',201);}
-async function update(req,res){const r=await Review.findOne({_id:req.params.id,userId:req.user.id});if(!r)return fail(res,'Review not found.',404);r.rating=Number(req.body.rating);r.review=req.body.review.trim();if(!Number.isInteger(r.rating)||r.rating<1||r.rating>5)return fail(res,'Rating must be an integer between 1 and 5.',400);await r.save();await recalc(r.productId);notifyRag(r.productId);ok(res,r,'Review updated successfully.');}
-async function remove(req,res){const filter=req.user.role==='ADMIN'?{_id:req.params.id}:{_id:req.params.id,userId:req.user.id};const r=await Review.findOneAndDelete(filter);if(!r)return fail(res,'Review not found.',404);await recalc(r.productId);notifyRag(r.productId);ok(res,null,'Review deleted successfully.');}
-module.exports={listForProduct,create,update,remove};
+const mongoose = require("mongoose");
+const Review = require("../models/Review");
+const { getJson, patchJson, postJson } = require("../utils/serviceClient");
+const { ok, fail } = require("../utils/apiResponse");
+const PRODUCT = () =>
+  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+const ORDER = () => process.env.ORDER_SERVICE_URL || "http://localhost:5005";
+const RAG = () => process.env.RAG_SERVICE_URL || "http://localhost:5010";
+async function listForProduct(req, res) {
+  const reviews = await Review.find({ productId: req.params.productId })
+    .sort({ createdAt: -1 })
+    .lean();
+  ok(res, reviews);
+}
+async function recalc(productId) {
+  const stats = await Review.aggregate([
+    { $match: { productId: new mongoose.Types.ObjectId(productId) } },
+    {
+      $group: {
+        _id: "$productId",
+        averageRating: { $avg: "$rating" },
+        reviewCount: { $sum: 1 },
+      },
+    },
+  ]);
+  const rating = stats.length ? Number(stats[0].averageRating.toFixed(2)) : 0;
+  const count = stats.length ? stats[0].reviewCount : 0;
+  const r = await patchJson(
+    PRODUCT(),
+    `/internal/products/${productId}/rating`,
+    { rating, reviewCount: count },
+  );
+  if (!r.ok) throw new Error("Unable to update product rating");
+}
+async function notifyRag(productId) {
+  try {
+    await postJson(RAG(), `/internal/products/${productId}/ingest`, {});
+  } catch (e) {
+    console.error("RAG reindex failed:", e.message);
+  }
+}
+async function create(req, res) {
+  const userId = req.auth?.id || req.user?.id || req.user?._id?.toString();
+
+  if (!userId) {
+    return fail(res, "Authenticated user ID not found.", 401);
+  }
+
+  const product = await getJson(
+    PRODUCT(),
+    `/internal/products/${req.params.productId}`,
+  );
+
+  if (!product.ok) {
+    return fail(res, "Product not found.", 404);
+  }
+
+  const numeric = Number(req.body.rating);
+
+  if (!Number.isInteger(numeric) || numeric < 1 || numeric > 5) {
+    return fail(res, "Rating must be an integer between 1 and 5.", 400);
+  }
+
+  if (!req.body.review || req.body.review.trim().length < 2) {
+    return fail(res, "Review must contain at least 2 characters.", 400);
+  }
+
+  const elig = await getJson(
+    ORDER(),
+    `/internal/orders/review-eligibility/${userId}/${req.params.productId}`,
+  );
+
+  console.log("REVIEW ELIGIBILITY:", {
+    userId,
+    productId: req.params.productId,
+    status: elig.status,
+    response: elig.data,
+  });
+
+  if (!elig.ok || !elig.data?.data?.eligible) {
+    return fail(
+      res,
+      "You can review this product only after purchasing it and receiving a delivered order.",
+      403,
+    );
+  }
+
+  const alreadyExists = await Review.exists({
+    productId: req.params.productId,
+    userId,
+  });
+
+  if (alreadyExists) {
+    return fail(res, "You have already reviewed this product.", 409);
+  }
+
+  const created = await Review.create({
+    productId: req.params.productId,
+    userId,
+    rating: numeric,
+    review: req.body.review.trim(),
+  });
+
+  await recalc(created.productId);
+  notifyRag(created.productId);
+
+  ok(res, created, "Review submitted successfully.", 201);
+}
+
+async function update(req, res) {
+  const r = await Review.findOne({ _id: req.params.id, userId: req.user.id });
+  if (!r) return fail(res, "Review not found.", 404);
+  r.rating = Number(req.body.rating);
+  r.review = req.body.review.trim();
+  if (!Number.isInteger(r.rating) || r.rating < 1 || r.rating > 5)
+    return fail(res, "Rating must be an integer between 1 and 5.", 400);
+  await r.save();
+  await recalc(r.productId);
+  notifyRag(r.productId);
+  ok(res, r, "Review updated successfully.");
+}
+async function remove(req, res) {
+  const filter =
+    req.user.role === "ADMIN"
+      ? { _id: req.params.id }
+      : { _id: req.params.id, userId: req.user.id };
+  const r = await Review.findOneAndDelete(filter);
+  if (!r) return fail(res, "Review not found.", 404);
+  await recalc(r.productId);
+  notifyRag(r.productId);
+  ok(res, null, "Review deleted successfully.");
+}
+module.exports = { listForProduct, create, update, remove };
 
 ===== auth.js =====
 const jwt = require('jsonwebtoken');
@@ -4125,7 +5095,25 @@ module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safe
 const mongoose=require('mongoose');const schema=new mongoose.Schema({productId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},rating:{type:Number,required:true,min:1,max:5},review:{type:String,required:true,trim:true,minlength:2,maxlength:2000}},{timestamps:true});schema.index({productId:1,userId:1},{unique:true});module.exports=mongoose.model('Review',schema);
 
 ===== index.js =====
-const router=require('express').Router();const c=require('../controllers/review.controller');const {authenticate,authorize}=require('../middleware/auth');router.get('/api/reviews/product/:productId',c.listForProduct);router.post('/api/reviews/product/:productId',authenticate,authorize('USER'),c.create);router.put('/api/reviews/:id',authenticate,authorize('USER'),c.update);router.delete('/api/reviews/:id',authenticate,authorize('USER','ADMIN'),c.remove);module.exports=router;
+const router = require("express").Router();
+const c = require("../controllers/review.controller");
+const { authenticate, authorize } = require("../middleware/auth");
+router.get("/api/reviews/product/:productId", c.listForProduct);
+router.post(
+  "/api/reviews/product/:productId",
+  authenticate,
+  authorize("USER"),
+  c.create,
+);
+router.put("/api/reviews/:id", authenticate, authorize("USER"), c.update);
+router.delete(
+  "/api/reviews/:id",
+  authenticate,
+  authorize("USER", "ADMIN"),
+  c.remove,
+);
+
+module.exports = router;
 
 ===== server.js =====
 require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5009);
@@ -4161,15 +5149,17 @@ app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true})
 app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-support',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
 
 ===== db.js =====
-const mongoose = require('mongoose');
-async function connectDB(){
-  const uri=process.env.MONGODB_URI;
-  if(!uri) throw new Error('MONGODB_URI is not configured');
-  mongoose.set('strictQuery',true);
+const mongoose = require("mongoose");
+async function connectDB() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error("MONGODB_URI is not configured");
+  mongoose.set("strictQuery", true);
   await mongoose.connect(uri);
-  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+  console.log(
+    `MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`,
+  );
 }
-module.exports=connectDB;
+module.exports = connectDB;
 
 ===== env.js =====
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
@@ -4571,7 +5561,45 @@ module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKE
 module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
 
 ===== CustomerIssue.js =====
-const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},orderId:{type:mongoose.Schema.Types.ObjectId,default:null,index:true},productId:{type:mongoose.Schema.Types.ObjectId,default:null,index:true},subject:{type:String,required:true,trim:true},description:{type:String,required:true,trim:true},status:{type:String,enum:['OPEN','IN_PROGRESS','RESOLVED','CLOSED'],default:'OPEN',index:true},priority:{type:String,enum:['LOW','MEDIUM','HIGH','URGENT'],default:'MEDIUM',index:true},assignedTo:{type:mongoose.Schema.Types.ObjectId,default:null},response:String,resolvedAt:Date},{timestamps:true});module.exports=mongoose.model('CustomerIssue',schema);
+const mongoose = require("mongoose");
+const schema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    subject: { type: String, required: true, trim: true },
+    description: { type: String, required: true, trim: true },
+    status: {
+      type: String,
+      enum: ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"],
+      default: "OPEN",
+      index: true,
+    },
+    priority: {
+      type: String,
+      enum: ["LOW", "MEDIUM", "HIGH", "URGENT"],
+      default: "MEDIUM",
+      index: true,
+    },
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, default: null },
+    response: String,
+    resolvedAt: Date,
+  },
+  { timestamps: true },
+);
+module.exports = mongoose.model("CustomerIssue", schema);
 
 ===== index.js =====
 const router = require("express").Router();
@@ -4688,7 +5716,53 @@ async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,pa
 module.exports={request,getJson,postJson,patchJson};
 
 ===== issue.js =====
-const {z}=require('zod');const createIssueSchema=z.object({orderId:z.string().optional(),productId:z.string().optional(),subject:z.string().min(2),description:z.string().min(2),priority:z.enum(['LOW','MEDIUM','HIGH','URGENT']).optional()});const updateIssueSchema=z.object({status:z.enum(['OPEN','IN_PROGRESS','RESOLVED','CLOSED']).optional(),priority:z.enum(['LOW','MEDIUM','HIGH','URGENT']).optional(),assignedTo:z.string().optional(),response:z.string().optional()});module.exports={createIssueSchema,updateIssueSchema};
+const { z } = require("zod");
+
+const objectId = z
+  .string()
+  .regex(/^[a-f\d]{24}$/i, "Invalid MongoDB ObjectId");
+
+const createIssueSchema = z.object({
+  orderId: z
+    .union([objectId, z.literal("")])
+    .optional()
+    .transform((value) => value || undefined),
+
+  productId: z
+    .union([objectId, z.literal("")])
+    .optional()
+    .transform((value) => value || undefined),
+
+  subject: z.string().trim().min(2, "Subject must be at least 2 characters"),
+
+  description: z
+    .string()
+    .trim()
+    .min(2, "Description must be at least 2 characters"),
+
+  priority: z
+    .enum(["LOW", "MEDIUM", "HIGH", "URGENT"])
+    .optional()
+    .default("MEDIUM"),
+});
+
+const updateIssueSchema = z.object({
+  status: z.enum(["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]).optional(),
+
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
+
+  assignedTo: z
+    .union([objectId, z.literal("")])
+    .optional()
+    .transform((value) => value || undefined),
+
+  response: z.string().optional(),
+});
+
+module.exports = {
+  createIssueSchema,
+  updateIssueSchema,
+};
 
 ===== app.js =====
 const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
@@ -5166,8 +6240,25 @@ router.delete("/internal/vendors/:id", internal, c.internalRemove);
 module.exports = router;
 
 ===== server.js =====
-require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5012);
-(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere vendor service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+const app = require("./app");
+const connectDB = require("./config/db");
+const PORT = Number(process.env.PORT || 5012);
+(async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(
+        "ShopSphere vendor service running on http://localhost:" + PORT,
+      ),
+    );
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
 
 ===== apiResponse.js =====
 function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
