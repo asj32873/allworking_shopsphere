@@ -1,9 +1,55 @@
 ﻿===== app.js =====
-const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');const routes=require('./routes');const controller=require('./controllers/payment.controller');const {notFound,errorHandler}=require('./middleware/error');
-const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const controller = require("./controllers/payment.controller");
+const { notFound, errorHandler } = require("./middleware/error");
+const app = express();
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
 // Stripe requires the exact raw bytes for signature verification.
-app.post('/api/payments/webhook',express.raw({type:'application/json'}),controller.webhook);
-app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-payment',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+app.post(
+  "/api/payments/webhook",
+  express.raw({ type: "application/json" }),
+  controller.webhook,
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-payment",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
 
 ===== db.js =====
 const mongoose = require('mongoose');
@@ -26,22 +72,300 @@ function getEnv(name, fallback = undefined) {
 module.exports = { getEnv };
 
 ===== payment.controller.js =====
-const stripe=require('../services/stripe.service');const Payment=require('../models/Payment');const {getJson,postJson}=require('../utils/serviceClient');const {ok,fail}=require('../utils/apiResponse');const CART=()=>process.env.CART_SERVICE_URL||'http://localhost:5004';const PRODUCT=()=>process.env.PRODUCT_SERVICE_URL||'http://localhost:5003';const ADDRESS=()=>process.env.ADDRESS_SERVICE_URL||'http://localhost:5008';const ORDER=()=>process.env.ORDER_SERVICE_URL||'http://localhost:5005';
-async function createCheckoutSession(req,res){if(!stripe)return fail(res,'Stripe is not configured.',503);const {addressId}=req.body;const ar=await getJson(ADDRESS(),`/internal/addresses/${req.user.id}/${addressId}`);if(!ar.ok)return fail(res,'Delivery address not found.',404);const cr=await getJson(CART(),`/internal/cart/${req.user.id}`);const cart=cr.data?.data||[];if(!cart.length)return fail(res,'Cart is empty.',400);const lineItems=[];const orderItems=[];let total=0;for(const i of cart){const pr=await getJson(PRODUCT(),`/internal/products/${i.productId}`);const p=pr.data?.data;if(!p)return fail(res,'A product in your cart no longer exists.',409);if(p.stock<i.quantity)return fail(res,`Only ${p.stock} item(s) of ${p.name} are available.`,409);lineItems.push({price_data:{currency:'inr',product_data:{name:p.name,description:p.description?.slice(0,500)||undefined},unit_amount:Math.round(p.price*100)},quantity:i.quantity});orderItems.push({productId:p._id,vendorId:p.vendorId,name:p.name,quantity:i.quantity,unitPrice:p.price});total+=i.quantity*p.price;}
-const session=await stripe.checkout.sessions.create({mode:'payment',line_items:lineItems,customer_email:req.user.email,metadata:{userId:req.user.id,addressId},success_url:`${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,cancel_url:`${process.env.FRONTEND_URL}/payment/cancel`,submit_type:'pay',payment_method_types:['card']});await Payment.create({userId:req.user.id,addressId,stripeSessionId:session.id,amount:total,currency:'inr',status:'PENDING'});ok(res,{sessionId:session.id,url:session.url,orderItems},'Checkout session created.');}
-async function webhook(req,res){if(!stripe)return res.status(503).json({success:false,message:'Stripe is not configured.'});const sig=req.headers['stripe-signature'];let event;try{event=stripe.webhooks.constructEvent(req.body,sig,process.env.STRIPE_WEBHOOK_SECRET);}catch(e){return res.status(400).json({success:false,message:`Webhook Error: ${e.message}`});}
-if(event.type==='checkout.session.completed'){const s=event.data.object;const payment=await Payment.findOneAndUpdate({stripeSessionId:s.id},{status:'PAID',stripePaymentIntentId:s.payment_intent},{new:true});if(payment&&!payment.orderId){const cr=await getJson(CART(),`/internal/cart/${payment.userId}`);const cart=cr.data?.data||[];const items=[];for(const i of cart){const pr=await getJson(PRODUCT(),`/internal/products/${i.productId}`);const p=pr.data?.data;if(p)items.push({productId:p._id,vendorId:p.vendorId,name:p.name,quantity:i.quantity,unitPrice:p.price});}if(items.length){const reserve=await postJson(PRODUCT(),'/internal/products/reserve',{items:items.map(i=>({productId:i.productId,quantity:i.quantity}))});if(reserve.ok){const or=await postJson(ORDER(),'/internal/orders/paid',{userId:payment.userId,addressId:payment.addressId,totalAmount:payment.amount,items,stripeSessionId:s.id,stripePaymentIntentId:s.payment_intent});if(or.ok){payment.orderId=or.data.data.order._id;await payment.save();await postJson(CART(),`/internal/cart/${payment.userId}/clear`,{});}}}}}
-if(event.type==='checkout.session.expired'){await Payment.findOneAndUpdate({stripeSessionId:event.data.object.id},{status:'CANCELLED'});}res.json({received:true});}
-async function debug(req,res){res.json({success:true,message:'Payment router works'});}module.exports={createCheckoutSession,webhook,debug};
+const stripe = require("../services/stripe.service");
+const Payment = require("../models/Payment");
+const { getJson, postJson } = require("../utils/serviceClient");
+const { ok, fail } = require("../utils/apiResponse");
+const CART = () => process.env.CART_SERVICE_URL || "http://localhost:5004";
+const PRODUCT = () =>
+  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
+const ADDRESS = () =>
+  process.env.ADDRESS_SERVICE_URL || "http://localhost:5008";
+const ORDER = () => process.env.ORDER_SERVICE_URL || "http://localhost:5005";
+
+async function createCheckoutSession(req, res) {
+  if (!stripe) {
+    return fail(res, "Stripe is not configured.", 503);
+  }
+
+  const { addressId } = req.body;
+
+  if (!addressId) {
+    return fail(res, "addressId is required.", 400);
+  }
+
+  const userId = req.auth?.id || req.user?._id?.toString() || req.user?.id;
+
+  if (!userId) {
+    return fail(res, "Authenticated user ID not found.", 401);
+  }
+
+  console.log("CHECKOUT REQUEST:", {
+    userId,
+    addressId,
+  });
+
+  // =========================
+  // VERIFY DELIVERY ADDRESS
+  // =========================
+
+  const ar = await getJson(
+    ADDRESS(),
+    `/internal/addresses/${userId}/${addressId}`,
+  );
+
+  console.log("ADDRESS SERVICE RESPONSE:", {
+    status: ar.status,
+    ok: ar.ok,
+    data: ar.data,
+  });
+
+  if (!ar.ok) {
+    if (ar.status === 404) {
+      return fail(res, "Delivery address not found.", 404);
+    }
+
+    return fail(
+      res,
+      ar.data?.message || "Unable to verify delivery address.",
+      502,
+    );
+  }
+
+  // =========================
+  // GET CART
+  // =========================
+
+  const cr = await getJson(CART(), `/internal/cart/${userId}`);
+
+  const cart = cr.data?.data || [];
+
+  if (!cart.length) {
+    return fail(res, "Cart is empty.", 400);
+  }
+
+  // =========================
+  // GET PRODUCTS
+  // =========================
+
+  const lineItems = [];
+  const orderItems = [];
+  let total = 0;
+
+  for (const i of cart) {
+    const pr = await getJson(PRODUCT(), `/internal/products/${i.productId}`);
+
+    const p = pr.data?.data;
+
+    if (!p) {
+      return fail(res, "A product in your cart no longer exists.", 409);
+    }
+
+    if (p.stock < i.quantity) {
+      return fail(
+        res,
+        `Only ${p.stock} item(s) of ${p.name} are available.`,
+        409,
+      );
+    }
+
+    lineItems.push({
+      price_data: {
+        currency: "inr",
+        product_data: {
+          name: p.name,
+          description: p.description?.slice(0, 500) || undefined,
+        },
+        unit_amount: Math.round(p.price * 100),
+      },
+      quantity: i.quantity,
+    });
+
+    orderItems.push({
+      productId: p._id,
+      vendorId: p.vendorId,
+      name: p.name,
+      quantity: i.quantity,
+      unitPrice: p.price,
+    });
+
+    total += i.quantity * p.price;
+  }
+
+  // =========================
+  // CREATE STRIPE SESSION
+  // =========================
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: lineItems,
+
+    customer_email: req.user.email,
+
+    metadata: {
+      userId: String(userId),
+      addressId: String(addressId),
+    },
+
+    success_url: `${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+
+    cancel_url: `${process.env.FRONTEND_URL}/payment/cancel`,
+
+    submit_type: "pay",
+
+    payment_method_types: ["card"],
+  });
+
+  // =========================
+  // SAVE PAYMENT
+  // =========================
+
+  await Payment.create({
+    userId,
+    addressId,
+    stripeSessionId: session.id,
+    amount: total,
+    currency: "inr",
+    status: "PENDING",
+  });
+
+  return ok(
+    res,
+    {
+      sessionId: session.id,
+      url: session.url,
+      orderItems,
+    },
+    "Checkout session created.",
+  );
+}
+
+async function webhook(req, res) {
+  if (!stripe)
+    return res
+      .status(503)
+      .json({ success: false, message: "Stripe is not configured." });
+  const sig = req.headers["stripe-signature"];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET,
+    );
+  } catch (e) {
+    return res
+      .status(400)
+      .json({ success: false, message: `Webhook Error: ${e.message}` });
+  }
+  if (event.type === "checkout.session.completed") {
+    const s = event.data.object;
+    const payment = await Payment.findOneAndUpdate(
+      { stripeSessionId: s.id },
+      { status: "PAID", stripePaymentIntentId: s.payment_intent },
+      { new: true },
+    );
+    if (payment && !payment.orderId) {
+      try {
+        const cr = await getJson(CART(), `/internal/cart/${payment.userId}`);
+        const cart = cr.data?.data || [];
+
+        console.log("CART:", cart);
+
+        const items = [];
+
+        for (const i of cart) {
+          const pr = await getJson(
+            PRODUCT(),
+            `/internal/products/${i.productId}`,
+          );
+
+          const p = pr.data?.data;
+
+          if (p) {
+            items.push({
+              productId: p._id,
+              vendorId: p.vendorId,
+              name: p.name,
+              quantity: i.quantity,
+              unitPrice: p.price,
+            });
+          }
+        }
+
+        console.log("ORDER ITEMS:", items);
+
+        if (!items.length) {
+          console.error("ORDER CREATION FAILED: No items found");
+          return res.json({ received: true });
+        }
+
+        const reserve = await postJson(
+          PRODUCT(),
+          "/internal/products/reserve",
+          {
+            items: items.map((i) => ({
+              productId: i.productId,
+              quantity: i.quantity,
+            })),
+          },
+        );
+
+        console.log("RESERVE RESPONSE:", reserve);
+
+        if (!reserve.ok) {
+          console.error("STOCK RESERVATION FAILED:", reserve.data);
+          return res.json({ received: true });
+        }
+
+        const orderResult = await postJson(ORDER(), "/internal/orders/paid", {
+          userId: payment.userId,
+          addressId: payment.addressId,
+          totalAmount: payment.amount,
+          items,
+          stripeSessionId: s.id,
+          stripePaymentIntentId: s.payment_intent,
+        });
+
+        console.log("ORDER RESPONSE:", orderResult);
+
+        if (!orderResult.ok) {
+          console.error("ORDER CREATION FAILED:", orderResult.data);
+          return res.json({ received: true });
+        }
+
+        payment.orderId = orderResult.data.data.order._id;
+        await payment.save();
+
+        await postJson(CART(), `/internal/cart/${payment.userId}/clear`, {});
+
+        console.log("ORDER CREATED SUCCESSFULLY:", payment.orderId);
+      } catch (error) {
+        console.error("WEBHOOK ORDER ERROR:", error);
+      }
+    }
+  }
+  if (event.type === "checkout.session.expired") {
+    await Payment.findOneAndUpdate(
+      { stripeSessionId: event.data.object.id },
+      { status: "CANCELLED" },
+    );
+  }
+  res.json({ received: true });
+}
+async function debug(req, res) {
+  res.json({ success: true, message: "Payment router works" });
+}
+module.exports = { createCheckoutSession, webhook, debug };
 
 ===== auth.js =====
-const jwt = require('jsonwebtoken');
-const jwksClient = require('jwks-rsa');
-const { getJson } = require('../utils/serviceClient');
+const jwt = require("jsonwebtoken");
+const jwksClient = require("jwks-rsa");
+const { getJson } = require("../utils/serviceClient");
 
-const auth0Domain = (process.env.AUTH0_DOMAIN || '')
-  .replace(/^https?:\/\//, '')
-  .replace(/\/$/, '');
+const auth0Domain = (process.env.AUTH0_DOMAIN || "")
+  .replace(/^https?:\/\//, "")
+  .replace(/\/$/, "");
 const auth0Audience = process.env.AUTH0_AUDIENCE;
 const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
 const jwks = auth0Domain
@@ -56,9 +380,10 @@ const jwks = auth0Domain
   : null;
 
 function signingKey(header, callback) {
-  if (!jwks) return callback(new Error('Auth0 is not configured.'));
-  if (!header?.kid) return callback(new Error('Token is missing kid.'));
-  jwks.getSigningKey(header.kid)
+  if (!jwks) return callback(new Error("Auth0 is not configured."));
+  if (!header?.kid) return callback(new Error("Token is missing kid."));
+  jwks
+    .getSigningKey(header.kid)
     .then((key) => callback(null, key.getPublicKey()))
     .catch(callback);
 }
@@ -68,7 +393,7 @@ function verifyAuth0(token) {
     jwt.verify(
       token,
       signingKey,
-      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      { algorithms: ["RS256"], audience: auth0Audience, issuer: auth0Issuer },
       (error, payload) => (error ? reject(error) : resolve(payload)),
     );
   });
@@ -76,15 +401,17 @@ function verifyAuth0(token) {
 
 async function authenticate(req, res, next) {
   try {
-    const header = req.headers.authorization || '';
-    if (!header.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    const header = req.headers.authorization || "";
+    if (!header.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Authentication required." });
     }
 
     const token = header.slice(7);
     let identity;
 
-    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+    if (auth0Domain && auth0Audience && token.split(".").length === 3) {
       try {
         identity = await verifyAuth0(token);
       } catch {
@@ -96,36 +423,52 @@ async function authenticate(req, res, next) {
       identity = jwt.verify(token, process.env.JWT_SECRET);
     }
 
-    const userId = identity.id || identity['https://shopsphere/user_id'];
+    const userId = identity.id || identity["https://shopsphere/user_id"];
     if (!userId) {
-      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+      return res
+        .status(401)
+        .json({ success: false, message: "Token does not contain a user id." });
     }
 
-    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
-    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+    const authService = process.env.AUTH_SERVICE_URL || "http://localhost:5002";
+    const result = await getJson(
+      authService,
+      `/internal/users/${encodeURIComponent(userId)}`,
+    );
 
     if (!result.ok || !result.data?.data) {
-      return res.status(401).json({ success: false, message: 'User account not found.' });
+      return res
+        .status(401)
+        .json({ success: false, message: "User account not found." });
     }
 
     const user = result.data.data;
-    if (user.status === 'DISABLED') {
-      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    if (user.status === "DISABLED") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Account disabled." });
     }
 
     req.user = user;
     req.auth = { ...identity, id: String(userId) };
     next();
   } catch (error) {
-    console.error('AUTH ERROR:', error.message);
-    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+    console.error("AUTH ERROR:", error.message);
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token." });
   }
 }
 
 function authorize(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message: "You do not have permission for this resource.",
+        });
     }
     next();
   };
@@ -134,54 +477,193 @@ function authorize(...roles) {
 module.exports = { authenticate, authorize };
 
 ===== error.js =====
-function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
-function errorHandler(err,req,res,next){
- console.error(err);
- if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
- if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
- if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
- res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
+function notFound(req, res) {
+  res
+    .status(404)
+    .json({
+      success: false,
+      message: `Route not found: ${req.method} ${req.originalUrl}`,
+    });
 }
-module.exports={notFound,errorHandler};
+function errorHandler(err, req, res, next) {
+  console.error(err);
+  if (err.name === "ValidationError")
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "Validation error.",
+        details: Object.values(err.errors).map((e) => e.message),
+      });
+  if (err.code === 11000)
+    return res
+      .status(409)
+      .json({
+        success: false,
+        message: "A record with a unique field already exists.",
+        details: err.keyValue,
+      });
+  if (err.name === "CastError")
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid resource ID." });
+  res
+    .status(err.status || 500)
+    .json({
+      success: false,
+      message: err.status ? err.message : "Internal server error.",
+    });
+}
+module.exports = { notFound, errorHandler };
 
 ===== internal.js =====
-module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
+module.exports = (req, res, next) => {
+  const expected = process.env.INTERNAL_SERVICE_TOKEN;
+  if (!expected || req.headers["x-internal-service-token"] !== expected)
+    return res
+      .status(401)
+      .json({
+        success: false,
+        message: "Invalid internal service credentials.",
+      });
+  next();
+};
 
 ===== validate.js =====
-module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
+module.exports =
+  (schema, source = "body") =>
+  (req, res, next) => {
+    const result = schema.safeParse(req[source]);
+    if (!result.success)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Invalid request.",
+          details: result.error.issues.map((i) => ({
+            path: i.path,
+            message: i.message,
+          })),
+        });
+    req[source] = result.data;
+    next();
+  };
 
 ===== Payment.js =====
-const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},addressId:{type:mongoose.Schema.Types.ObjectId,required:true},stripeSessionId:{type:String,required:true,unique:true,index:true},stripePaymentIntentId:{type:String,default:null,index:true},amount:{type:Number,required:true,min:0},currency:{type:String,default:'inr'},status:{type:String,enum:['PENDING','PAID','FAILED','CANCELLED'],default:'PENDING',index:true},orderId:{type:mongoose.Schema.Types.ObjectId,default:null,index:true}},{timestamps:true});module.exports=mongoose.model('Payment',schema);
+const mongoose = require("mongoose");
+const schema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    addressId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    stripeSessionId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
+    stripePaymentIntentId: { type: String, default: null, index: true },
+    amount: { type: Number, required: true, min: 0 },
+    currency: { type: String, default: "inr" },
+    status: {
+      type: String,
+      enum: ["PENDING", "PAID", "FAILED", "CANCELLED"],
+      default: "PENDING",
+      index: true,
+    },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+  },
+  { timestamps: true },
+);
+module.exports = mongoose.model("Payment", schema);
 
 ===== index.js =====
-const router=require('express').Router();const c=require('../controllers/payment.controller');const {authenticate,authorize}=require('../middleware/auth');router.post('/api/payments/debug',c.debug);router.post('/api/payments/create-checkout-session',authenticate,authorize('USER'),c.createCheckoutSession);module.exports=router;
+const router = require("express").Router();
+const c = require("../controllers/payment.controller");
+const { authenticate, authorize } = require("../middleware/auth");
+router.post("/api/payments/debug", c.debug);
+router.post(
+  "/api/payments/create-checkout-session",
+  authenticate,
+  authorize("USER"),
+  c.createCheckoutSession,
+);
+module.exports = router;
 
 ===== server.js =====
-require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5006);
-(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere payment service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+const app = require("./app");
+const connectDB = require("./config/db");
+const PORT = Number(process.env.PORT || 5006);
+(async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(
+        "ShopSphere payment service running on http://localhost:" + PORT,
+      ),
+    );
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
 
 ===== stripe.service.js =====
-const Stripe=require('stripe');module.exports=process.env.STRIPE_SECRET_KEY?new Stripe(process.env.STRIPE_SECRET_KEY):null;
+const Stripe = require("stripe");
+module.exports = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
 
 ===== apiResponse.js =====
-function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
-function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
-module.exports={ok,fail};
+function ok(res, data, message = "OK", status = 200) {
+  return res.status(status).json({ success: true, message, data });
+}
+function fail(res, message, status = 400, details) {
+  return res
+    .status(status)
+    .json({ success: false, message, ...(details ? { details } : {}) });
+}
+module.exports = { ok, fail };
 
 ===== serviceClient.js =====
-async function request(baseUrl,path,options={}){
-  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
-  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
-  if(options.body && typeof options.body!=='string'){
-    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
+async function request(baseUrl, path, options = {}) {
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+  const headers = {
+    ...(options.headers || {}),
+    "x-internal-service-token": process.env.INTERNAL_SERVICE_TOKEN || "",
+  };
+  if (options.body && typeof options.body !== "string") {
+    headers["content-type"] = "application/json";
+    options.body = JSON.stringify(options.body);
   }
-  const response=await fetch(url,{...options,headers});
-  const text=await response.text();
-  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
-  return {status:response.status,ok:response.ok,data};
+  const response = await fetch(url, { ...options, headers });
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { success: false, message: text || "Invalid service response" };
+  }
+  return { status: response.status, ok: response.ok, data };
 }
-async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
-async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
-async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
-module.exports={request,getJson,postJson,patchJson};
+async function getJson(baseUrl, path, headers = {}) {
+  return request(baseUrl, path, { method: "GET", headers });
+}
+async function postJson(baseUrl, path, body, headers = {}) {
+  return request(baseUrl, path, { method: "POST", body, headers });
+}
+async function patchJson(baseUrl, path, body, headers = {}) {
+  return request(baseUrl, path, { method: "PATCH", body, headers });
+}
+module.exports = { request, getJson, postJson, patchJson };
 

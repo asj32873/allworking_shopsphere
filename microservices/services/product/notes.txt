@@ -72,7 +72,7 @@ const {
   buildProductFilter,
   productSort,
 } = require("../services/query.service");
-
+const { ingestProduct, deleteProduct } = require("../services/rag.service");
 const {
   getVendorByUserId,
   getAllVendors,
@@ -146,6 +146,8 @@ async function create(req, res) {
     vendorId: req.user._id,
   });
 
+  await ingestProduct(product._id);
+
   return ok(res, product, "Product created.", 201);
 }
 
@@ -166,6 +168,8 @@ async function update(req, res) {
     return fail(res, "Product not found or not owned by you.", 404);
   }
 
+  await ingestProduct(product._id);
+
   return ok(res, product, "Product updated.");
 }
 
@@ -178,6 +182,8 @@ async function remove(req, res) {
   if (!product) {
     return fail(res, "Product not found or not owned by you.", 404);
   }
+
+  await deleteProduct(product._id);
 
   return ok(res, null, "Product deleted.");
 }
@@ -207,6 +213,8 @@ async function updateStock(req, res) {
     return fail(res, "Product not found or not owned by you.", 404);
   }
 
+  await ingestProduct(product._id);
+
   return ok(res, product, "Stock updated.");
 }
 
@@ -218,6 +226,12 @@ async function internalGet(req, res) {
   }
 
   return ok(res, product);
+}
+
+async function internalList(req, res) {
+  const products = await Product.find().select("_id").lean();
+
+  return ok(res, products);
 }
 
 async function internalReserve(req, res) {
@@ -258,13 +272,17 @@ async function internalReserve(req, res) {
           );
 
           error.status = 409;
-
           throw error;
         }
 
         result.push(product);
       }
     });
+
+    // Sync updated stock to RAG
+    for (const product of result) {
+      await ingestProduct(product._id);
+    }
 
     return ok(res, result, "Stock reserved.");
   } finally {
@@ -294,6 +312,11 @@ async function internalRelease(req, res) {
     })),
   );
 
+  // Sync all changed products to RAG
+  for (const item of items) {
+    await ingestProduct(item.productId);
+  }
+
   return ok(res, null, "Stock released.");
 }
 
@@ -315,6 +338,7 @@ async function internalRating(req, res) {
   if (!product) {
     return fail(res, "Product not found.", 404);
   }
+  await ingestProduct(product._id);
 
   return ok(res, product);
 }
@@ -327,6 +351,7 @@ module.exports = {
   remove,
   updateStock,
   internalGet,
+  internalList,
   internalReserve,
   internalRelease,
   internalRating,
@@ -525,6 +550,7 @@ router.post(
   validate(productSchema),
   c.create,
 );
+router.get("/internal/products", internal, c.internalList);
 router.put(
   "/api/products/:id",
   authenticate,
@@ -570,6 +596,70 @@ const PORT = Number(process.env.PORT || 5003);
 function pagination(req){const page=Math.max(parseInt(req.query.page||'1',10),1);const limit=Math.min(Math.max(parseInt(req.query.limit||'9',10),1),100);return {page,limit,skip:(page-1)*limit};}
 function buildProductFilter(q){const f={};if(q.q){const e=q.q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');f.$or=[{name:{$regex:e,$options:'i'}},{brand:{$regex:e,$options:'i'}},{description:{$regex:e,$options:'i'}}];}if(q.brand)f.brand=q.brand;if(q.category)f.category=q.category;if(q.minPrice!==undefined||q.maxPrice!==undefined){f.price={};if(q.minPrice!==undefined)f.price.$gte=Number(q.minPrice);if(q.maxPrice!==undefined)f.price.$lte=Number(q.maxPrice);}if(q.rating)f.rating={$gte:Number(q.rating)};if(q.stock==='in')f.stock={$gt:0};if(q.stock==='out')f.stock=0;if(q.vendorId)f.vendorId=q.vendorId;return f;}
 function productSort(v){if(v==='low')return {price:1};if(v==='high')return {price:-1};if(v==='rating')return {rating:-1};return {createdAt:-1};}module.exports={pagination,buildProductFilter,productSort};
+
+===== rag.service.js =====
+const { postJson, request } = require("../utils/serviceClient");
+
+const RAG_SERVICE = process.env.RAG_SERVICE_URL || "http://localhost:5010";
+
+async function ingestProduct(productId) {
+  try {
+    const result = await postJson(
+      RAG_SERVICE,
+      `/internal/products/${productId}/ingest`,
+      {},
+    );
+
+    if (!result.ok) {
+      console.error(
+        `RAG ingestion failed for product ${productId}:`,
+        result.data?.message || `HTTP ${result.status}`,
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error(
+      `Could not connect to RAG service for product ${productId}:`,
+      error.message,
+    );
+
+    return null;
+  }
+}
+
+async function deleteProduct(productId) {
+  try {
+    const result = await request(
+      RAG_SERVICE,
+      `/internal/products/${productId}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    if (!result.ok) {
+      console.error(
+        `RAG delete failed for product ${productId}:`,
+        result.data?.message || `HTTP ${result.status}`,
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error(
+      `Could not connect to RAG service for deleting product ${productId}:`,
+      error.message,
+    );
+
+    return null;
+  }
+}
+
+module.exports = {
+  ingestProduct,
+  deleteProduct,
+};
 
 ===== vendor.service.js =====
 const { getJson } = require('../utils/serviceClient');

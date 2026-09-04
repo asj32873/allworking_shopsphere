@@ -1,0 +1,423 @@
+services:
+  auth-service:
+    build:
+      context: ./services/auth
+
+    container_name: shopsphere-auth
+
+    environment:
+      NODE_ENV: development
+      PORT: 5002
+
+      MONGODB_URI: ${AUTH_MONGODB_URI}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      VENDOR_SERVICE_URL: http://vendor-service:5012
+
+    networks:
+      - shopsphere-network
+
+  user-service:
+    build:
+      context: ./services/user
+
+    container_name: shopsphere-user
+
+    environment:
+      NODE_ENV: development
+      PORT: 5007
+
+      MONGODB_URI: ${USER_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+
+    depends_on:
+      - auth-service
+
+    networks:
+      - shopsphere-network
+
+  product-service:
+    build:
+      context: ./services/product
+
+    container_name: shopsphere-product
+
+    environment:
+      NODE_ENV: development
+      PORT: 5003
+
+      MONGODB_URI: ${PRODUCT_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+      VENDOR_SERVICE_URL: http://vendor-service:5012
+      RAG_SERVICE_URL: http://rag-service:5010
+
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+    depends_on:
+      - auth-service
+      - vendor-service
+
+    networks:
+      - shopsphere-network
+
+  # =========================
+  # CART SERVICE
+  # =========================
+
+  cart-service:
+    build:
+      context: ./services/cart
+
+    container_name: shopsphere-cart
+
+    environment:
+      NODE_ENV: development
+      PORT: 5004
+
+      MONGODB_URI: ${CART_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+      PRODUCT_SERVICE_URL: http://product-service:5003
+
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+    depends_on:
+      - auth-service
+      - product-service
+
+    networks:
+      - shopsphere-network
+
+  # =========================
+  # ORDER SERVICE
+  # =========================
+
+  order-service:
+    build:
+      context: ./services/order
+
+    container_name: shopsphere-order
+
+    environment:
+      NODE_ENV: development
+      PORT: 5005
+
+      MONGODB_URI: ${ORDER_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+      CART_SERVICE_URL: http://cart-service:5004
+      PRODUCT_SERVICE_URL: http://product-service:5003
+      ADDRESS_SERVICE_URL: http://address-service:5008
+
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+    depends_on:
+      - auth-service
+      - cart-service
+      - product-service
+      - address-service
+
+    networks:
+      - shopsphere-network
+
+  # =========================
+  # PAYMENT SERVICE
+  # =========================
+
+  payment-service:
+    build:
+      context: ./services/payment
+
+    container_name: shopsphere-payment
+
+    environment:
+      NODE_ENV: development
+      PORT: 5006
+
+      MONGODB_URI: ${PAYMENT_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+      CART_SERVICE_URL: http://cart-service:5004
+      PRODUCT_SERVICE_URL: http://product-service:5003
+      ADDRESS_SERVICE_URL: http://address-service:5008
+      ORDER_SERVICE_URL: http://order-service:5005
+
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+    depends_on:
+      - auth-service
+      - cart-service
+      - product-service
+      - address-service
+      - order-service
+
+    networks:
+      - shopsphere-network
+
+  # =========================
+  # ADDRESS SERVICE
+  # =========================
+
+  address-service:
+    build:
+      context: ./services/address
+
+    container_name: shopsphere-address
+
+    environment:
+      NODE_ENV: development
+      PORT: 5008
+
+      MONGODB_URI: ${ADDRESS_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+    depends_on:
+      - auth-service
+
+    networks:
+      - shopsphere-network
+
+  vendor-service:
+    build:
+      context: ./services/vendor
+
+    container_name: shopsphere-vendor
+
+    environment:
+      NODE_ENV: development
+      PORT: 5012
+
+      MONGODB_URI: ${VENDOR_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+
+    depends_on:
+      - auth-service
+
+    networks:
+      - shopsphere-network
+
+  review-service:
+    build:
+      context: ./services/review
+
+    container_name: shopsphere-review
+
+    environment:
+      NODE_ENV: development
+      PORT: 5009
+
+      MONGODB_URI: ${REVIEW_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+      PRODUCT_SERVICE_URL: http://product-service:5003
+      ORDER_SERVICE_URL: http://order-service:5005
+      RAG_SERVICE_URL: http://rag-service:5010
+
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+    depends_on:
+      - auth-service
+      - product-service
+      - order-service
+      - rag-service
+
+    networks:
+      - shopsphere-network
+
+  rag-service:
+    build:
+      context: ./services/rag
+
+    container_name: shopsphere-rag
+
+    environment:
+      NODE_ENV: development
+      PORT: 5010
+
+      MONGODB_URI: ${RAG_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+      PRODUCT_SERVICE_URL: http://product-service:5003
+      REVIEW_SERVICE_URL: http://review-service:5009
+
+      HF_TOKEN: ${HF_TOKEN}
+      HF_MODEL: ${HF_MODEL}
+      HUGGINGFACEHUB_API_KEY: ${HUGGINGFACEHUB_API_KEY}
+
+      CHROMA_API_KEY: ${CHROMA_API_KEY}
+      CHROMA_TENANT: ${CHROMA_TENANT}
+      CHROMA_DATABASE: ${CHROMA_DATABASE}
+
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+    depends_on:
+      - product-service
+
+    networks:
+      - shopsphere-network
+
+  support-service:
+    build:
+      context: ./services/support
+
+    container_name: shopsphere-support
+
+    environment:
+      NODE_ENV: development
+      PORT: 5011
+
+      MONGODB_URI: ${SUPPORT_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+      ORDER_SERVICE_URL: http://order-service:5005
+
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+    depends_on:
+      - auth-service
+      - order-service
+
+    networks:
+      - shopsphere-network
+
+  admin-service:
+    build:
+      context: ./services/admin
+
+    container_name: shopsphere-admin
+
+    environment:
+      NODE_ENV: development
+      PORT: 5013
+
+      MONGODB_URI: ${ADMIN_MONGODB_URI}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+      VENDOR_SERVICE_URL: http://vendor-service:5012
+      PRODUCT_SERVICE_URL: http://product-service:5003
+      ORDER_SERVICE_URL: http://order-service:5005
+      SUPPORT_SERVICE_URL: http://support-service:5011
+      REVIEW_SERVICE_URL: http://review-service:5009
+
+    depends_on:
+      - auth-service
+      - vendor-service
+      - product-service
+      - order-service
+      - review-service
+      - support-service
+
+    networks:
+      - shopsphere-network
+
+  # =========================
+  # API GATEWAY
+  # =========================
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+
+    container_name: shopsphere-gateway
+
+    ports:
+      - "5001:5001"
+
+    environment:
+      NODE_ENV: development
+
+      GATEWAY_PORT: 5001
+
+      AUTH_SERVICE_URL: http://auth-service:5002
+      USER_SERVICE_URL: http://user-service:5007
+      PRODUCT_SERVICE_URL: http://product-service:5003
+      CART_SERVICE_URL: http://cart-service:5004
+      ORDER_SERVICE_URL: http://order-service:5005
+      PAYMENT_SERVICE_URL: http://payment-service:5006
+      ADDRESS_SERVICE_URL: http://address-service:5008
+      REVIEW_SERVICE_URL: http://review-service:5009
+      RAG_SERVICE_URL: http://rag-service:5010
+      SUPPORT_SERVICE_URL: http://support-service:5011
+      VENDOR_SERVICE_URL: http://vendor-service:5012
+      ADMIN_SERVICE_URL: http://admin-service:5013
+
+    depends_on:
+      - auth-service
+      - user-service
+      - product-service
+      - cart-service
+      - order-service
+      - payment-service
+      - address-service
+      - review-service
+      - rag-service
+      - support-service
+      - vendor-service
+      - admin-service
+
+    networks:
+      - shopsphere-network
+
+networks:
+  shopsphere-network:
+    driver: bridge

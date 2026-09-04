@@ -1,9 +1,48 @@
 ﻿===== app.js =====
-const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
-const routes=require('./routes');const {notFound,errorHandler}=require('./middleware/error');
-const app=express();app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization','x-internal-service-token']}));
-app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
-app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-review',timestamp:new Date().toISOString()}));app.use('/',routes);app.use(notFound);app.use(errorHandler);module.exports=app;
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const { notFound, errorHandler } = require("./middleware/error");
+const app = express();
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-address",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
 
 ===== db.js =====
 const mongoose = require('mongoose');
@@ -25,140 +64,138 @@ function getEnv(name, fallback = undefined) {
 
 module.exports = { getEnv };
 
-===== review.controller.js =====
-const mongoose = require("mongoose");
-const Review = require("../models/Review");
-const { getJson, patchJson, postJson } = require("../utils/serviceClient");
+===== address.controller.js =====
+const Address = require("../models/Address");
 const { ok, fail } = require("../utils/apiResponse");
-const PRODUCT = () =>
-  process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
-const ORDER = () => process.env.ORDER_SERVICE_URL || "http://localhost:5005";
-const RAG = () => process.env.RAG_SERVICE_URL || "http://localhost:5010";
-async function listForProduct(req, res) {
-  const reviews = await Review.find({ productId: req.params.productId })
-    .sort({ createdAt: -1 })
-    .lean();
-  ok(res, reviews);
+
+function getUserId(req) {
+  return req.user?._id?.toString() || req.user?.id || req.auth?.id;
 }
-async function recalc(productId) {
-  const stats = await Review.aggregate([
-    { $match: { productId: new mongoose.Types.ObjectId(productId) } },
-    {
-      $group: {
-        _id: "$productId",
-        averageRating: { $avg: "$rating" },
-        reviewCount: { $sum: 1 },
-      },
-    },
-  ]);
-  const rating = stats.length ? Number(stats[0].averageRating.toFixed(2)) : 0;
-  const count = stats.length ? stats[0].reviewCount : 0;
-  const r = await patchJson(
-    PRODUCT(),
-    `/internal/products/${productId}/rating`,
-    { rating, reviewCount: count },
-  );
-  if (!r.ok) throw new Error("Unable to update product rating");
+
+async function list(req, res) {
+  const userId = getUserId(req);
+
+  console.log("LIST ADDRESS USER ID:", userId);
+
+  const addresses = await Address.find({ userId }).sort({
+    isDefault: -1,
+    createdAt: -1,
+  });
+
+  console.log("ADDRESSES FOUND:", addresses.length);
+  console.log("ADDRESSES:", addresses);
+
+  ok(res, addresses);
 }
-async function notifyRag(productId) {
-  try {
-    await postJson(RAG(), `/internal/products/${productId}/ingest`, {});
-  } catch (e) {
-    console.error("RAG reindex failed:", e.message);
-  }
-}
+
 async function create(req, res) {
-  const userId = req.auth?.id || req.user?.id || req.user?._id?.toString();
+  const userId = getUserId(req);
+
+  console.log("CREATE ADDRESS USER ID:", userId);
 
   if (!userId) {
-    return fail(res, "Authenticated user ID not found.", 401);
+    return fail(res, "User ID not found.", 401);
   }
 
-  const product = await getJson(
-    PRODUCT(),
-    `/internal/products/${req.params.productId}`,
-  );
+  const existing = await Address.exists({ userId });
 
-  if (!product.ok) {
-    return fail(res, "Product not found.", 404);
-  }
-
-  const numeric = Number(req.body.rating);
-
-  if (!Number.isInteger(numeric) || numeric < 1 || numeric > 5) {
-    return fail(res, "Rating must be an integer between 1 and 5.", 400);
-  }
-
-  if (!req.body.review || req.body.review.trim().length < 2) {
-    return fail(res, "Review must contain at least 2 characters.", 400);
-  }
-
-  const elig = await getJson(
-    ORDER(),
-    `/internal/orders/review-eligibility/${userId}/${req.params.productId}`,
-  );
-
-  console.log("REVIEW ELIGIBILITY:", {
+  const a = await Address.create({
+    ...req.body,
     userId,
-    productId: req.params.productId,
-    status: elig.status,
-    response: elig.data,
+    isDefault: !existing,
   });
 
-  if (!elig.ok || !elig.data?.data?.eligible) {
-    return fail(
-      res,
-      "You can review this product only after purchasing it and receiving a delivered order.",
-      403,
-    );
-  }
-
-  const alreadyExists = await Review.exists({
-    productId: req.params.productId,
-    userId,
-  });
-
-  if (alreadyExists) {
-    return fail(res, "You have already reviewed this product.", 409);
-  }
-
-  const created = await Review.create({
-    productId: req.params.productId,
-    userId,
-    rating: numeric,
-    review: req.body.review.trim(),
-  });
-
-  await recalc(created.productId);
-  notifyRag(created.productId);
-
-  ok(res, created, "Review submitted successfully.", 201);
+  ok(res, a, "Address created.", 201);
 }
 
 async function update(req, res) {
-  const r = await Review.findOne({ _id: req.params.id, userId: req.user.id });
-  if (!r) return fail(res, "Review not found.", 404);
-  r.rating = Number(req.body.rating);
-  r.review = req.body.review.trim();
-  if (!Number.isInteger(r.rating) || r.rating < 1 || r.rating > 5)
-    return fail(res, "Rating must be an integer between 1 and 5.", 400);
-  await r.save();
-  await recalc(r.productId);
-  notifyRag(r.productId);
-  ok(res, r, "Review updated successfully.");
+  const userId = getUserId(req);
+
+  const a = await Address.findOneAndUpdate(
+    {
+      _id: req.params.id,
+      userId,
+    },
+    req.body,
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
+
+  if (!a) {
+    return fail(res, "Address not found.", 404);
+  }
+
+  ok(res, a, "Address updated.");
 }
+
 async function remove(req, res) {
-  const filter =
-    req.user.role === "ADMIN"
-      ? { _id: req.params.id }
-      : { _id: req.params.id, userId: req.user.id };
-  const r = await Review.findOneAndDelete(filter);
-  if (!r) return fail(res, "Review not found.", 404);
-  await recalc(r.productId);
-  notifyRag(r.productId);
-  ok(res, null, "Review deleted successfully.");
+  const userId = getUserId(req);
+
+  const a = await Address.findOneAndDelete({
+    _id: req.params.id,
+    userId,
+  });
+
+  if (!a) {
+    return fail(res, "Address not found.", 404);
+  }
+
+  const replacement = await Address.findOne({ userId }).sort({
+    createdAt: 1,
+  });
+
+  if (replacement) {
+    await Address.findByIdAndUpdate(replacement._id, {
+      isDefault: true,
+    });
+  }
+
+  ok(res, null, "Address deleted.");
 }
-module.exports = { listForProduct, create, update, remove };
+
+async function setDefault(req, res) {
+  const userId = getUserId(req);
+
+  const a = await Address.findOne({
+    _id: req.params.id,
+    userId,
+  });
+
+  if (!a) {
+    return fail(res, "Address not found.", 404);
+  }
+
+  await Address.updateMany({ userId }, { isDefault: false });
+
+  a.isDefault = true;
+  await a.save();
+
+  ok(res, a, "Default address updated.");
+}
+
+async function internalGet(req, res) {
+  const a = await Address.findOne({
+    _id: req.params.id,
+    userId: req.params.userId,
+  }).lean();
+
+  if (!a) {
+    return fail(res, "Address not found.", 404);
+  }
+
+  ok(res, a);
+}
+
+module.exports = {
+  list,
+  create,
+  update,
+  remove,
+  setDefault,
+  internalGet,
+};
 
 ===== auth.js =====
 const jwt = require('jsonwebtoken');
@@ -276,33 +313,47 @@ module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKE
 ===== validate.js =====
 module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
 
-===== Review.js =====
-const mongoose=require('mongoose');const schema=new mongoose.Schema({productId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},rating:{type:Number,required:true,min:1,max:5},review:{type:String,required:true,trim:true,minlength:2,maxlength:2000}},{timestamps:true});schema.index({productId:1,userId:1},{unique:true});module.exports=mongoose.model('Review',schema);
+===== Address.js =====
+const mongoose=require('mongoose');const schema=new mongoose.Schema({userId:{type:mongoose.Schema.Types.ObjectId,required:true,index:true},type:{type:String,enum:['Home','Office','Other'],default:'Home'},addressLine:{type:String,required:true,trim:true},city:{type:String,required:true,trim:true},state:{type:String,required:true,trim:true},pincode:{type:String,required:true,trim:true},isDefault:{type:Boolean,default:false}},{timestamps:true});schema.index({userId:1,isDefault:1});module.exports=mongoose.model('Address',schema);
 
 ===== index.js =====
 const router = require("express").Router();
-const c = require("../controllers/review.controller");
+const c = require("../controllers/address.controller");
 const { authenticate, authorize } = require("../middleware/auth");
-router.get("/api/reviews/product/:productId", c.listForProduct);
-router.post(
-  "/api/reviews/product/:productId",
+const internal = require("../middleware/internal");
+router.get("/api/addresses", authenticate, authorize("USER"), c.list);
+router.post("/api/addresses", authenticate, authorize("USER"), c.create);
+router.put("/api/addresses/:id", authenticate, authorize("USER"), c.update);
+router.delete("/api/addresses/:id", authenticate, authorize("USER"), c.remove);
+router.patch(
+  "/api/addresses/:id/default",
   authenticate,
   authorize("USER"),
-  c.create,
+  c.setDefault,
 );
-router.put("/api/reviews/:id", authenticate, authorize("USER"), c.update);
-router.delete(
-  "/api/reviews/:id",
-  authenticate,
-  authorize("USER", "ADMIN"),
-  c.remove,
-);
-
+router.get("/internal/addresses/:userId/:id", internal, c.internalGet);
 module.exports = router;
 
 ===== server.js =====
-require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});const app=require('./app');const connectDB=require('./config/db');const PORT=Number(process.env.PORT||5009);
-(async()=>{try{await connectDB();app.listen(PORT,'0.0.0.0',()=>console.log('ShopSphere review service running on http://localhost:'+PORT));}catch(e){console.error('Startup failed:',e);process.exit(1);}})();
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+const app = require("./app");
+const connectDB = require("./config/db");
+const PORT = Number(process.env.PORT || 5008);
+(async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(
+        "ShopSphere address service running on http://localhost:" + PORT,
+      ),
+    );
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
 
 ===== apiResponse.js =====
 function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
