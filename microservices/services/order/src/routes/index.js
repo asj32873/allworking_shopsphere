@@ -1,8 +1,8 @@
 const router = require("express").Router();
 const c = require("../controllers/order.controller");
-const validate = require("../middleware/validate");
+const validate = require("../../../../packages/common/middleware/validate");
 const { authenticate, authorize } = require("../middleware/auth");
-const internal = require("../middleware/internal");
+const internal = require("../../../../packages/common/middleware/internal");
 const { createOrderSchema, statusSchema } = require("../validators/order");
 router.post(
   "/api/orders",

@@ -1,9 +1,9 @@
 const router = require("express").Router();
 const c = require("../controllers/product.controller");
 const qa = require("../controllers/qa.controller");
-const validate = require("../middleware/validate");
+const validate = require("../../../../packages/common/middleware/validate");
 const { authenticate, authorize } = require("../middleware/auth");
-const internal = require("../middleware/internal");
+const internal = require("../../../../packages/common/middleware/internal");
 const { productSchema } = require("../validators/product");
 router.get("/api/products", c.list);
 router.get("/api/products/:id", c.getById);

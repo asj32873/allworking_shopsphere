@@ -5,10 +5,13 @@ const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 
 const routes = require("./routes");
-const { notFound, errorHandler } = require("./middleware/error");
+const {
+  notFound,
+  errorHandler,
+} = require("../../../packages/common/middleware/error");
 
 const app = express();
-const requestId = require("./middleware/requestId");
+const requestId = require("../../../packages/common/middleware/requestId");
 app.use(requestId);
 app.use(helmet());
 

@@ -1,4 +1,4 @@
-﻿const AppError = require("../utils/AppError");
+﻿const AppError = require("../../../../packages/common/utils/AppError");
 
 module.exports =
   (schema, source = "body") =>

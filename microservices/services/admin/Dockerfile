@@ -4,6 +4,13 @@ WORKDIR /app
 
 COPY package*.json ./
 
+# Copy shared package
+COPY packages ./packages
+
+# Copy this specific service
+COPY services/admin ./services/admin
+
+
 RUN npm install
 
 COPY . .

@@ -1,14 +1,11 @@
 const router = require("express").Router();
 
 const controller = require("../controllers/issue.controller");
-const validate = require("../middleware/validate");
+const validate = require("../../../../packages/common/middleware/validate");
 const { authenticate, authorize } = require("../middleware/auth");
-const internal = require("../middleware/internal");
+const internal = require("../../../../packages/common/middleware/internal");
 
-const {
-  createIssueSchema,
-  updateIssueSchema,
-} = require("../validators/issue");
+const { createIssueSchema, updateIssueSchema } = require("../validators/issue");
 
 /*
  * Internal service-to-service endpoint.
@@ -21,7 +18,7 @@ const {
 router.get(
   "/internal/issues/vendor/:vendorId/count",
   internal,
-  controller.internalVendorCount
+  controller.internalVendorCount,
 );
 
 /*
@@ -33,34 +30,33 @@ router.post(
   "/api/issues",
   authorize("USER"),
   validate(createIssueSchema),
-  controller.create
+  controller.create,
 );
 
 router.get(
   "/api/issues",
   authorize("USER", "VENDOR", "ADMIN"),
-  controller.list
+  controller.list,
 );
 
 router.get(
   "/api/issues/:id",
   authorize("USER", "VENDOR", "ADMIN"),
-  controller.getById
+  controller.getById,
 );
 
 router.patch(
   "/api/issues/:id",
   authorize("USER", "VENDOR", "ADMIN"),
   validate(updateIssueSchema),
-  controller.update
+  controller.update,
 );
 
 module.exports = router;
 
-
 // const router = require("express").Router();
 // const c = require("../controllers/issue.controller");
-// const validate = require("../middleware/validate");
+// const validate = require("../../../../packages/common/middleware/validate");
 // const { authenticate, authorize } = require("../middleware/auth");
 // const { createIssueSchema, updateIssueSchema } = require("../validators/issue");
 // router.use(authenticate);
@@ -80,7 +76,7 @@ module.exports = router;
 // );
 // router.get(
 //   "/internal/issues/vendor/:vendorId/count",
-//   require("../middleware/internal"),
+//   require("../../../../packages/common/middleware/internal"),
 //   c.internalVendorCount,
 // );
 // module.exports = router;

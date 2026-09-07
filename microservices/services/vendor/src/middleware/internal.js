@@ -1,4 +1,4 @@
-﻿const AppError = require("../utils/AppError");
+﻿const AppError = require("../../../../packages/common/utils/AppErrorges/common/utils/AppError");
 
 module.exports = (req, res, next) => {
   const expected = process.env.INTERNAL_SERVICE_TOKEN;

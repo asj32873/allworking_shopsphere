@@ -1,7 +1,8 @@
 services:
   auth-service:
     build:
-      context: ./services/auth
+      context: .
+      dockerfile: ./services/auth/Dockerfile
 
     container_name: shopsphere-auth
 
@@ -26,7 +27,8 @@ services:
 
   user-service:
     build:
-      context: ./services/user
+      context: .
+      dockerfile: ./services/user/Dockerfile
 
     container_name: shopsphere-user
 
@@ -50,7 +52,8 @@ services:
 
   product-service:
     build:
-      context: ./services/product
+      context: .
+      dockerfile: ./services/product/Dockerfile
 
     container_name: shopsphere-product
 
@@ -77,13 +80,10 @@ services:
     networks:
       - shopsphere-network
 
-  # =========================
-  # CART SERVICE
-  # =========================
-
   cart-service:
     build:
-      context: ./services/cart
+      context: .
+      dockerfile: ./services/cart/Dockerfile
 
     container_name: shopsphere-cart
 
@@ -109,13 +109,10 @@ services:
     networks:
       - shopsphere-network
 
-  # =========================
-  # ORDER SERVICE
-  # =========================
-
   order-service:
     build:
-      context: ./services/order
+      context: .
+      dockerfile: ./services/order/Dockerfile
 
     container_name: shopsphere-order
 
@@ -145,13 +142,10 @@ services:
     networks:
       - shopsphere-network
 
-  # =========================
-  # PAYMENT SERVICE
-  # =========================
-
   payment-service:
     build:
-      context: ./services/payment
+      context: .
+      dockerfile: ./services/payment/Dockerfile
 
     container_name: shopsphere-payment
 
@@ -186,13 +180,10 @@ services:
     networks:
       - shopsphere-network
 
-  # =========================
-  # ADDRESS SERVICE
-  # =========================
-
   address-service:
     build:
-      context: ./services/address
+      context: .
+      dockerfile: ./services/address/Dockerfile
 
     container_name: shopsphere-address
 
@@ -218,7 +209,8 @@ services:
 
   vendor-service:
     build:
-      context: ./services/vendor
+      context: .
+      dockerfile: ./services/vendor/Dockerfile
 
     container_name: shopsphere-vendor
 
@@ -242,7 +234,8 @@ services:
 
   review-service:
     build:
-      context: ./services/review
+      context: .
+      dockerfile: ./services/review/Dockerfile
 
     container_name: shopsphere-review
 
@@ -274,7 +267,8 @@ services:
 
   rag-service:
     build:
-      context: ./services/rag
+      context: .
+      dockerfile: ./services/rag/Dockerfile
 
     container_name: shopsphere-rag
 
@@ -310,7 +304,8 @@ services:
 
   support-service:
     build:
-      context: ./services/support
+      context: .
+      dockerfile: ./services/support/Dockerfile
 
     container_name: shopsphere-support
 
@@ -338,7 +333,8 @@ services:
 
   admin-service:
     build:
-      context: ./services/admin
+      context: .
+      dockerfile: ./services/admin/Dockerfile
 
     container_name: shopsphere-admin
 
@@ -370,13 +366,10 @@ services:
     networks:
       - shopsphere-network
 
-  # =========================
-  # API GATEWAY
-  # =========================
-
   api-gateway:
     build:
-      context: ./services/api-gateway
+      context: .
+      dockerfile: ./services/api-gateway/Dockerfile
 
     container_name: shopsphere-gateway
 

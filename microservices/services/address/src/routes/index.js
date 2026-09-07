@@ -1,7 +1,7 @@
 const router = require("express").Router();
 const c = require("../controllers/address.controller");
 const { authenticate, authorize } = require("../middleware/auth");
-const internal = require("../middleware/internal");
+const internal = require("../../../../packages/common/middleware/internal");
 router.get("/api/addresses", authenticate, authorize("USER"), c.list);
 router.post("/api/addresses", authenticate, authorize("USER"), c.create);
 router.put("/api/addresses/:id", authenticate, authorize("USER"), c.update);

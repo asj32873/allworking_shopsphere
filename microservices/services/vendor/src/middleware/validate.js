@@ -1,21 +1,23 @@
-﻿const AppError = require("../utils/AppError");
+﻿const AppError = require("../../../../packages/common/utils/AppErrorges/common/utils/AppError");
 
-module.exports = (schema, source = "body") => (req, res, next) => {
-  const result = schema.safeParse(req[source]);
+module.exports =
+  (schema, source = "body") =>
+  (req, res, next) => {
+    const result = schema.safeParse(req[source]);
 
-  if (!result.success) {
-    return next(
-      new AppError("Invalid request.", 400, {
-        code: "VALIDATION_ERROR",
-        details: result.error.issues.map((issue) => ({
-          path: issue.path.join("."),
-          message: issue.message,
-        })),
-      }),
-    );
-  }
+    if (!result.success) {
+      return next(
+        new AppError("Invalid request.", 400, {
+          code: "VALIDATION_ERROR",
+          details: result.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        }),
+      );
+    }
 
-  req[source] = result.data;
+    req[source] = result.data;
 
-  next();
-};
+    next();
+  };
