@@ -7,6 +7,8 @@ const routes = require("./routes");
 const controller = require("./controllers/payment.controller");
 const { notFound, errorHandler } = require("./middleware/error");
 const app = express();
+const requestId = require("./middleware/requestId");
+app.use(requestId);
 app.use(helmet());
 app.use(
   cors({
