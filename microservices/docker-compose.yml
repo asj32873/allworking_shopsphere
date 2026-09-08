@@ -1,0 +1,172 @@
+services:
+
+  api-gateway:
+    image: shopsphere-api-gateway:1.0
+    container_name: shopsphere-api-gateway
+    env_file:
+      - .env
+    environment:
+      AUTH_SERVICE_URL: http://auth:5002
+      USER_SERVICE_URL: http://user:5007
+      PRODUCT_SERVICE_URL: http://product:5003
+      CART_SERVICE_URL: http://cart:5004
+      ORDER_SERVICE_URL: http://order:5005
+      PAYMENT_SERVICE_URL: http://payment:5006
+      ADDRESS_SERVICE_URL: http://address:5008
+      REVIEW_SERVICE_URL: http://review:5009
+      RAG_SERVICE_URL: http://rag:5010
+      SUPPORT_SERVICE_URL: http://support:5011
+      VENDOR_SERVICE_URL: http://vendor:5012
+      ADMIN_SERVICE_URL: http://admin:5013
+    ports:
+      - "5001:5001"
+    depends_on:
+      - auth
+      - user
+      - product
+      - cart
+      - order
+      - payment
+      - address
+      - review
+      - rag
+      - support
+      - vendor
+      - admin
+
+  auth:
+    image: shopsphere-auth:1.0
+    container_name: shopsphere-auth
+    env_file:
+      - .env
+    environment:
+      PORT: 5002
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5002:5002"
+
+  product:
+    image: shopsphere-product:1.0
+    container_name: shopsphere-product
+    env_file:
+      - .env
+    environment:
+      PORT: 5003
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5003:5003"
+
+  cart:
+    image: shopsphere-cart:1.0
+    container_name: shopsphere-cart
+    env_file:
+      - .env
+    environment:
+      PORT: 5004
+      AUTH_SERVICE_URL: http://auth:5002
+      PRODUCT_SERVICE_URL: http://product:5003
+    ports:
+      - "5004:5004"
+
+  order:
+    image: shopsphere-order:1.0
+    container_name: shopsphere-order
+    env_file:
+      - .env
+    environment:
+      PORT: 5005
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5005:5005"
+
+  payment:
+    image: shopsphere-payment:1.0
+    container_name: shopsphere-payment
+    env_file:
+      - .env
+    environment:
+      PORT: 5006
+      AUTH_SERVICE_URL: http://auth:5002
+      CART_SERVICE_URL: http://cart:5004
+      PRODUCT_SERVICE_URL: http://product:5003
+      ADDRESS_SERVICE_URL: http://address:5008
+      ORDER_SERVICE_URL: http://order:5005
+    ports:
+      - "5006:5006"
+
+  user:
+    image: shopsphere-user:1.0
+    container_name: shopsphere-user
+    env_file:
+      - .env
+    environment:
+      PORT: 5007
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5007:5007"
+
+  address:
+    image: shopsphere-address:1.0
+    container_name: shopsphere-address
+    env_file:
+      - .env
+    environment:
+      PORT: 5008
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5008:5008"
+
+  review:
+    image: shopsphere-review:1.0
+    container_name: shopsphere-review
+    env_file:
+      - .env
+    environment:
+      PORT: 5009
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5009:5009"
+
+  rag:
+    image: shopsphere-rag:1.0
+    container_name: shopsphere-rag
+    env_file:
+      - .env
+    environment:
+      PORT: 5010
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5010:5010"
+
+  support:
+    image: shopsphere-support:1.0
+    container_name: shopsphere-support
+    env_file:
+      - .env
+    environment:
+      PORT: 5011
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5011:5011"
+
+  vendor:
+    image: shopsphere-vendor:1.0
+    container_name: shopsphere-vendor
+    env_file:
+      - .env
+    environment:
+      PORT: 5012
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5012:5012"
+
+  admin:
+    image: shopsphere-admin:1.0
+    container_name: shopsphere-admin
+    env_file:
+      - .env
+    environment:
+      PORT: 5013
+      AUTH_SERVICE_URL: http://auth:5002
+    ports:
+      - "5013:5013"
