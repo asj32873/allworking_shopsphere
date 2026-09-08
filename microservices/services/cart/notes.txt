@@ -5,7 +5,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const routes = require("./routes");
-const { notFound, errorHandler } = require("./middleware/error");
+
 const app = express();
 app.use(helmet());
 app.use(
@@ -385,7 +385,7 @@ const c = require("../controllers/cart.controller");
 
 const { authenticate, authorize } = require("../middleware/auth");
 
-const internal = require("../../../../packages/common/middleware/internal");
+const { internal } = require("@shopsphere/common");
 
 // GET CART
 router.get("/api/cart", authenticate, authorize("USER"), c.getCart);

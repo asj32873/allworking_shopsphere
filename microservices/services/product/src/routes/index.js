@@ -1,9 +1,9 @@
 const router = require("express").Router();
 const c = require("../controllers/product.controller");
 const qa = require("../controllers/qa.controller");
-const validate = require("../../../../packages/common/middleware/validate");
+const { validate } = require("@shopsphere/common");
 const { authenticate, authorize } = require("../middleware/auth");
-const internal = require("../../../../packages/common/middleware/internal");
+const { internal } = require("@shopsphere/common");
 const { productSchema } = require("../validators/product");
 router.get("/api/products", c.list);
 router.get("/api/products/:id", c.getById);

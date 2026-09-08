@@ -4,7 +4,7 @@ const c = require("../controllers/cart.controller");
 
 const { authenticate, authorize } = require("../middleware/auth");
 
-const internal = require("../../../../packages/common/middleware/internal");
+const { internal } = require("@shopsphere/common");
 
 // GET CART
 router.get("/api/cart", authenticate, authorize("USER"), c.getCart);

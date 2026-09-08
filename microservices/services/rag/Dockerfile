@@ -2,18 +2,14 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package.json ./
 
-# Copy shared package
 COPY packages ./packages
-
-# Copy this specific service
 COPY services/rag ./services/rag
 
+RUN npm install
 
-RUN npm install --legacy-peer-deps
-
-COPY . .
+WORKDIR /app/services/rag
 
 EXPOSE 5010
 

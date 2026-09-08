@@ -1,7 +1,7 @@
 const router = require("express").Router();
 
 const c = require("../controllers/rag.controller");
-const internal = require("../../../../packages/common/middleware/internal");
+const { internal } = require("@shopsphere/common");
 
 router.post("/internal/products/:id/qa", internal, c.qa);
 

@@ -1,7 +1,7 @@
 const router = require("express").Router();
 const c = require("../controllers/vendor.controller");
 const { authenticate, authorize } = require("../middleware/auth");
-const internal = require("../../../../packages/common/middleware/internal");
+const { internal } = require("@shopsphere/common");
 router.get("/api/vendor/profile", authenticate, authorize("VENDOR"), c.profile);
 router.get(
   "/api/vendor/dashboard",

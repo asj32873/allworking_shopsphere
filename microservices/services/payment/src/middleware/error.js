@@ -1,4 +1,4 @@
-﻿const AppError = require("../../../../packages/common/utils/AppErrorges/common/utils/AppError");
+﻿const AppError = require("@shopsphere/common");
 
 function handleCastError(error) {
   return new AppError(`Invalid value for ${error.path}`, 400, {

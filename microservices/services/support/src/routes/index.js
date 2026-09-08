@@ -1,9 +1,9 @@
 const router = require("express").Router();
 
 const controller = require("../controllers/issue.controller");
-const validate = require("../../../../packages/common/middleware/validate");
+const { validate } = require("@shopsphere/common");
 const { authenticate, authorize } = require("../middleware/auth");
-const internal = require("../../../../packages/common/middleware/internal");
+const { internal } = require("@shopsphere/common");
 
 const { createIssueSchema, updateIssueSchema } = require("../validators/issue");
 
@@ -56,7 +56,7 @@ module.exports = router;
 
 // const router = require("express").Router();
 // const c = require("../controllers/issue.controller");
-// const validate = require("../../../../packages/common/middleware/validate");
+// const { validate } = require("@shopsphere/common");
 // const { authenticate, authorize } = require("../middleware/auth");
 // const { createIssueSchema, updateIssueSchema } = require("../validators/issue");
 // router.use(authenticate);
@@ -76,7 +76,7 @@ module.exports = router;
 // );
 // router.get(
 //   "/internal/issues/vendor/:vendorId/count",
-//   require("../../../../packages/common/middleware/internal"),
+//   require("@shopsphere/common"),
 //   c.internalVendorCount,
 // );
 // module.exports = router;

@@ -2,18 +2,14 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package.json ./
 
-# Copy shared package
 COPY packages ./packages
-
-# Copy this specific service
 COPY services/user ./services/user
-
 
 RUN npm install
 
-COPY . .
+WORKDIR /app/services/user
 
 EXPOSE 5007
 
