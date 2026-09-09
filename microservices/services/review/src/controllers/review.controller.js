@@ -2,16 +2,32 @@ const mongoose = require("mongoose");
 const Review = require("../models/Review");
 const { getJson, patchJson, postJson } = require("../utils/serviceClient");
 const { ok, fail } = require("../utils/apiResponse");
+const cache = require("../services/cache.service");
 const PRODUCT = () =>
   process.env.PRODUCT_SERVICE_URL || "http://localhost:5003";
 const ORDER = () => process.env.ORDER_SERVICE_URL || "http://localhost:5005";
 const RAG = () => process.env.RAG_SERVICE_URL || "http://localhost:5010";
+
 async function listForProduct(req, res) {
-  const reviews = await Review.find({ productId: req.params.productId })
+  const productId = req.params.productId;
+
+  const cacheKey = `reviews:product:${productId}`;
+
+  const cached = await cache.get(cacheKey);
+
+  if (cached) {
+    return ok(res, cached);
+  }
+
+  const reviews = await Review.find({ productId })
     .sort({ createdAt: -1 })
     .lean();
-  ok(res, reviews);
+
+  await cache.set(cacheKey, reviews);
+
+  return ok(res, reviews);
 }
+
 async function recalc(productId) {
   const stats = await Review.aggregate([
     { $match: { productId: new mongoose.Types.ObjectId(productId) } },
@@ -101,6 +117,8 @@ async function create(req, res) {
     review: req.body.review.trim(),
   });
 
+  await cache.del(`reviews:product:${created.productId}`);
+
   await recalc(created.productId);
   notifyRag(created.productId);
 
@@ -115,8 +133,12 @@ async function update(req, res) {
   if (!Number.isInteger(r.rating) || r.rating < 1 || r.rating > 5)
     return fail(res, "Rating must be an integer between 1 and 5.", 400);
   await r.save();
+
+  await cache.del(`reviews:product:${r.productId}`);
+
   await recalc(r.productId);
   notifyRag(r.productId);
+
   ok(res, r, "Review updated successfully.");
 }
 async function remove(req, res) {
@@ -126,8 +148,12 @@ async function remove(req, res) {
       : { _id: req.params.id, userId: req.user.id };
   const r = await Review.findOneAndDelete(filter);
   if (!r) return fail(res, "Review not found.", 404);
+
+  await cache.del(`reviews:product:${r.productId}`);
+
   await recalc(r.productId);
   notifyRag(r.productId);
+
   ok(res, null, "Review deleted successfully.");
 }
 module.exports = { listForProduct, create, update, remove };

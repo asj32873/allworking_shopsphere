@@ -9,12 +9,9 @@ export default function Auth0ProviderWithNavigate({ children }) {
   const audience = import.meta.env.VITE_AUTH0_AUDIENCE;
 
   const onRedirectCallback = (appState) => {
-    sessionStorage.setItem(
-      "auth0_return_to",
-      appState?.returnTo || "/user/home",
-    );
+    const returnTo = appState?.returnTo || "/user/home";
 
-    navigate("/auth/callback", {
+    navigate(returnTo, {
       replace: true,
     });
   };

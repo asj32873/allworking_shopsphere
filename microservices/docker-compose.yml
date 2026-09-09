@@ -71,11 +71,15 @@ services:
       VENDOR_SERVICE_URL: http://vendor-service:5012
       RAG_SERVICE_URL: http://rag-service:5010
 
+      REDIS_URL: redis://redis:6379
+      REDIS_PRODUCT_TTL: 300
+
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
 
     depends_on:
       - auth-service
       - vendor-service
+      - redis
 
     networks:
       - shopsphere-network
@@ -254,6 +258,9 @@ services:
       ORDER_SERVICE_URL: http://order-service:5005
       RAG_SERVICE_URL: http://rag-service:5010
 
+      REDIS_URL: redis://redis:6379
+      REDIS_REVIEW_TTL: 300
+
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
 
     depends_on:
@@ -261,6 +268,7 @@ services:
       - product-service
       - order-service
       - rag-service
+      - redis
 
     networks:
       - shopsphere-network
@@ -411,6 +419,24 @@ services:
     networks:
       - shopsphere-network
 
+  redis:
+    image: redis:7-alpine
+
+    container_name: shopsphere-redis
+
+    restart: unless-stopped
+
+    command: redis-server --appendonly yes
+
+    volumes:
+      - redis-data:/data
+
+    networks:
+      - shopsphere-network
+
 networks:
   shopsphere-network:
     driver: bridge
+
+volumes:
+  redis-data:

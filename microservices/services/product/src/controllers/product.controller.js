@@ -1,17 +1,29 @@
 const Product = require("../models/Product");
 const { ok, fail } = require("../utils/apiResponse");
+
 const {
   pagination,
   buildProductFilter,
   productSort,
+  buildProductCacheKey,
 } = require("../services/query.service");
+
 const { ingestProduct, deleteProduct } = require("../services/rag.service");
+const cache = require("../services/cache.service");
 const {
   getVendorByUserId,
   getAllVendors,
 } = require("../services/vendor.service");
 
 async function list(req, res) {
+  const cacheKey = buildProductCacheKey(req.query);
+
+  const cached = await cache.get(cacheKey);
+
+  if (cached) {
+    return ok(res, cached);
+  }
+
   const { page, limit, skip } = pagination(req);
   const filter = buildProductFilter(req.query);
 
@@ -25,14 +37,6 @@ async function list(req, res) {
     Product.countDocuments(filter),
   ]);
 
-  /*
-   * Product.vendorId contains the authenticated user's ID.
-   *
-   * Vendor.userId contains the same ID.
-   *
-   * Fetch all vendors once instead of making one HTTP
-   * request for every product.
-   */
   const vendors = await getAllVendors();
 
   const vendorMap = new Map(
@@ -44,33 +48,53 @@ async function list(req, res) {
     vendor: vendorMap.get(String(product.vendorId)) || null,
   }));
 
-  return ok(res, {
+  const result = {
     items: productsWithVendor,
     page,
     limit,
     total,
     totalPages: Math.ceil(total / limit),
-  });
+  };
+
+  await cache.set(cacheKey, result);
+
+  return ok(res, result);
+}
+
+async function invalidateProductCache(productId) {
+  await Promise.all([
+    cache.del(`product:${productId}`),
+    cache.delByPattern("products:list:*"),
+  ]);
 }
 
 async function getById(req, res) {
-  const product = await Product.findById(req.params.id).lean();
+  const productId = req.params.id;
+
+  const cacheKey = `product:${productId}`;
+
+  const cached = await cache.get(cacheKey);
+
+  if (cached) {
+    return ok(res, cached, "OK");
+  }
+
+  const product = await Product.findById(productId).lean();
 
   if (!product) {
     return fail(res, "Product not found.", 404);
   }
 
-  /*
-   * For a single product, directly resolve its vendor
-   * through the Vendor Service using the Product.vendorId,
-   * which is the user's ID.
-   */
   const vendor = await getVendorByUserId(product.vendorId);
 
-  return ok(res, {
+  const result = {
     ...product,
     vendor,
-  });
+  };
+
+  await cache.set(cacheKey, result);
+
+  return ok(res, result);
 }
 
 async function create(req, res) {
@@ -80,6 +104,7 @@ async function create(req, res) {
   });
 
   await ingestProduct(product._id);
+  await cache.delByPattern("products:list:*");
 
   return ok(res, product, "Product created.", 201);
 }
@@ -102,6 +127,10 @@ async function update(req, res) {
   }
 
   await ingestProduct(product._id);
+  await Promise.all([
+    cache.del(`product:${product._id}`),
+    cache.delByPattern("products:list:*"),
+  ]);
 
   return ok(res, product, "Product updated.");
 }
@@ -117,6 +146,10 @@ async function remove(req, res) {
   }
 
   await deleteProduct(product._id);
+  await Promise.all([
+    cache.del(`product:${product._id}`),
+    cache.delByPattern("products:list:*"),
+  ]);
 
   return ok(res, null, "Product deleted.");
 }
@@ -147,6 +180,11 @@ async function updateStock(req, res) {
   }
 
   await ingestProduct(product._id);
+
+  await Promise.all([
+    cache.del(`product:${product._id}`),
+    cache.delByPattern("products:list:*"),
+  ]);
 
   return ok(res, product, "Stock updated.");
 }
@@ -215,7 +253,11 @@ async function internalReserve(req, res) {
     // Sync updated stock to RAG
     for (const product of result) {
       await ingestProduct(product._id);
+
+      await cache.del(`product:${product._id}`);
     }
+
+    await cache.delByPattern("products:list:*");
 
     return ok(res, result, "Stock reserved.");
   } finally {
@@ -244,11 +286,18 @@ async function internalRelease(req, res) {
       },
     })),
   );
+  const productIds = items.map((item) => item.productId);
 
+  await Promise.all(productIds.map((id) => cache.del(`product:${id}`)));
+
+  await cache.delByPattern("products:list:*");
   // Sync all changed products to RAG
-  for (const item of items) {
-    await ingestProduct(item.productId);
-  }
+  await ingestProduct(product._id);
+
+  await Promise.all([
+    cache.del(`product:${product._id}`),
+    cache.delByPattern("products:list:*"),
+  ]);
 
   return ok(res, null, "Stock released.");
 }

@@ -84,6 +84,8 @@ export const loadAuthenticatedUser = createAsyncThunk(
  * POST /auth/auth0/login
  *        ↓
  * ShopSphere JWT
+ *        ↓
+ * Redux auth state
  * ---------------------------------------------------------
  */
 export const exchangeAuth0Token = createAsyncThunk(
@@ -122,11 +124,14 @@ export const exchangeAuth0Token = createAsyncThunk(
       }
 
       const token = result?.data?.token;
-
       const user = normalizeUser(result?.data?.user);
 
       if (!token) {
         throw new Error("ShopSphere authentication token was not returned.");
+      }
+
+      if (!user) {
+        throw new Error("ShopSphere user information was not returned.");
       }
 
       localStorage.setItem("shopsphere_token", token);
@@ -181,10 +186,8 @@ const initialState = {
   user: null,
 
   /*
-   * This is important.
-   *
-   * ProtectedRoute must wait while the
-   * authentication bootstrap is running.
+   * ProtectedRoute must wait until authentication
+   * bootstrap has completed.
    */
   loading: true,
 
@@ -212,6 +215,7 @@ const authSlice = createSlice({
     finishBootstrap: (state) => {
       state.loading = false;
       state.initialized = true;
+      state.error = null;
     },
 
     clearAuthError: (state) => {
@@ -260,9 +264,6 @@ const authSlice = createSlice({
       })
 
       .addCase(loadAuthenticatedUser.rejected, (state, action) => {
-        /*
-         * Invalid JWT → remove it.
-         */
         localStorage.removeItem("shopsphere_token");
 
         state.token = null;
@@ -290,6 +291,8 @@ const authSlice = createSlice({
       })
 
       .addCase(exchangeAuth0Token.rejected, (state, action) => {
+        state.token = null;
+        state.user = null;
         state.loading = false;
         state.initialized = true;
         state.error = action.payload;

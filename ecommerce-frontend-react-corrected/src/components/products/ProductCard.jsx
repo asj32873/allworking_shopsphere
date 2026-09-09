@@ -32,11 +32,17 @@ export default function ProductCard({ product }) {
   return (
     <Tilt3D max={7}>
       <div className="card h-100 card-hover">
-        <img
-          src={product.image}
-          className="card-img-top product-img"
-          alt={product.name}
-        />
+        {product.image ? (
+          <img
+            src={product.image}
+            className="card-img-top product-img"
+            alt={product.name}
+          />
+        ) : (
+          <div className="card-img-top product-img d-flex align-items-center justify-content-center bg-light text-muted">
+            No image available
+          </div>
+        )}
 
         <div className="card-body d-flex flex-column">
           <small className="text-muted">
