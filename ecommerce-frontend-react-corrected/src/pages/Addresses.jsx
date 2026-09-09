@@ -1,5 +1,15 @@
-import { useState } from "react";
-import { useApp } from "../context/AppContext";
+import { useEffect, useState } from "react";
+
+import { useDispatch, useSelector } from "react-redux";
+
+import {
+  addAddress,
+  deleteAddress,
+  loadAddresses,
+  setDefaultAddress,
+  updateAddress,
+} from "../store/slices/addressSlice";
+
 const empty = {
   type: "Home",
   addressLine: "",
@@ -7,25 +17,39 @@ const empty = {
   state: "",
   pincode: "",
 };
+
 export default function Addresses() {
-  const {
-    user,
-    addresses,
-    addAddress,
-    updateAddress,
-    deleteAddress,
-    setDefaultAddress,
-  } = useApp();
-  const mine = addresses;
-  console.log("Addresses from context:", addresses);
-  const [f, setF] = useState(empty),
-    [edit, setEdit] = useState(null);
-  const submit = (e) => {
+  const dispatch = useDispatch();
+
+  const addresses = useSelector((state) => state.addresses.items);
+
+  const loading = useSelector((state) => state.addresses.loading);
+
+  const [f, setF] = useState(empty);
+  const [edit, setEdit] = useState(null);
+
+  useEffect(() => {
+    dispatch(loadAddresses());
+  }, [dispatch]);
+
+  const submit = async (e) => {
     e.preventDefault();
-    edit ? updateAddress(edit, f) : addAddress(f);
+
+    if (edit) {
+      await dispatch(
+        updateAddress({
+          id: edit,
+          data: f,
+        }),
+      );
+    } else {
+      await dispatch(addAddress(f));
+    }
+
     setF(empty);
     setEdit(null);
   };
+
   return (
     <div className="container py-4">
       <div className="row g-4">
@@ -33,16 +57,23 @@ export default function Addresses() {
           <div className="card">
             <div className="card-body">
               <h5>{edit ? "Edit" : "Add"} Address</h5>
+
               <form onSubmit={submit}>
                 <select
                   className="form-select mb-2"
                   value={f.type}
-                  onChange={(e) => setF({ ...f, type: e.target.value })}
+                  onChange={(e) =>
+                    setF({
+                      ...f,
+                      type: e.target.value,
+                    })
+                  }
                 >
                   <option>Home</option>
                   <option>Office</option>
                   <option>Other</option>
                 </select>
+
                 {Object.keys(f)
                   .filter((k) => k !== "type")
                   .map((k) => (
@@ -52,9 +83,15 @@ export default function Addresses() {
                       placeholder={k}
                       required
                       value={f[k]}
-                      onChange={(e) => setF({ ...f, [k]: e.target.value })}
+                      onChange={(e) =>
+                        setF({
+                          ...f,
+                          [k]: e.target.value,
+                        })
+                      }
                     />
                   ))}
+
                 <button className="btn btn-primary">
                   {edit ? "Update" : "Add"}
                 </button>
@@ -62,24 +99,33 @@ export default function Addresses() {
             </div>
           </div>
         </div>
+
         <div className="col-lg-7">
           <h2>My Addresses</h2>
-          {mine.map((a) => (
+
+          {loading && <p>Loading...</p>}
+
+          {addresses.map((a) => (
             <div className="card mb-2" key={a.id}>
               <div className="card-body">
-                <div className="d-flex justify-content-between">
-                  <strong>{a.type}</strong>
+                <h5>
+                  {a.type}
                   {a.isDefault && (
-                    <span className="badge text-bg-primary">Default</span>
+                    <span className="badge text-bg-success ms-2">Default</span>
                   )}
-                </div>
-                <p>
-                  {a.addressLine}, {a.city}, {a.state} - {a.pincode}
+                </h5>
+
+                <p className="mb-2">
+                  {a.addressLine}
+                  <br />
+                  {a.city}, {a.state} - {a.pincode}
                 </p>
+
                 <button
                   className="btn btn-sm btn-outline-primary me-2"
                   onClick={() => {
                     setEdit(a.id);
+
                     setF({
                       type: a.type,
                       addressLine: a.addressLine,
@@ -91,17 +137,19 @@ export default function Addresses() {
                 >
                   Edit
                 </button>
+
                 {!a.isDefault && (
                   <button
                     className="btn btn-sm btn-outline-success me-2"
-                    onClick={() => setDefaultAddress(a.id)}
+                    onClick={() => dispatch(setDefaultAddress(a.id))}
                   >
                     Make Default
                   </button>
                 )}
+
                 <button
                   className="btn btn-sm btn-outline-danger"
-                  onClick={() => deleteAddress(a.id)}
+                  onClick={() => dispatch(deleteAddress(a.id))}
                 >
                   Delete
                 </button>

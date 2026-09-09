@@ -22,3 +22,56 @@ Get-ChildItem -Path $src -Recurse -File -Filter "*.js" |
           Get-Content -LiteralPath $_.FullName
           ""                                          
       } | Set-Content -LiteralPath $out -Encoding UTF8
+
+
+$src = "C:\Users\Administrator\Desktop\Python-practice\shopshere-microservices-\ecommerce-frontend-react-corrected"
+$out = Join-Path $src "notes.txt"
+
+Get-ChildItem -Path $src -Recurse -File -Filter "*.jsx" |
+      Where-Object { $_.FullName -notlike "*\node_modules\*" } |
+      Sort-Object FullName |
+      ForEach-Object {            
+          "===== $($_.Name) ====="            
+          Get-Content -LiteralPath $_.FullName
+          ""                                          
+      } | Set-Content -LiteralPath $out -Encoding UTF8
+
+
+$src = "C:\Users\Administrator\Desktop\Python-practice\shopshere-microservices-\ecommerce-frontend-react-corrected"
+
+$out = Join-Path $src "notesnew.txt"
+
+$files = @(
+    "src/pages/admin/AdminIssues.jsx"
+    "src/pages/admin/AdminOrders.jsx"
+    "src/pages/admin/AdminReviews.jsx"
+
+    "src/pages/vendor/VendorDashboard.jsx"
+    "src/pages/vendor/VendorIssues.jsx"
+    "src/pages/vendor/VendorOrders.jsx"
+    "src/pages/vendor/VendorProductEdit.jsx"
+
+    "src/pages/Issues.jsx"
+    "src/pages/OrderDetails.jsx"
+    "src/pages/Orders.jsx"
+    "src/pages/ProductDetails.jsx"
+    "src/pages/Reviews.jsx"
+)
+
+$output = foreach ($file in $files) {
+    $fullPath = Join-Path $src $file
+
+    if (Test-Path -LiteralPath $fullPath) {
+        "===== $file ====="
+        Get-Content -LiteralPath $fullPath
+        ""
+    }
+    else {
+        "===== FILE NOT FOUND: $file ====="
+        ""
+    }
+}
+
+$output | Set-Content -LiteralPath $out -Encoding UTF8
+
+Write-Host "Done! Notes created at: $out"

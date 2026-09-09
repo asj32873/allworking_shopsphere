@@ -9,14 +9,6 @@ export default function Auth0ProviderWithNavigate({ children }) {
   const audience = import.meta.env.VITE_AUTH0_AUDIENCE;
 
   const onRedirectCallback = (appState) => {
-    /*
-     * Do not immediately navigate to /user/home.
-     *
-     * Store where the user wanted to go.
-     * AppContext will exchange the Auth0 token
-     * for the ShopSphere JWT.
-     */
-
     sessionStorage.setItem(
       "auth0_return_to",
       appState?.returnTo || "/user/home",

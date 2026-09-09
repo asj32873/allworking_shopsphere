@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
+
 import { useNavigate, useParams } from "react-router-dom";
+
+import { useDispatch, useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import { addProduct, updateProduct } from "../../store/slices/productSlice";
 
 const empty = {
   name: "",
@@ -15,19 +20,18 @@ const empty = {
 
 export default function VendorProductEdit() {
   const { productId } = useParams();
-  const nav = useNavigate();
 
-  const {
-    products,
-    user,
-    addProduct,
-    updateProduct,
-  } = useApp();
+  const nav = useNavigate();
+  const dispatch = useDispatch();
+
+  const products = useSelector((state) => state.products.items);
+
+  const user = useSelector((state) => state.auth.user);
 
   const existing = products.find(
     (p) =>
       String(p.id) === String(productId) &&
-      String(p.vendorId) === String(user.id)
+      String(p.vendorId) === String(user?.id),
   );
 
   const [f, setF] = useState(empty);
@@ -57,15 +61,21 @@ export default function VendorProductEdit() {
 
     try {
       if (existing) {
-        await updateProduct(existing.id, data);
+        await dispatch(
+          updateProduct({
+            id: existing.id,
+            data,
+          }),
+        ).unwrap();
       } else {
-        await addProduct(data);
+        await dispatch(addProduct(data)).unwrap();
       }
 
       nav("/vendor/products");
     } catch (error) {
       console.error("Product save error:", error);
-      alert(error.message || "Failed to save product.");
+
+      alert(error?.message || "Failed to save product.");
     }
   };
 
@@ -74,21 +84,14 @@ export default function VendorProductEdit() {
       <div className="py-4">
         <h2>{existing ? "Edit Product" : "Create Product"}</h2>
 
-        <form
-          className="card card-body row g-3"
-          onSubmit={submit}
-        >
+        <form className="card card-body row g-3" onSubmit={submit}>
           {["name", "brand", "price", "stock", "image"].map((key) => (
             <div className="col-md-6" key={key}>
               <input
                 className="form-control"
                 name={key}
                 placeholder={key}
-                type={
-                  key === "price" || key === "stock"
-                    ? "number"
-                    : "text"
-                }
+                type={key === "price" || key === "stock" ? "number" : "text"}
                 required={key !== "image"}
                 value={f[key]}
                 onChange={(e) =>
