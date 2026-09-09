@@ -1,88 +1,121 @@
-const API_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api"
-).replace(/\/$/, "");
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
 
-let accessTokenGetter = async () => null;
+let accessTokenGetter = null;
 
-export function configureAccessTokenGetter(getter) {
-  accessTokenGetter = typeof getter === "function" ? getter : async () => null;
-}
+/*
+ * Allows Redux/auth bootstrap to provide
+ * the current ShopSphere JWT.
+ */
+export const configureAccessTokenGetter = (getter) => {
+  accessTokenGetter = getter;
+};
 
-async function request(path, options = {}) {
-  const headers = new Headers(options.headers || {});
+const getToken = async () => {
+  /*
+   * Prefer the configured token getter when available.
+   * This supports React/Auth bootstrap.
+   */
+  if (accessTokenGetter) {
+    try {
+      const token = await accessTokenGetter();
 
-  if (options.body !== undefined && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
+      if (token) {
+        return token;
+      }
+    } catch (error) {
+      console.error("Failed to get access token:", error);
+    }
   }
 
-  const token = await accessTokenGetter();
+  /*
+   * Fallback to the persisted ShopSphere JWT.
+   *
+   * This prevents an application-startup race where
+   * api/client.js is called before AppContext's useEffect
+   * has registered the token getter.
+   */
+  return localStorage.getItem("shopsphere_token") || null;
+};
+
+const request = async (method, endpoint, body) => {
+  const token = await getToken();
+
+  const headers = {
+    "Content-Type": "application/json",
+  };
 
   if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+    headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
+  const options = {
+    method,
     headers,
-    credentials: "include",
-    body:
-      options.body !== undefined && typeof options.body !== "string"
-        ? JSON.stringify(options.body)
-        : options.body,
-  });
+  };
 
-  let payload = null;
+  if (body !== undefined) {
+    options.body = JSON.stringify(body);
+  }
 
-  const contentType = response.headers.get("content-type") || "";
+  let response;
 
-  if (contentType.includes("application/json")) {
-    payload = await response.json();
-  } else {
-    const text = await response.text();
+  try {
+    response = await fetch(`${API_URL}${endpoint}`, options);
+  } catch (error) {
+    const networkError = new Error(
+      error.message || "Unable to connect to the server.",
+    );
 
-    payload = text ? { message: text } : null;
+    networkError.status = 0;
+
+    throw networkError;
+  }
+
+  let data = null;
+
+  try {
+    data = await response.json();
+  } catch {
+    // Some endpoints may return an empty response.
   }
 
   if (!response.ok) {
-    const errorData = payload;
+    console.error("API ERROR:", data);
 
-    console.error("API ERROR:", errorData);
-
-    throw new Error(
-      errorData.details
-        ? JSON.stringify(errorData.details)
-        : errorData.message || "Request failed",
+    const error = new Error(
+      data?.message || `Request failed with status ${response.status}`,
     );
+
+    error.status = response.status;
+    error.data = data;
+
+    throw error;
   }
 
-  return payload?.data !== undefined ? payload.data : payload;
-}
+  /*
+   * Support both backend response formats:
+   *
+   * { success: true, data: ... }
+   *
+   * and
+   *
+   * { ...actualData }
+   */
+  if (data && typeof data === "object" && "success" in data && "data" in data) {
+    return data.data;
+  }
 
-export const api = {
-  get: (path) => request(path),
-
-  post: (path, body) =>
-    request(path, {
-      method: "POST",
-      body,
-    }),
-
-  put: (path, body) =>
-    request(path, {
-      method: "PUT",
-      body,
-    }),
-
-  patch: (path, body) =>
-    request(path, {
-      method: "PATCH",
-      body,
-    }),
-
-  delete: (path) =>
-    request(path, {
-      method: "DELETE",
-    }),
+  return data;
 };
 
-export { API_URL };
+export const api = {
+  get: (endpoint) => request("GET", endpoint),
+
+  post: (endpoint, body) => request("POST", endpoint, body),
+
+  put: (endpoint, body) => request("PUT", endpoint, body),
+
+  patch: (endpoint, body) => request("PATCH", endpoint, body),
+
+  delete: (endpoint, body) => request("DELETE", endpoint, body),
+};

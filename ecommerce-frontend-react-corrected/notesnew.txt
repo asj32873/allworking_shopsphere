@@ -1,0 +1,1020 @@
+﻿===== src/pages/admin/AdminIssues.jsx =====
+import PortalLayout from "../../components/common/PortalLayout";
+import { useApp } from "../../context/AppContext";
+
+export default function AdminIssues() {
+  const { issues, updateIssue, vendors } = useApp();
+
+  return (
+    <PortalLayout type="admin">
+      <div className="py-4">
+        <h2>Issue Management</h2>
+
+        {issues.map((i) => (
+          <div className="card mb-3" key={i._id || i.id}>
+            <div className="card-body row align-items-center">
+              <div className="col-lg-6">
+                <h5>
+                  #{i._id || i.id} â€” {i.subject}
+                </h5>
+
+                <p>{i.description}</p>
+
+                <small>
+                  Priority: {i.priority} Â· Order: {i.orderId || "N/A"}
+                </small>
+              </div>
+
+              <div className="col-lg-3">
+                <select
+                  className="form-select"
+                  value={i.assignedTo || ""}
+                  onChange={(e) =>
+                    updateIssue(i._id || i.id, {
+                      assignedTo: e.target.value || null,
+                    })
+                  }
+                >
+                  <option value="">Unassigned</option>
+
+                  {vendors
+                    .filter((v) => v.status === "VERIFIED")
+                    .map((v) => (
+                      <option key={v._id || v.id} value={v.userId}>
+                        {v.storeName}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="col-lg-3">
+                <select
+                  className="form-select"
+                  value={i.status}
+                  onChange={(e) =>
+                    updateIssue(i._id || i.id, {
+                      status: e.target.value,
+                    })
+                  }
+                >
+                  <option value="OPEN">OPEN</option>
+                  <option value="IN_PROGRESS">IN_PROGRESS</option>
+                  <option value="RESOLVED">RESOLVED</option>
+                  <option value="CLOSED">CLOSED</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </PortalLayout>
+  );
+}
+
+===== src/pages/admin/AdminOrders.jsx =====
+import PortalLayout from "../../components/common/PortalLayout";
+import { useApp } from "../../context/AppContext";
+const statuses = [
+  "PLACED",
+  "CONFIRMED",
+  "PACKED",
+  "DISPATCHED",
+  "OUT_FOR_DELIVERY",
+  "DELIVERED",
+  "CANCELLED",
+  "RETURNED",
+];
+export default function AdminOrders() {
+  const { orders, updateAdminOrderStatus } = useApp();
+  return (
+    <PortalLayout type="admin">
+      <div className="py-4">
+        <h2>Order Management</h2>
+        {orders.map((o) => (
+          <div className="card mb-3" key={o.id}>
+            <div className="card-header">
+              <strong>Order #{o.id}</strong>
+            </div>
+            <div className="card-body">
+              {o.items.map((i) => (
+                <div
+                  className="border rounded p-2 mb-2 row align-items-center"
+                  key={i.id}
+                >
+                  <div className="col-md-5">
+                    {i.name} Ã— {i.quantity}
+                  </div>
+                  <div className="col-md-3">{i.vendorStatus}</div>
+                  <div className="col-md-4">
+                    <select
+                      className="form-select"
+                      value={i.vendorStatus}
+                      onChange={(e) =>
+                        updateAdminOrderStatus(o.id, i.id, e.target.value)
+                      }
+                    >
+                      {statuses.map((s) => (
+                        <option key={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </PortalLayout>
+  );
+}
+
+===== src/pages/admin/AdminReviews.jsx =====
+import PortalLayout from "../../components/common/PortalLayout";
+import { useApp } from "../../context/AppContext";
+export default function AdminReviews() {
+  const { reviews, products, deleteReview } = useApp();
+  return (
+    <PortalLayout type="admin">
+      <div className="py-4">
+        <h2>Review Moderation</h2>
+        {reviews.map((r) => (
+          <div className="card mb-2" key={r.id}>
+            <div className="card-body">
+              <h5>{products.find((p) => p.id === r.productId)?.name}</h5>
+              <div className="text-warning">{"â˜…".repeat(r.rating)}</div>
+              <p>{r.review}</p>
+              <button
+                className="btn btn-sm btn-outline-danger"
+                onClick={() => deleteReview(r.id)}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </PortalLayout>
+  );
+}
+
+===== src/pages/vendor/VendorDashboard.jsx =====
+import PortalLayout from "../../components/common/PortalLayout";
+import { useApp } from "../../context/AppContext";
+export default function VendorDashboard() {
+  const { products, orders, issues, user } = useApp();
+  const ps = products.filter((p) => p.vendorId === user.id),
+    os = orders.filter((o) => o.items.some((i) => i.vendorId === user.id)),
+    is = issues.filter((i) => i.vendorId === user.id),
+    sales = os.reduce(
+      (s, o) =>
+        s +
+        o.items
+          .filter((i) => i.vendorId === user.id)
+          .reduce((a, i) => a + i.quantity * i.unitPrice, 0),
+      0,
+    );
+  return (
+    <PortalLayout type="vendor">
+      <div className="py-4">
+        <h2>Vendor Dashboard</h2>
+        <div className="row g-3">
+          {[
+            ["Products", ps.length],
+            ["Orders", os.length],
+            ["Low Stock", ps.filter((p) => p.stock < 10).length],
+            ["Open Issues", is.filter((i) => i.status !== "RESOLVED").length],
+            ["Sales", `â‚¹${sales.toLocaleString("en-IN")}`],
+          ].map(([a, b]) => (
+            <div className="col-sm-6 col-xl-3" key={a}>
+              <div className="card stat-card">
+                <div className="card-body">
+                  <small>{a}</small>
+                  <div className="fs-2 fw-bold">{b}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </PortalLayout>
+  );
+}
+
+===== src/pages/vendor/VendorIssues.jsx =====
+import PortalLayout from "../../components/common/PortalLayout";
+import { useApp } from "../../context/AppContext";
+export default function VendorIssues() {
+  const { issues, user, orders, updateIssue } = useApp();
+  const mine = issues.filter(
+    (i) =>
+      i.vendorId === user.id ||
+      orders
+        .find((o) => o.id === i.orderId)
+        ?.items.some((x) => x.vendorId === user.id),
+  );
+  return (
+    <PortalLayout type="vendor">
+      <div className="py-4">
+        <h2>Customer Issues</h2>
+        {mine.map((i) => (
+          <div className="card mb-3" key={i.id}>
+            <div className="card-body">
+              <div className="d-flex justify-content-between">
+                <h5>
+                  #{i.id} â€” {i.subject}
+                </h5>
+                <span className="badge text-bg-secondary">{i.status}</span>
+              </div>
+              <p>{i.description}</p>
+              <button
+                className="btn btn-outline-primary btn-sm me-2"
+                onClick={() => updateIssue(i.id, { status: "IN_PROGRESS" })}
+              >
+                In Progress
+              </button>
+              <button
+                className="btn btn-success btn-sm"
+                onClick={() =>
+                  updateIssue(i.id, {
+                    status: "RESOLVED",
+                    response: "Resolved by vendor.",
+                  })
+                }
+              >
+                Resolve
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </PortalLayout>
+  );
+}
+
+===== src/pages/vendor/VendorOrders.jsx =====
+import PortalLayout from "../../components/common/PortalLayout";
+import { useApp } from "../../context/AppContext";
+const next = {
+  PLACED: ["CONFIRMED"],
+  CONFIRMED: ["PACKED"],
+  PACKED: ["DISPATCHED"],
+  DISPATCHED: ["OUT_FOR_DELIVERY"],
+  OUT_FOR_DELIVERY: ["DELIVERED"],
+  DELIVERED: [],
+};
+export default function VendorOrders() {
+  const { orders, user, updateVendorOrderStatus } = useApp();
+  const mine = orders
+    .map((o) => ({
+      ...o,
+      items: o.items.filter((i) => i.vendorId === user.id),
+    }))
+    .filter((o) => o.items.length);
+  return (
+    <PortalLayout type="vendor">
+      <div className="py-4">
+        <h2>Vendor Orders</h2>
+        <p className="text-muted">
+          Status changes affect only your products in a multi-vendor order.
+        </p>
+        {mine.map((o) => (
+          <div className="card mb-3" key={o.id}>
+            <div className="card-header">
+              <strong>Order #{o.id}</strong>
+            </div>
+            <div className="card-body">
+              {o.items.map((i) => (
+                <div className="border rounded p-3 mb-2" key={i.id}>
+                  <div className="row align-items-center">
+                    <div className="col-lg-5">
+                      <strong>{i.name}</strong>
+                      <div>Qty: {i.quantity}</div>
+                    </div>
+                    <div className="col-lg-3">
+                      <span className="badge text-bg-primary">
+                        {i.vendorStatus}
+                      </span>
+                    </div>
+                    <div className="col-lg-4">
+                      <select
+                        className="form-select"
+                        value={i.vendorStatus}
+                        onChange={(e) =>
+                          updateVendorOrderStatus(o.id, i.id, e.target.value)
+                        }
+                        disabled={!next[i.vendorStatus]?.length}
+                      >
+                        <option>{i.vendorStatus}</option>
+                        {next[i.vendorStatus]?.map((s) => (
+                          <option key={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </PortalLayout>
+  );
+}
+
+===== src/pages/vendor/VendorProductEdit.jsx =====
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import PortalLayout from "../../components/common/PortalLayout";
+import { useApp } from "../../context/AppContext";
+
+const empty = {
+  name: "",
+  brand: "",
+  category: "ACCESSORIES",
+  price: "",
+  stock: "",
+  description: "",
+  image: "",
+};
+
+export default function VendorProductEdit() {
+  const { productId } = useParams();
+  const nav = useNavigate();
+
+  const {
+    products,
+    user,
+    addProduct,
+    updateProduct,
+  } = useApp();
+
+  const existing = products.find(
+    (p) =>
+      String(p.id) === String(productId) &&
+      String(p.vendorId) === String(user.id)
+  );
+
+  const [f, setF] = useState(empty);
+
+  useEffect(() => {
+    if (existing) {
+      setF({
+        name: existing.name || "",
+        brand: existing.brand || "",
+        category: existing.category || "ACCESSORIES",
+        price: existing.price ?? "",
+        stock: existing.stock ?? "",
+        description: existing.description || "",
+        image: existing.image || "",
+      });
+    }
+  }, [existing]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+
+    const data = {
+      ...f,
+      price: Number(f.price),
+      stock: Number(f.stock),
+    };
+
+    try {
+      if (existing) {
+        await updateProduct(existing.id, data);
+      } else {
+        await addProduct(data);
+      }
+
+      nav("/vendor/products");
+    } catch (error) {
+      console.error("Product save error:", error);
+      alert(error.message || "Failed to save product.");
+    }
+  };
+
+  return (
+    <PortalLayout type="vendor">
+      <div className="py-4">
+        <h2>{existing ? "Edit Product" : "Create Product"}</h2>
+
+        <form
+          className="card card-body row g-3"
+          onSubmit={submit}
+        >
+          {["name", "brand", "price", "stock", "image"].map((key) => (
+            <div className="col-md-6" key={key}>
+              <input
+                className="form-control"
+                name={key}
+                placeholder={key}
+                type={
+                  key === "price" || key === "stock"
+                    ? "number"
+                    : "text"
+                }
+                required={key !== "image"}
+                value={f[key]}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    [key]: e.target.value,
+                  })
+                }
+              />
+            </div>
+          ))}
+
+          <div className="col-md-6">
+            <select
+              className="form-select"
+              value={f.category}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  category: e.target.value,
+                })
+              }
+            >
+              {[
+                "ELECTRONICS",
+                "MOBILE",
+                "LAPTOP",
+                "AUDIO",
+                "TV",
+                "HOME_APPLIANCES",
+                "ACCESSORIES",
+                "OTHER",
+              ].map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="col-12">
+            <textarea
+              className="form-control"
+              rows="4"
+              placeholder="description"
+              required
+              value={f.description}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  description: e.target.value,
+                })
+              }
+            />
+          </div>
+
+          <div>
+            <button className="btn btn-primary" type="submit">
+              {existing ? "Update Product" : "Create Product"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </PortalLayout>
+  );
+}
+
+===== src/pages/Issues.jsx =====
+import { useState } from "react";
+import { useApp } from "../context/AppContext";
+export default function Issues() {
+  const { user, issues, orders, addIssue } = useApp();
+  const [s, setS] = useState(""),
+    [d, setD] = useState(""),
+    [o, setO] = useState(""),
+    [p, setP] = useState("MEDIUM");
+  const submit = (e) => {
+    e.preventDefault();
+    if (!s || !d) return;
+    addIssue({
+      subject: s,
+      description: d,
+      orderId: o || undefined,
+      priority: p,
+    });
+    setS("");
+    setD("");
+    setO("");
+  };
+  return (
+    <div className="container py-4">
+      <h2>Customer Issues</h2>
+      <div className="row g-4">
+        <div className="col-lg-5">
+          <div className="card">
+            <div className="card-body">
+              <form onSubmit={submit}>
+                <input
+                  className="form-control mb-2"
+                  placeholder="Subject"
+                  value={s}
+                  onChange={(e) => setS(e.target.value)}
+                />
+                <textarea
+                  className="form-control mb-2"
+                  placeholder="Description"
+                  value={d}
+                  onChange={(e) => setD(e.target.value)}
+                />
+                <select
+                  className="form-select mb-2"
+                  value={o}
+                  onChange={(e) => setO(e.target.value)}
+                >
+                  <option value="">No specific order</option>
+                  {orders
+                    .filter((x) => x.userId === user.id)
+                    .map((x) => (
+                      <option key={x.id} value={x.id}>
+                        #{x.id}
+                      </option>
+                    ))}
+                </select>
+                <select
+                  className="form-select mb-2"
+                  value={p}
+                  onChange={(e) => setP(e.target.value)}
+                >
+                  <option>LOW</option>
+                  <option>MEDIUM</option>
+                  <option>HIGH</option>
+                  <option>URGENT</option>
+                </select>
+                <button className="btn btn-primary">Submit Issue</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        <div className="col-lg-7">
+          {issues
+            .filter((i) => i.userId === user.id)
+            .map((i) => (
+              <div className="card mb-2" key={i.id}>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between">
+                    <h5>
+                      #{i.id} â€” {i.subject}
+                    </h5>
+                    <span className="badge text-bg-secondary">{i.status}</span>
+                  </div>
+                  <p>{i.description}</p>
+                  {i.response && (
+                    <div className="alert alert-light">{i.response}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+===== src/pages/OrderDetails.jsx =====
+import { Link, useParams } from "react-router-dom";
+import { useApp } from "../context/AppContext";
+import OrderTracking from "../components/orders/OrderTracking";
+
+export default function OrderDetails() {
+  const { id } = useParams();
+
+  const { orders, addresses, user } = useApp();
+
+  const o = orders.find(
+    (x) => String(x._id || x.id) === String(id)
+  );
+
+  const userId = user?._id || user?.id;
+
+  if (!o || String(o.userId) !== String(userId)) {
+    return (
+      <div className="container py-5">
+        <div className="alert alert-danger">
+          Order not found.
+        </div>
+      </div>
+    );
+  }
+
+  const a = addresses.find(
+    (x) => String(x._id || x.id) === String(o.addressId)
+  );
+
+  return (
+    <div className="container py-4">
+      <Link to="/orders">â† Orders</Link>
+
+      <div className="row g-4 mt-1">
+        {/* ORDER DETAILS */}
+        <div className="col-lg-7">
+          <div className="card">
+            <div className="card-body">
+              <h3>Order #{o._id || o.id}</h3>
+
+              <p>
+                <strong>Status:</strong>{" "}
+                <span className="badge text-bg-primary">
+                  {o.status}
+                </span>
+              </p>
+
+              <p>
+                <strong>Payment:</strong> {o.paymentStatus}
+              </p>
+
+              {/* ORDER ITEMS */}
+              <div className="mt-4">
+                <h5>Items</h5>
+
+                {(o.items || []).map((item) => (
+                  <div
+                    className="border rounded p-3 mb-2"
+                    key={item.id || item._id}
+                  >
+                    <div className="d-flex justify-content-between">
+                      <div>
+                        <strong>{item.name}</strong>
+
+                        <div className="text-muted">
+                          Qty: {item.quantity}
+                        </div>
+
+                        <div className="small text-muted">
+                          Vendor Status: {item.vendorStatus}
+                        </div>
+                      </div>
+
+                      <strong>
+                        â‚¹
+                        {(
+                          Number(item.unitPrice || 0) *
+                          Number(item.quantity || 0)
+                        ).toLocaleString("en-IN")}
+                      </strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* TOTAL */}
+              <div className="d-flex justify-content-between fs-5 mt-4">
+                <strong>Total</strong>
+
+                <strong>
+                  â‚¹{o.totalAmount?.toLocaleString("en-IN")}
+                </strong>
+              </div>
+
+              {/* ADDRESS */}
+              {a && (
+                <div className="alert alert-light mt-3">
+                  {a.addressLine}, {a.city}, {a.state} - {a.pincode}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* TRACKING */}
+        <div className="col-lg-5">
+          <div className="card">
+            <div className="card-body">
+              <h5>Order Tracking</h5>
+
+              <OrderTracking order={o} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// import { Link, useParams } from "react-router-dom";
+// import { useApp } from "../context/AppContext";
+// import OrderTracking from "../components/orders/OrderTracking";
+
+// export default function OrderDetails() {
+//   const { id } = useParams();
+
+//   const { orders, addresses, user } = useApp();
+
+//   const o = orders.find((x) => String(x._id) === String(id));
+
+//   const userId = user?._id || user?.id;
+
+//   if (!o || String(o.userId) !== String(userId)) {
+//     return (
+//       <div className="container py-5">
+//         <div className="alert alert-danger">Order not found.</div>
+//       </div>
+//     );
+//   }
+
+//   const a = addresses.find(
+//     (x) => String(x._id || x.id) === String(o.addressId),
+//   );
+
+//   return (
+//     <div className="container py-4">
+//       <Link to="/orders">â† Orders</Link>
+
+//       <div className="row g-4 mt-1">
+//         <div className="col-lg-7">
+//           <div className="card">
+//             <div className="card-body">
+//               <h3>Order #{o._id}</h3>
+
+//               <p>
+//                 <strong>Status:</strong>{" "}
+//                 <span className="badge text-bg-primary">{o.status}</span>
+//               </p>
+
+//               <p>
+//                 <strong>Payment:</strong> {o.paymentStatus}
+//               </p>
+
+//               <div className="d-flex justify-content-between fs-5 mt-3">
+//                 <strong>Total</strong>
+
+//                 <strong>â‚¹{o.totalAmount?.toLocaleString("en-IN")}</strong>
+//               </div>
+
+//               {a && (
+//                 <div className="alert alert-light mt-3">
+//                   {a.addressLine}, {a.city}, {a.state} - {a.pincode}
+//                 </div>
+//               )}
+//             </div>
+//           </div>
+//         </div>
+
+//         <div className="col-lg-5">
+//           <div className="card">
+//             <div className="card-body">
+//               <h5>Order Tracking</h5>
+
+//               <OrderTracking order={o} />
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
+===== src/pages/Orders.jsx =====
+import { Link } from "react-router-dom";
+import { useApp } from "../context/AppContext";
+
+export default function Orders() {
+  const { orders, user } = useApp();
+
+  const mine = orders.filter(
+    (o) => String(o.userId) === String(user?._id || user?.id),
+  );
+
+  return (
+    <div className="container py-4">
+      <h2>My Orders</h2>
+
+      {mine.length === 0 && (
+        <div className="alert alert-info">No orders found.</div>
+      )}
+
+      {mine.map((o) => (
+        <div className="card mb-3" key={o._id}>
+          <div className="card-body">
+            <div className="d-flex justify-content-between">
+              <strong>Order #{o._id}</strong>
+
+              <span className="badge text-bg-primary">{o.status}</span>
+            </div>
+
+            <div className="d-flex justify-content-between mt-3">
+              <strong>Total</strong>
+
+              <strong>â‚¹{o.totalAmount?.toLocaleString("en-IN")}</strong>
+            </div>
+
+            <Link
+              to={`/orders/${o._id}`}
+              className="btn btn-outline-primary mt-3"
+            >
+              Track Order
+            </Link>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+===== src/pages/ProductDetails.jsx =====
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useApp } from "../context/AppContext";
+import ProductQA from "../components/products/ProductQA";
+import ReviewForm from "../components/products/ReviewForm";
+
+export default function ProductDetails() {
+  const { id } = useParams();
+  const nav = useNavigate();
+
+  const { products, reviews, orders, addToCart, user } = useApp();
+
+  const p = products.find((x) => String(x.id || x._id) === String(id));
+
+  const vendor = p?.vendor;
+  const [qty, setQty] = useState(1);
+
+  if (!p) {
+    return (
+      <div className="container py-5">
+        <div className="alert alert-danger">Product not found.</div>
+      </div>
+    );
+  }
+
+  const productId = p.id || p._id;
+  const userId = user?.id || user?._id;
+
+  const mine = reviews.filter((r) => String(r.productId) === String(productId));
+
+  const purchased = orders.some((o) => {
+    const orderUserId = o.userId?.id || o.userId?._id || o.userId;
+    const items = o.items || [];
+
+    return (
+      String(orderUserId) === String(userId) &&
+      o.status === "DELIVERED" &&
+      items.some(
+        (i) =>
+          String(i.productId?.id || i.productId?._id || i.productId) ===
+          String(productId),
+      )
+    );
+  });
+
+  const myReview = reviews.find(
+    (r) =>
+      String(r.productId) === String(productId) &&
+      String(r.userId) === String(userId),
+  );
+
+  const canReview = user?.role === "USER" && purchased;
+
+  return (
+    <div className="container py-4">
+      <Link to="/products">â† Back</Link>
+
+      <div className="row g-5 mt-1">
+        <div className="col-lg-6">
+          <img
+            src={p.image}
+            className="img-fluid rounded product-detail-image"
+            alt={p.name}
+          />
+        </div>
+
+        <div className="col-lg-6">
+          <small className="text-muted">
+            {p.brand} Â· {p.category}
+          </small>
+
+          <h1>{p.name}</h1>
+
+          <div className="d-flex align-items-center gap-2">
+            <span className="badge text-bg-warning">
+              â˜… {Number(p.rating || 0).toFixed(1)}
+            </span>
+
+            <span className="text-muted">
+              {p.reviewCount || 0} {p.reviewCount === 1 ? "review" : "reviews"}
+            </span>
+          </div>
+
+          <h3 className="mt-3">â‚¹{p.price.toLocaleString("en-IN")}</h3>
+
+          <p>{p.description}</p>
+
+          <p>
+            <strong>Stock:</strong> {p.stock || "Out of stock"}
+          </p>
+
+          {user?.role === "USER" && (
+            <div className="d-flex gap-2">
+              <input
+                type="number"
+                min="1"
+                max={p.stock}
+                className="form-control"
+                style={{ width: 90 }}
+                value={qty}
+                onChange={(e) =>
+                  setQty(Math.max(1, Math.min(+e.target.value || 1, p.stock)))
+                }
+              />
+
+              <button
+                className="btn btn-primary"
+                disabled={!p.stock}
+                onClick={() => addToCart(p, qty)}
+              >
+                Add to Cart
+              </button>
+
+              <button
+                className="btn btn-success"
+                disabled={!p.stock}
+                onClick={() => {
+                  addToCart(p, qty);
+                  nav("/cart");
+                }}
+              >
+                Buy Now
+              </button>
+            </div>
+          )}
+
+          <div className="card mt-3">
+            <div className="card-body">
+              <h5>Sold By</h5>
+              {vendor?.storeName || "Unknown vendor"}
+            </div>
+          </div>
+
+          <ProductQA productId={productId} />
+        </div>
+      </div>
+
+      <section className="mt-5">
+        <h3>Reviews</h3>
+
+        {mine.length === 0 && <p className="text-muted">No reviews yet.</p>}
+
+        {mine.map((r) => (
+          <div className="card mb-2" key={r.id || r._id}>
+            <div className="card-body">
+              <div className="text-warning">{"â˜…".repeat(r.rating)}</div>
+
+              <p>{r.review}</p>
+
+              <small>{new Date(r.createdAt).toLocaleString()}</small>
+            </div>
+          </div>
+        ))}
+
+        {canReview && !myReview && <ReviewForm productId={productId} />}
+
+        {myReview && (
+          <ReviewForm productId={productId} existingReview={myReview} />
+        )}
+
+        {user?.role === "USER" && !purchased && (
+          <div className="alert alert-info mt-3">
+            You can review this product after purchasing it and receiving a
+            delivered order.
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+===== src/pages/Reviews.jsx =====
+import { Link } from "react-router-dom";
+import { useApp } from "../context/AppContext";
+export default function Reviews() {
+  const { user, reviews, products } = useApp();
+  return (
+    <div className="container py-4">
+      <h2>My Reviews</h2>
+      {reviews
+        .filter((r) => r.userId === user.id)
+        .map((r) => {
+          const p = products.find((x) => x.id === r.productId);
+          return (
+            <div className="card mb-2" key={r.id}>
+              <div className="card-body">
+                <Link to={`/products/${r.productId}`}>
+                  <h5>{p?.name}</h5>
+                </Link>
+                <div className="text-warning">{"â˜…".repeat(r.rating)}</div>
+                <p>{r.review}</p>
+                <small>{r.createdAt}</small>
+              </div>
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+

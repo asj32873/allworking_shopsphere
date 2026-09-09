@@ -181,7 +181,7 @@ function proxy(target, pathRewrite) {
 
     changeOrigin: true,
 
-    proxyTimeout: 15000,
+    proxyTimeout: 75000,
 
     pathRewrite,
 

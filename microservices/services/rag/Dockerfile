@@ -2,12 +2,15 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package.json ./
 
-RUN npm ci --omit=dev --legacy-peer-deps
+COPY packages ./packages
+COPY services/rag ./services/rag
 
-COPY . .
+RUN npm install
+
+WORKDIR /app/services/rag
 
 EXPOSE 5010
 
-CMD ["npm", "start"]
+CMD ["node", "src/server.js"]

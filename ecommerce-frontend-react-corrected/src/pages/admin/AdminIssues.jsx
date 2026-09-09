@@ -1,8 +1,14 @@
+import { useDispatch, useSelector } from "react-redux";
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import { updateIssue } from "../../store/slices/issueSlice";
 
 export default function AdminIssues() {
-  const { issues, updateIssue, vendors } = useApp();
+  const dispatch = useDispatch();
+
+  const issues = useSelector((state) => state.issues.items);
+
+  const vendors = useSelector((state) => state.vendors.items);
 
   return (
     <PortalLayout type="admin">
@@ -29,9 +35,14 @@ export default function AdminIssues() {
                   className="form-select"
                   value={i.assignedTo || ""}
                   onChange={(e) =>
-                    updateIssue(i._id || i.id, {
-                      assignedTo: e.target.value || null,
-                    })
+                    dispatch(
+                      updateIssue({
+                        id: i._id || i.id,
+                        data: {
+                          assignedTo: e.target.value || null,
+                        },
+                      }),
+                    )
                   }
                 >
                   <option value="">Unassigned</option>
@@ -51,14 +62,22 @@ export default function AdminIssues() {
                   className="form-select"
                   value={i.status}
                   onChange={(e) =>
-                    updateIssue(i._id || i.id, {
-                      status: e.target.value,
-                    })
+                    dispatch(
+                      updateIssue({
+                        id: i._id || i.id,
+                        data: {
+                          status: e.target.value,
+                        },
+                      }),
+                    )
                   }
                 >
                   <option value="OPEN">OPEN</option>
+
                   <option value="IN_PROGRESS">IN_PROGRESS</option>
+
                   <option value="RESOLVED">RESOLVED</option>
+
                   <option value="CLOSED">CLOSED</option>
                 </select>
               </div>

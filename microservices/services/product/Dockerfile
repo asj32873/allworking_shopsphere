@@ -2,12 +2,15 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package.json ./
 
-RUN npm ci --omit=dev
+COPY packages ./packages
+COPY services/product ./services/product
 
-COPY . .
+RUN npm install
+
+WORKDIR /app/services/product
 
 EXPOSE 5003
 
-CMD ["npm", "start"]
+CMD ["node", "src/server.js"]

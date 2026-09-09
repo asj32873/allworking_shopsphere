@@ -379,7 +379,6 @@ require("dotenv").config({
 
 const app = require("./app");
 const connectDB = require("./config/db");
-const { ingestAllProducts } = require("./rag/ingest");
 
 const PORT = Number(process.env.PORT || 5010);
 
@@ -387,19 +386,11 @@ const PORT = Number(process.env.PORT || 5010);
   try {
     await connectDB();
 
-    // Start the HTTP server first
-    app.listen(PORT, "0.0.0.0", async () => {
-      console.log("ShopSphere rag service running on http://localhost:" + PORT);
-
-      // Run startup ingestion in the background
-      try {
-        await ingestAllProducts();
-      } catch (error) {
-        console.error("Startup product ingestion failed:", error.message);
-      }
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`ShopSphere RAG service running on http://localhost:${PORT}`);
     });
-  } catch (e) {
-    console.error("Startup failed:", e);
+  } catch (error) {
+    console.error("Startup failed:", error);
     process.exit(1);
   }
 })();

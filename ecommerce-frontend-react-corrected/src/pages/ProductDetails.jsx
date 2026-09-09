@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+import { useDispatch, useSelector } from "react-redux";
+
+import { addToCart } from "../store/slices/cartSlice";
 import ProductQA from "../components/products/ProductQA";
 import ReviewForm from "../components/products/ReviewForm";
 
@@ -8,7 +10,15 @@ export default function ProductDetails() {
   const { id } = useParams();
   const nav = useNavigate();
 
-  const { products, reviews, orders, addToCart, user } = useApp();
+  const dispatch = useDispatch();
+
+  const products = useSelector((state) => state.products.items);
+
+  const reviews = useSelector((state) => state.reviews.items);
+
+  const orders = useSelector((state) => state.orders.items);
+
+  const user = useSelector((state) => state.auth.user);
 
   const p = products.find((x) => String(x.id || x._id) === String(id));
 
@@ -106,7 +116,14 @@ export default function ProductDetails() {
               <button
                 className="btn btn-primary"
                 disabled={!p.stock}
-                onClick={() => addToCart(p, qty)}
+                onClick={() =>
+                  dispatch(
+                    addToCart({
+                      productId: p.id || p._id,
+                      quantity: qty,
+                    }),
+                  )
+                }
               >
                 Add to Cart
               </button>

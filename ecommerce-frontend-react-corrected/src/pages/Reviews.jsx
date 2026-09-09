@@ -1,7 +1,11 @@
 import { Link } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+import { useSelector } from "react-redux";
 export default function Reviews() {
-  const { user, reviews, products } = useApp();
+  const user = useSelector((state) => state.auth.user);
+
+  const reviews = useSelector((state) => state.reviews.items);
+
+  const products = useSelector((state) => state.products.items);
   return (
     <div className="container py-4">
       <h2>My Reviews</h2>

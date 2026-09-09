@@ -1,12 +1,35 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useApp } from "../../context/AppContext";
+import { useDispatch, useSelector } from "react-redux";
+
+import { logout } from "../../store/slices/authSlice";
+import { clearCart } from "../../store/slices/cartSlice";
+import { clearOrders } from "../../store/slices/orderSlice";
+import { clearAddresses } from "../../store/slices/addressSlice";
+import { clearIssues } from "../../store/slices/issueSlice";
+import { clearReviews } from "../../store/slices/reviewSlice";
+import { clearUsers } from "../../store/slices/userSlice";
+import { clearVendors } from "../../store/slices/vendorSlice";
 
 export default function Navbar() {
-  const { user, logout, cartItems } = useApp();
+  const dispatch = useDispatch();
+
+  const user = useSelector((state) => state.auth.user);
+
+  const cartItems = useSelector((state) => state.cart.items);
+
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    logout();
+    dispatch(logout());
+
+    dispatch(clearCart());
+    dispatch(clearOrders());
+    dispatch(clearAddresses());
+    dispatch(clearIssues());
+    dispatch(clearReviews());
+    dispatch(clearUsers());
+    dispatch(clearVendors());
+
     navigate("/");
   };
 
