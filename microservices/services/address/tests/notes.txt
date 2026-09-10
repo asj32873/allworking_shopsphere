@@ -1,0 +1,2205 @@
+﻿===== Address.test.js =====
+// tests/models/Address.test.js
+
+const mongoose = require("mongoose");
+const Address = require("../src/models/Address");
+
+describe("Address model", () => {
+  test("creates an Address model", () => {
+    expect(Address).toBeDefined();
+    expect(Address.modelName).toBe("Address");
+  });
+
+  test("has required fields", () => {
+    const schema = Address.schema;
+
+    expect(schema.path("userId").isRequired).toBe(true);
+    expect(schema.path("addressLine").isRequired).toBe(true);
+    expect(schema.path("city").isRequired).toBe(true);
+    expect(schema.path("state").isRequired).toBe(true);
+    expect(schema.path("pincode").isRequired).toBe(true);
+  });
+
+  test("uses ObjectId for userId", () => {
+    expect(Address.schema.path("userId").instance).toBe("ObjectId");
+  });
+
+  test("has valid address types", () => {
+    const typePath = Address.schema.path("type");
+
+    expect(typePath.enumValues).toEqual(["Home", "Office", "Other"]);
+  });
+
+  test("defaults type to Home", () => {
+    const address = new Address({
+      userId: new mongoose.Types.ObjectId(),
+      addressLine: "123 Main Street",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+    });
+
+    expect(address.type).toBe("Home");
+  });
+
+  test("defaults isDefault to false", () => {
+    const address = new Address({
+      userId: new mongoose.Types.ObjectId(),
+      addressLine: "123 Main Street",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+    });
+
+    expect(address.isDefault).toBe(false);
+  });
+
+  test("supports Office address type", () => {
+    const address = new Address({
+      userId: new mongoose.Types.ObjectId(),
+      type: "Office",
+      addressLine: "Office Road",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+    });
+
+    expect(address.type).toBe("Office");
+  });
+
+  test("supports Other address type", () => {
+    const address = new Address({
+      userId: new mongoose.Types.ObjectId(),
+      type: "Other",
+      addressLine: "Other Road",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+    });
+
+    expect(address.type).toBe("Other");
+  });
+
+  test("trims string fields", () => {
+    const address = new Address({
+      userId: new mongoose.Types.ObjectId(),
+      addressLine: "  123 Main Street  ",
+      city: "  Bengaluru  ",
+      state: "  Karnataka  ",
+      pincode: " 560001 ",
+    });
+
+    expect(address.addressLine).toBe("123 Main Street");
+    expect(address.city).toBe("Bengaluru");
+    expect(address.state).toBe("Karnataka");
+    expect(address.pincode).toBe("560001");
+  });
+
+  test("has timestamps enabled", () => {
+    expect(Address.schema.options.timestamps).toBe(true);
+  });
+
+  test("has userId index", () => {
+    const indexes = Address.schema.indexes();
+
+    expect(indexes.some(([fields]) => fields.userId === 1)).toBe(true);
+  });
+
+  test("has compound userId and isDefault index", () => {
+    const indexes = Address.schema.indexes();
+
+    expect(
+      indexes.some(([fields]) => fields.userId === 1 && fields.isDefault === 1),
+    ).toBe(true);
+  });
+
+  test("rejects an invalid address type", () => {
+    const address = new Address({
+      userId: new mongoose.Types.ObjectId(),
+      type: "INVALID",
+      addressLine: "123 Main Street",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+    });
+
+    const error = address.validateSync();
+
+    expect(error).toBeDefined();
+    expect(error.errors.type).toBeDefined();
+  });
+
+  test("rejects missing required fields", () => {
+    const address = new Address({});
+
+    const error = address.validateSync();
+
+    expect(error).toBeDefined();
+    expect(error.errors.userId).toBeDefined();
+    expect(error.errors.addressLine).toBeDefined();
+    expect(error.errors.city).toBeDefined();
+    expect(error.errors.state).toBeDefined();
+    expect(error.errors.pincode).toBeDefined();
+  });
+
+  test("accepts a complete valid address", () => {
+    const address = new Address({
+      userId: new mongoose.Types.ObjectId(),
+      type: "Home",
+      addressLine: "123 Main Street",
+      city: "Bengaluru",
+      state: "Karnataka",
+      pincode: "560001",
+      isDefault: true,
+    });
+
+    const error = address.validateSync();
+
+    expect(error).toBeUndefined();
+    expect(address.isDefault).toBe(true);
+  });
+});
+
+===== apiResponse.test.js =====
+// tests/apiResponse.test.js
+
+const { ok, fail } = require("../src/utils/apiResponse");
+
+describe("apiResponse", () => {
+  function createResponse() {
+    return {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+    };
+  }
+
+  describe("ok", () => {
+    test("returns 200 with default message", () => {
+      const res = createResponse();
+
+      const result = ok(res, { id: 1 });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: "OK",
+        data: { id: 1 },
+      });
+
+      expect(result).toBe(res);
+    });
+
+    test("uses custom message and status", () => {
+      const res = createResponse();
+
+      ok(res, { id: 1 }, "Created successfully", 201);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: "Created successfully",
+        data: { id: 1 },
+      });
+    });
+  });
+
+  describe("fail", () => {
+    test("defaults status to 400 when status is undefined", () => {
+      const res = createResponse();
+
+      fail(res, "Bad request");
+
+      expect(res.status).toHaveBeenCalledWith(400);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Bad request",
+      });
+    });
+
+    test("uses provided status", () => {
+      const res = createResponse();
+
+      fail(res, "Not found", 404);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Not found",
+      });
+    });
+
+    test("includes details when provided", () => {
+      const res = createResponse();
+
+      const details = {
+        field: "pincode",
+        reason: "Invalid format",
+      };
+
+      fail(res, "Validation failed", 400, details);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Validation failed",
+        details,
+      });
+    });
+
+    test("does not include details when undefined", () => {
+      const res = createResponse();
+
+      fail(res, "Validation failed", 400, undefined);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Validation failed",
+      });
+    });
+
+    test("does not include details when null", () => {
+      const res = createResponse();
+
+      fail(res, "Validation failed", 400, null);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Validation failed",
+      });
+    });
+
+    test("does not include details when false", () => {
+      const res = createResponse();
+
+      fail(res, "Validation failed", 400, false);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Validation failed",
+      });
+    });
+  });
+});
+
+===== app.test.js =====
+const request = require("supertest");
+
+jest.mock("../src/models/Address", () => ({
+  find: jest.fn(),
+  exists: jest.fn(),
+  create: jest.fn(),
+  findOneAndUpdate: jest.fn(),
+  findOneAndDelete: jest.fn(),
+  findOne: jest.fn(),
+  findByIdAndUpdate: jest.fn(),
+  updateMany: jest.fn(),
+}));
+
+jest.mock("../src/middleware/auth", () => ({
+  authenticate: jest.fn((req, res, next) => {
+    req.user = {
+      _id: "user-123",
+      role: "USER",
+    };
+
+    next();
+  }),
+
+  authorize: jest.fn(() => (req, res, next) => {
+    next();
+  }),
+}));
+
+jest.mock("@shopsphere/common", () => ({
+  requestId: jest.fn((req, res, next) => {
+    req.requestId = "test-request-id";
+    next();
+  }),
+
+  notFound: jest.fn((req, res) => {
+    res.status(404).json({
+      success: false,
+      message: "Route not found.",
+    });
+  }),
+
+  errorHandler: jest.fn((err, req, res, next) => {
+    res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.message || "Internal server error.",
+    });
+  }),
+
+  internal: jest.fn(() => (req, res, next) => {
+    next();
+  }),
+
+  ok: jest.fn((res, data, message, status = 200) => {
+    return res.status(status).json({
+      success: true,
+      data,
+      message,
+    });
+  }),
+
+  fail: jest.fn((res, message, status = 400) => {
+    return res.status(status).json({
+      success: false,
+      message,
+    });
+  }),
+}));
+
+const app = require("../src/app");
+
+describe("address app", () => {
+  test("GET /health returns service health", async () => {
+    const response = await request(app).get("/health");
+
+    expect(response.status).toBe(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.service).toBe("shopsphere-address");
+    expect(response.body.timestamp).toBeDefined();
+  });
+
+  test("returns 404 for unknown route", async () => {
+    const response = await request(app).get("/this-route-does-not-exist");
+
+    expect(response.status).toBe(404);
+
+    expect(response.body.success).toBe(false);
+  });
+});
+
+===== AppError.test.js =====
+// tests/AppError.test.js
+
+const AppError = require("../src/utils/AppError");
+
+describe("AppError", () => {
+  describe("constructor", () => {
+    test("creates an internal server error by default", () => {
+      const error = new AppError("Something went wrong");
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error).toBeInstanceOf(AppError);
+      expect(error.name).toBe("AppError");
+      expect(error.message).toBe("Something went wrong");
+      expect(error.statusCode).toBe(500);
+      expect(error.code).toBe("INTERNAL_SERVER_ERROR");
+      expect(error.details).toBeUndefined();
+      expect(error.isOperational).toBe(true);
+      expect(error.stack).toBeDefined();
+    });
+
+    test("uses BAD_REQUEST for status below 500", () => {
+      const error = new AppError("Invalid input", 400);
+
+      expect(error.statusCode).toBe(400);
+      expect(error.code).toBe("BAD_REQUEST");
+      expect(error.isOperational).toBe(true);
+    });
+
+    test("uses custom error code", () => {
+      const error = new AppError("Custom error", 422, {
+        code: "VALIDATION_ERROR",
+      });
+
+      expect(error.statusCode).toBe(422);
+      expect(error.code).toBe("VALIDATION_ERROR");
+    });
+
+    test("stores details", () => {
+      const details = {
+        field: "email",
+        reason: "Invalid",
+      };
+
+      const error = new AppError("Validation failed", 400, {
+        details,
+      });
+
+      expect(error.details).toEqual(details);
+    });
+
+    test("can be marked non-operational", () => {
+      const error = new AppError("Fatal error", 500, {
+        isOperational: false,
+      });
+
+      expect(error.isOperational).toBe(false);
+    });
+
+    test("keeps isOperational true when explicitly true", () => {
+      const error = new AppError("Expected error", 400, {
+        isOperational: true,
+      });
+
+      expect(error.isOperational).toBe(true);
+    });
+  });
+
+  describe("badRequest", () => {
+    test("creates 400 BAD_REQUEST error", () => {
+      const details = {
+        field: "name",
+      };
+
+      const error = AppError.badRequest("Invalid request", details);
+
+      expect(error).toBeInstanceOf(AppError);
+      expect(error.message).toBe("Invalid request");
+      expect(error.statusCode).toBe(400);
+      expect(error.code).toBe("BAD_REQUEST");
+      expect(error.details).toEqual(details);
+    });
+  });
+
+  describe("unauthorized", () => {
+    test("uses default message", () => {
+      const error = AppError.unauthorized();
+
+      expect(error.statusCode).toBe(401);
+      expect(error.code).toBe("UNAUTHORIZED");
+      expect(error.message).toBe("Unauthorized");
+    });
+
+    test("uses custom message", () => {
+      const error = AppError.unauthorized("Login required");
+
+      expect(error.statusCode).toBe(401);
+      expect(error.code).toBe("UNAUTHORIZED");
+      expect(error.message).toBe("Login required");
+    });
+  });
+
+  describe("forbidden", () => {
+    test("uses default message", () => {
+      const error = AppError.forbidden();
+
+      expect(error.statusCode).toBe(403);
+      expect(error.code).toBe("FORBIDDEN");
+      expect(error.message).toBe("Forbidden");
+    });
+
+    test("uses custom message", () => {
+      const error = AppError.forbidden("Access denied");
+
+      expect(error.statusCode).toBe(403);
+      expect(error.code).toBe("FORBIDDEN");
+      expect(error.message).toBe("Access denied");
+    });
+  });
+
+  describe("notFound", () => {
+    test("uses default message", () => {
+      const error = AppError.notFound();
+
+      expect(error.statusCode).toBe(404);
+      expect(error.code).toBe("NOT_FOUND");
+      expect(error.message).toBe("Resource not found");
+    });
+
+    test("uses custom message", () => {
+      const error = AppError.notFound("Address not found");
+
+      expect(error.statusCode).toBe(404);
+      expect(error.code).toBe("NOT_FOUND");
+      expect(error.message).toBe("Address not found");
+    });
+  });
+
+  describe("conflict", () => {
+    test("creates 409 CONFLICT error with details", () => {
+      const details = {
+        field: "address",
+        reason: "Already exists",
+      };
+
+      const error = AppError.conflict("Address already exists", details);
+
+      expect(error.statusCode).toBe(409);
+      expect(error.code).toBe("CONFLICT");
+      expect(error.message).toBe("Address already exists");
+      expect(error.details).toEqual(details);
+    });
+  });
+
+  describe("serviceUnavailable", () => {
+    test("uses default message", () => {
+      const error = AppError.serviceUnavailable();
+
+      expect(error.statusCode).toBe(503);
+      expect(error.code).toBe("SERVICE_UNAVAILABLE");
+      expect(error.message).toBe("Service temporarily unavailable");
+    });
+
+    test("uses custom message", () => {
+      const error = AppError.serviceUnavailable("Auth service unavailable");
+
+      expect(error.statusCode).toBe(503);
+      expect(error.code).toBe("SERVICE_UNAVAILABLE");
+      expect(error.message).toBe("Auth service unavailable");
+    });
+  });
+});
+
+===== address.controller.test.js =====
+const Address = require("../../src/models/Address");
+const controller = require("../../src/controllers/address.controller");
+
+jest.mock("../../src/models/Address", () => ({
+  find: jest.fn(),
+  exists: jest.fn(),
+  create: jest.fn(),
+  findOneAndUpdate: jest.fn(),
+  findOneAndDelete: jest.fn(),
+  findOne: jest.fn(),
+  findByIdAndUpdate: jest.fn(),
+  updateMany: jest.fn(),
+}));
+
+jest.mock("@shopsphere/common", () => ({
+  ok: jest.fn((res, data, message, status = 200) => {
+    return res.status(status).json({
+      success: true,
+      data,
+      message,
+    });
+  }),
+
+  fail: jest.fn((res, message, status = 400) => {
+    return res.status(status).json({
+      success: false,
+      message,
+    });
+  }),
+}));
+
+function createResponse() {
+  return {
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn().mockReturnThis(),
+  };
+}
+
+function userRequest(overrides = {}) {
+  return {
+    user: {
+      _id: {
+        toString: () => "user-123",
+      },
+    },
+    ...overrides,
+  };
+}
+
+describe("address.controller", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe("list", () => {
+    test("returns addresses for the authenticated user", async () => {
+      const addresses = [
+        {
+          _id: "address-1",
+          userId: "user-123",
+          type: "Home",
+        },
+      ];
+
+      Address.find.mockReturnValue({
+        sort: jest.fn().mockResolvedValue(addresses),
+      });
+
+      const req = userRequest();
+      const res = createResponse();
+
+      await controller.list(req, res);
+
+      expect(Address.find).toHaveBeenCalledWith({
+        userId: "user-123",
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        data: addresses,
+        message: "OK",
+      });
+    });
+
+    test("supports req.user.id", async () => {
+      const addresses = [];
+
+      Address.find.mockReturnValue({
+        sort: jest.fn().mockResolvedValue(addresses),
+      });
+
+      const req = {
+        user: {
+          id: "user-from-id",
+        },
+      };
+
+      const res = createResponse();
+
+      await controller.list(req, res);
+
+      expect(Address.find).toHaveBeenCalledWith({
+        userId: "user-from-id",
+      });
+    });
+
+    test("supports req.auth.id", async () => {
+      const addresses = [];
+
+      Address.find.mockReturnValue({
+        sort: jest.fn().mockResolvedValue(addresses),
+      });
+
+      const req = {
+        auth: {
+          id: "auth-user",
+        },
+      };
+
+      const res = createResponse();
+
+      await controller.list(req, res);
+
+      expect(Address.find).toHaveBeenCalledWith({
+        userId: "auth-user",
+      });
+    });
+  });
+
+  describe("create", () => {
+    test("creates the first address as default", async () => {
+      Address.exists.mockResolvedValue(null);
+
+      const createdAddress = {
+        _id: "address-1",
+        userId: "user-123",
+        type: "Home",
+        addressLine: "123 Main Street",
+        city: "Bengaluru",
+        state: "Karnataka",
+        pincode: "560001",
+        isDefault: true,
+      };
+
+      Address.create.mockResolvedValue(createdAddress);
+
+      const req = userRequest({
+        body: {
+          type: "Home",
+          addressLine: "123 Main Street",
+          city: "Bengaluru",
+          state: "Karnataka",
+          pincode: "560001",
+        },
+      });
+
+      const res = createResponse();
+
+      await controller.create(req, res);
+
+      expect(Address.exists).toHaveBeenCalledWith({
+        userId: "user-123",
+      });
+
+      expect(Address.create).toHaveBeenCalledWith({
+        type: "Home",
+        addressLine: "123 Main Street",
+        city: "Bengaluru",
+        state: "Karnataka",
+        pincode: "560001",
+        userId: "user-123",
+        isDefault: true,
+      });
+
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    test("creates a non-default address when the user already has one", async () => {
+      Address.exists.mockResolvedValue({
+        _id: "existing-address",
+      });
+
+      Address.create.mockResolvedValue({
+        _id: "address-2",
+      });
+
+      const req = userRequest({
+        body: {
+          type: "Office",
+          addressLine: "456 Office Road",
+          city: "Bengaluru",
+          state: "Karnataka",
+          pincode: "560002",
+        },
+      });
+
+      const res = createResponse();
+
+      await controller.create(req, res);
+
+      expect(Address.create).toHaveBeenCalledWith({
+        type: "Office",
+        addressLine: "456 Office Road",
+        city: "Bengaluru",
+        state: "Karnataka",
+        pincode: "560002",
+        userId: "user-123",
+        isDefault: false,
+      });
+    });
+
+    test("returns 401 when no authenticated user exists", async () => {
+      const req = {
+        body: {
+          addressLine: "123 Main Street",
+        },
+      };
+
+      const res = createResponse();
+
+      await controller.create(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+
+      expect(Address.exists).not.toHaveBeenCalled();
+      expect(Address.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("update", () => {
+    test("updates an address belonging to the user", async () => {
+      const updated = {
+        _id: "address-1",
+        userId: "user-123",
+        city: "Mysuru",
+      };
+
+      Address.findOneAndUpdate.mockResolvedValue(updated);
+
+      const req = userRequest({
+        params: {
+          id: "address-1",
+        },
+        body: {
+          city: "Mysuru",
+        },
+      });
+
+      const res = createResponse();
+
+      await controller.update(req, res);
+
+      expect(Address.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: "address-1",
+          userId: "user-123",
+        },
+        {
+          city: "Mysuru",
+        },
+        {
+          new: true,
+          runValidators: true,
+        },
+      );
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test("returns 404 when address does not belong to user", async () => {
+      Address.findOneAndUpdate.mockResolvedValue(null);
+
+      const req = userRequest({
+        params: {
+          id: "missing-address",
+        },
+        body: {
+          city: "Mysuru",
+        },
+      });
+
+      const res = createResponse();
+
+      await controller.update(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+  });
+
+  describe("remove", () => {
+    test("deletes an address", async () => {
+      Address.findOneAndDelete.mockResolvedValue({
+        _id: "address-1",
+      });
+
+      Address.findOne.mockReturnValue({
+        sort: jest.fn().mockResolvedValue(null),
+      });
+
+      const req = userRequest({
+        params: {
+          id: "address-1",
+        },
+      });
+
+      const res = createResponse();
+
+      await controller.remove(req, res);
+
+      expect(Address.findOneAndDelete).toHaveBeenCalledWith({
+        _id: "address-1",
+        userId: "user-123",
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test("promotes the oldest remaining address after deleting one", async () => {
+      Address.findOneAndDelete.mockResolvedValue({
+        _id: "address-1",
+      });
+
+      const replacement = {
+        _id: "address-2",
+      };
+
+      Address.findOne.mockReturnValue({
+        sort: jest.fn().mockResolvedValue(replacement),
+      });
+
+      Address.findByIdAndUpdate.mockResolvedValue(replacement);
+
+      const req = userRequest({
+        params: {
+          id: "address-1",
+        },
+      });
+
+      const res = createResponse();
+
+      await controller.remove(req, res);
+
+      expect(Address.findOne).toHaveBeenCalledWith({
+        userId: "user-123",
+      });
+
+      expect(Address.findByIdAndUpdate).toHaveBeenCalledWith("address-2", {
+        isDefault: true,
+      });
+    });
+
+    test("returns 404 when address does not exist", async () => {
+      Address.findOneAndDelete.mockResolvedValue(null);
+
+      const req = userRequest({
+        params: {
+          id: "missing-address",
+        },
+      });
+
+      const res = createResponse();
+
+      await controller.remove(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(Address.findOne).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("setDefault", () => {
+    test("sets an address as default", async () => {
+      const address = {
+        _id: "address-1",
+        userId: "user-123",
+        isDefault: false,
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      Address.findOne.mockResolvedValue(address);
+      Address.updateMany.mockResolvedValue({ modifiedCount: 1 });
+
+      const req = userRequest({
+        params: {
+          id: "address-1",
+        },
+      });
+
+      const res = createResponse();
+
+      await controller.setDefault(req, res);
+
+      expect(Address.findOne).toHaveBeenCalledWith({
+        _id: "address-1",
+        userId: "user-123",
+      });
+
+      expect(Address.updateMany).toHaveBeenCalledWith(
+        {
+          userId: "user-123",
+        },
+        {
+          isDefault: false,
+        },
+      );
+
+      expect(address.isDefault).toBe(true);
+      expect(address.save).toHaveBeenCalled();
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test("returns 404 when address does not exist", async () => {
+      Address.findOne.mockResolvedValue(null);
+
+      const req = userRequest({
+        params: {
+          id: "missing-address",
+        },
+      });
+
+      const res = createResponse();
+
+      await controller.setDefault(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(Address.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("internalGet", () => {
+    test("returns an address for the requested user", async () => {
+      const address = {
+        _id: "address-1",
+        userId: "user-123",
+      };
+
+      Address.findOne.mockReturnValue({
+        lean: jest.fn().mockResolvedValue(address),
+      });
+
+      const req = {
+        params: {
+          userId: "user-123",
+          id: "address-1",
+        },
+      };
+
+      const res = createResponse();
+
+      await controller.internalGet(req, res);
+
+      expect(Address.findOne).toHaveBeenCalledWith({
+        _id: "address-1",
+        userId: "user-123",
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test("returns 404 when address is not found", async () => {
+      Address.findOne.mockReturnValue({
+        lean: jest.fn().mockResolvedValue(null),
+      });
+
+      const req = {
+        params: {
+          userId: "user-123",
+          id: "missing-address",
+        },
+      };
+
+      const res = createResponse();
+
+      await controller.internalGet(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+  });
+});
+
+===== auth.test.js =====
+const jwt = require("jsonwebtoken");
+
+jest.mock("jsonwebtoken");
+
+jest.mock("../../src/utils/serviceClient", () => ({
+  getJson: jest.fn(),
+}));
+
+jest.mock("jwks-rsa", () =>
+  jest.fn(() => ({
+    getSigningKey: jest.fn(),
+  })),
+);
+
+const { getJson } = require("../../src/utils/serviceClient");
+const { authenticate, authorize } = require("../../src/middleware/auth");
+
+describe("address auth middleware", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    process.env.JWT_SECRET = "test-secret";
+    process.env.AUTH_SERVICE_URL = "http://localhost:5002";
+
+    delete process.env.AUTH0_DOMAIN;
+    delete process.env.AUTH0_AUDIENCE;
+  });
+
+  function createResponse() {
+    return {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+    };
+  }
+
+  describe("authenticate", () => {
+    test("returns 401 when Authorization header is missing", async () => {
+      const req = { headers: {} };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Authentication required.",
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test("returns 401 for non-Bearer authorization", async () => {
+      const req = {
+        headers: {
+          authorization: "Basic abc123",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test("accepts a normal JWT with id", async () => {
+      jwt.verify.mockReturnValue({
+        id: "user-123",
+        role: "USER",
+      });
+
+      getJson.mockResolvedValue({
+        ok: true,
+        data: {
+          data: {
+            _id: "user-123",
+            role: "USER",
+            status: "ACTIVE",
+          },
+        },
+      });
+
+      const req = {
+        headers: {
+          authorization: "Bearer valid-token",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(jwt.verify).toHaveBeenCalledWith("valid-token", "test-secret");
+
+      expect(getJson).toHaveBeenCalledWith(
+        "http://localhost:5002",
+        "/internal/users/user-123",
+      );
+
+      expect(req.user).toEqual({
+        _id: "user-123",
+        role: "USER",
+        status: "ACTIVE",
+      });
+
+      expect(req.auth).toEqual({
+        id: "user-123",
+        role: "USER",
+      });
+
+      expect(next).toHaveBeenCalledTimes(1);
+    });
+
+    test("uses Auth0 namespaced user id when id is absent", async () => {
+      jwt.verify.mockReturnValue({
+        "https://shopsphere/user_id": "auth0-user-123",
+        role: "USER",
+      });
+
+      getJson.mockResolvedValue({
+        ok: true,
+        data: {
+          data: {
+            _id: "auth0-user-123",
+            role: "USER",
+            status: "ACTIVE",
+          },
+        },
+      });
+
+      const req = {
+        headers: {
+          authorization: "Bearer normal-token",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(getJson).toHaveBeenCalledWith(
+        "http://localhost:5002",
+        "/internal/users/auth0-user-123",
+      );
+
+      expect(req.auth.id).toBe("auth0-user-123");
+      expect(next).toHaveBeenCalled();
+    });
+
+    test("encodes special characters in user id", async () => {
+      const userId = "user@example.com/test";
+
+      jwt.verify.mockReturnValue({
+        id: userId,
+      });
+
+      getJson.mockResolvedValue({
+        ok: true,
+        data: {
+          data: {
+            id: userId,
+            role: "USER",
+            status: "ACTIVE",
+          },
+        },
+      });
+
+      const req = {
+        headers: {
+          authorization: "Bearer valid-token",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(getJson).toHaveBeenCalledWith(
+        "http://localhost:5002",
+        `/internal/users/${encodeURIComponent(userId)}`,
+      );
+
+      expect(next).toHaveBeenCalled();
+    });
+
+    test("returns 401 when JWT has no user id", async () => {
+      jwt.verify.mockReturnValue({
+        role: "USER",
+      });
+
+      const req = {
+        headers: {
+          authorization: "Bearer valid-token",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Token does not contain a user id.",
+      });
+
+      expect(getJson).not.toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test("returns 401 when user service returns ok=false", async () => {
+      jwt.verify.mockReturnValue({
+        id: "user-123",
+      });
+
+      getJson.mockResolvedValue({
+        ok: false,
+        data: null,
+      });
+
+      const req = {
+        headers: {
+          authorization: "Bearer valid-token",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "User account not found.",
+      });
+
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test("returns 401 when user service has no data", async () => {
+      jwt.verify.mockReturnValue({
+        id: "user-123",
+      });
+
+      getJson.mockResolvedValue({
+        ok: true,
+        data: {},
+      });
+
+      const req = {
+        headers: {
+          authorization: "Bearer valid-token",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test("returns 403 when account is disabled", async () => {
+      jwt.verify.mockReturnValue({
+        id: "user-123",
+      });
+
+      getJson.mockResolvedValue({
+        ok: true,
+        data: {
+          data: {
+            id: "user-123",
+            role: "USER",
+            status: "DISABLED",
+          },
+        },
+      });
+
+      const req = {
+        headers: {
+          authorization: "Bearer valid-token",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Account disabled.",
+      });
+
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test("returns 401 when JWT verification throws", async () => {
+      jwt.verify.mockImplementation(() => {
+        throw new Error("invalid token");
+      });
+
+      const req = {
+        headers: {
+          authorization: "Bearer bad-token",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(jwt.verify).toHaveBeenCalledWith("bad-token", "test-secret");
+
+      expect(res.status).toHaveBeenCalledWith(401);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Invalid or expired token.",
+      });
+
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test("returns 401 when downstream user lookup throws", async () => {
+      jwt.verify.mockReturnValue({
+        id: "user-123",
+      });
+
+      getJson.mockRejectedValue(new Error("auth service unavailable"));
+
+      const req = {
+        headers: {
+          authorization: "Bearer valid-token",
+        },
+      };
+      const res = createResponse();
+      const next = jest.fn();
+
+      await authenticate(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "Invalid or expired token.",
+      });
+
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("authorize", () => {
+    test("returns 403 when req.user is missing", () => {
+      const middleware = authorize("USER");
+
+      const req = {};
+      const res = createResponse();
+      const next = jest.fn();
+
+      middleware(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: "You do not have permission for this resource.",
+      });
+
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test("returns 403 when role is not allowed", () => {
+      const middleware = authorize("USER");
+
+      const req = {
+        user: {
+          role: "ADMIN",
+        },
+      };
+
+      const res = createResponse();
+      const next = jest.fn();
+
+      middleware(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test("calls next when role is allowed", () => {
+      const middleware = authorize("USER");
+
+      const req = {
+        user: {
+          role: "USER",
+        },
+      };
+
+      const res = createResponse();
+      const next = jest.fn();
+
+      middleware(req, res, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    test("supports multiple allowed roles", () => {
+      const middleware = authorize("ADMIN", "USER");
+
+      const req = {
+        user: {
+          role: "ADMIN",
+        },
+      };
+
+      const res = createResponse();
+      const next = jest.fn();
+
+      middleware(req, res, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+===== address.routes.test.js =====
+const express = require("express");
+const request = require("supertest");
+
+jest.mock("../../src/controllers/address.controller", () => ({
+  list: jest.fn((req, res) =>
+    res.status(200).json({
+      controller: "list",
+    }),
+  ),
+
+  create: jest.fn((req, res) =>
+    res.status(201).json({
+      controller: "create",
+    }),
+  ),
+
+  update: jest.fn((req, res) =>
+    res.status(200).json({
+      controller: "update",
+    }),
+  ),
+
+  remove: jest.fn((req, res) =>
+    res.status(200).json({
+      controller: "remove",
+    }),
+  ),
+
+  setDefault: jest.fn((req, res) =>
+    res.status(200).json({
+      controller: "setDefault",
+    }),
+  ),
+
+  internalGet: jest.fn((req, res) =>
+    res.status(200).json({
+      controller: "internalGet",
+    }),
+  ),
+}));
+
+jest.mock("../../src/middleware/auth", () => ({
+  authenticate: jest.fn((req, res, next) => {
+    req.user = {
+      _id: "user-123",
+      role: "USER",
+    };
+
+    next();
+  }),
+
+  authorize: jest.fn((...args) => {
+    return (req, res, next) => {
+      next();
+    };
+  }),
+}));
+
+jest.mock("@shopsphere/common", () => ({
+  internal: jest.fn((req, res, next) => {
+    next();
+  }),
+}));
+
+/*
+ * IMPORTANT:
+ *
+ * Import the mocks first, then import the router.
+ *
+ * The router executes:
+ *
+ * authorize("USER")
+ *
+ * while the router module is being imported.
+ */
+const controller = require("../../src/controllers/address.controller");
+const auth = require("../../src/middleware/auth");
+const router = require("../../src/routes");
+
+function createApp() {
+  const app = express();
+
+  app.use(express.json());
+
+  app.use(router);
+
+  return app;
+}
+
+describe("address routes", () => {
+  let app;
+
+  beforeEach(() => {
+    /*
+     * Do NOT use jest.clearAllMocks() here.
+     *
+     * authorize("USER") and internal(...) are called
+     * during router initialization.
+     *
+     * Clearing all mocks here would erase the
+     * authorize("USER") initialization call.
+     */
+
+    controller.list.mockClear();
+    controller.create.mockClear();
+    controller.update.mockClear();
+    controller.remove.mockClear();
+    controller.setDefault.mockClear();
+    controller.internalGet.mockClear();
+
+    auth.authenticate.mockClear();
+
+    app = createApp();
+  });
+
+  test("GET /api/addresses reaches list controller", async () => {
+    const response = await request(app).get("/api/addresses");
+
+    expect(response.status).toBe(200);
+
+    expect(auth.authenticate).toHaveBeenCalled();
+
+    expect(controller.list).toHaveBeenCalled();
+  });
+
+  test("POST /api/addresses reaches create controller", async () => {
+    const response = await request(app).post("/api/addresses").send({
+      type: "Home",
+      addressLine: "123 Main Street",
+    });
+
+    expect(response.status).toBe(201);
+
+    expect(auth.authenticate).toHaveBeenCalled();
+
+    expect(controller.create).toHaveBeenCalled();
+  });
+
+  test("PUT /api/addresses/:id reaches update controller", async () => {
+    const response = await request(app).put("/api/addresses/address-123").send({
+      city: "Mysuru",
+    });
+
+    expect(response.status).toBe(200);
+
+    expect(controller.update).toHaveBeenCalled();
+
+    const req = controller.update.mock.calls[0][0];
+
+    expect(req.params.id).toBe("address-123");
+  });
+
+  test("DELETE /api/addresses/:id reaches remove controller", async () => {
+    const response = await request(app).delete("/api/addresses/address-123");
+
+    expect(response.status).toBe(200);
+
+    expect(controller.remove).toHaveBeenCalled();
+
+    const req = controller.remove.mock.calls[0][0];
+
+    expect(req.params.id).toBe("address-123");
+  });
+
+  test("PATCH /api/addresses/:id/default reaches setDefault", async () => {
+    const response = await request(app).patch(
+      "/api/addresses/address-123/default",
+    );
+
+    expect(response.status).toBe(200);
+
+    expect(controller.setDefault).toHaveBeenCalled();
+
+    const req = controller.setDefault.mock.calls[0][0];
+
+    expect(req.params.id).toBe("address-123");
+  });
+
+  test("GET internal address reaches internalGet", async () => {
+    const response = await request(app).get(
+      "/internal/addresses/user-123/address-123",
+    );
+
+    expect(response.status).toBe(200);
+
+    expect(controller.internalGet).toHaveBeenCalled();
+
+    const req = controller.internalGet.mock.calls[0][0];
+
+    expect(req.params.userId).toBe("user-123");
+
+    expect(req.params.id).toBe("address-123");
+  });
+
+  test("authorize middleware is configured for the routes", () => {
+    expect(auth.authorize).toHaveBeenCalledWith("USER");
+  });
+});
+
+===== serviceClient.test.js =====
+process.env.SERVICE_REQUEST_TIMEOUT_MS = "20";
+process.env.SERVICE_REQUEST_RETRIES = "1";
+process.env.SERVICE_RETRY_DELAY_MS = "0";
+process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD = "2";
+process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS = "10";
+process.env.INTERNAL_SERVICE_TOKEN = "test-internal-token";
+
+const crypto = require("crypto");
+
+beforeEach(() => {
+  crypto.randomInt.mockReturnValue(1);
+});
+
+const {
+  request,
+  getJson,
+  postJson,
+  putJson,
+  patchJson,
+  deleteJson,
+  getCircuitStatus,
+} = require("../../src/utils/serviceClient");
+
+describe("serviceClient", () => {
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  describe("successful requests", () => {
+    test("performs a successful GET request", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({
+            success: true,
+            data: {
+              id: "123",
+            },
+          }),
+        ),
+      });
+
+      const result = await request(
+        "http://localhost:5002",
+        "/internal/users/123",
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.status).toBe(200);
+      expect(result.data).toEqual({
+        success: true,
+        data: {
+          id: "123",
+        },
+      });
+      expect(result.error).toBeNull();
+      expect(result.attempts).toBe(1);
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
+      const [url, options] = global.fetch.mock.calls[0];
+
+      expect(url).toBe("http://localhost:5002/internal/users/123");
+
+      expect(options.method).toBe("GET");
+    });
+
+    test("adds internal service token", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue("{}"),
+      });
+
+      await request("http://localhost:5002", "/internal/test");
+
+      const [, options] = global.fetch.mock.calls[0];
+
+      expect(options.headers["x-internal-service-token"]).toBe(
+        "test-internal-token",
+      );
+    });
+
+    test("does not overwrite explicit internal service token", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue("{}"),
+      });
+
+      await request("http://localhost:5002", "/internal/test", {
+        headers: {
+          "x-internal-service-token": "custom-token",
+        },
+      });
+
+      const [, options] = global.fetch.mock.calls[0];
+
+      expect(options.headers["x-internal-service-token"]).toBe("custom-token");
+    });
+
+    test("generates request id", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue("{}"),
+      });
+
+      await request("http://localhost:5002", "/internal/test");
+
+      const [, options] = global.fetch.mock.calls[0];
+
+      expect(options.headers["x-request-id"]).toBeDefined();
+      expect(typeof options.headers["x-request-id"]).toBe("string");
+    });
+
+    test("preserves existing request id", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue("{}"),
+      });
+
+      await request("http://localhost:5002", "/internal/test", {
+        headers: {
+          "x-request-id": "request-123",
+        },
+      });
+
+      const [, options] = global.fetch.mock.calls[0];
+
+      expect(options.headers["x-request-id"]).toBe("request-123");
+    });
+  });
+
+  describe("request bodies and HTTP methods", () => {
+    test("serializes JSON POST body", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 201,
+        text: jest.fn().mockResolvedValue("{}"),
+      });
+
+      await postJson("http://localhost:5002", "/internal/test", {
+        name: "John",
+      });
+
+      const [, options] = global.fetch.mock.calls[0];
+
+      expect(options.method).toBe("POST");
+
+      expect(options.body).toBe(
+        JSON.stringify({
+          name: "John",
+        }),
+      );
+
+      expect(options.headers["content-type"]).toBe("application/json");
+    });
+
+    test("supports PUT", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue("{}"),
+      });
+
+      await putJson("http://localhost:5002", "/internal/test", {
+        name: "Updated",
+      });
+
+      expect(global.fetch.mock.calls[0][1].method).toBe("PUT");
+    });
+
+    test("supports PATCH", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue("{}"),
+      });
+
+      await patchJson("http://localhost:5002", "/internal/test", {
+        active: true,
+      });
+
+      expect(global.fetch.mock.calls[0][1].method).toBe("PATCH");
+    });
+
+    test("supports DELETE", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 204,
+        text: jest.fn().mockResolvedValue(""),
+      });
+
+      const result = await deleteJson(
+        "http://localhost:5002",
+        "/internal/test",
+      );
+
+      expect(global.fetch.mock.calls[0][1].method).toBe("DELETE");
+
+      expect(result.ok).toBe(true);
+      expect(result.status).toBe(204);
+      expect(result.data).toBeNull();
+      expect(result.error).toBeNull();
+    });
+  });
+
+  describe("response parsing", () => {
+    test("handles empty response", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 204,
+        text: jest.fn().mockResolvedValue(""),
+      });
+
+      const result = await getJson("http://empty-response.local", "/empty");
+
+      expect(result.ok).toBe(true);
+      expect(result.status).toBe(204);
+      expect(result.data).toBeNull();
+    });
+
+    test("parses JSON response", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({
+            success: true,
+            data: "hello",
+          }),
+        ),
+      });
+
+      const result = await getJson("http://json-response.local", "/test");
+
+      expect(result.ok).toBe(true);
+
+      expect(result.data).toEqual({
+        success: true,
+        data: "hello",
+      });
+
+      expect(result.error).toBeNull();
+    });
+
+    test("handles invalid JSON response", async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: jest.fn().mockResolvedValue("this is not json"),
+      });
+
+      const result = await getJson("http://invalid-json.local", "/bad-json");
+
+      expect(result.ok).toBe(true);
+
+      expect(result.data.success).toBe(false);
+
+      expect(result.data.message).toMatch(/Invalid JSON response/);
+
+      expect(result.data.raw).toBe("this is not json");
+    });
+  });
+
+  describe("HTTP retries", () => {
+    test("retries 500 response", async () => {
+      global.fetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          text: jest.fn().mockResolvedValue(
+            JSON.stringify({
+              success: false,
+            }),
+          ),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: jest.fn().mockResolvedValue(
+            JSON.stringify({
+              success: true,
+            }),
+          ),
+        });
+
+      const result = await getJson("http://retry-500.local", "/test");
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+
+      expect(result.ok).toBe(true);
+      expect(result.status).toBe(200);
+      expect(result.data).toEqual({
+        success: true,
+      });
+
+      expect(result.attempts).toBe(2);
+    });
+
+    test.each([502, 503, 504])("retries HTTP %s response", async (status) => {
+      global.fetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status,
+          text: jest.fn().mockResolvedValue("{}"),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: jest.fn().mockResolvedValue("{}"),
+        });
+
+      const result = await getJson(`http://retry-${status}.local`, "/test");
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(result.ok).toBe(true);
+    });
+
+    test("does not retry 400 by default", async () => {
+      global.fetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({
+            success: false,
+            message: "Bad request",
+          }),
+        ),
+      });
+
+      const result = await getJson("http://no-retry-400.local", "/test");
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(400);
+    });
+
+    test("does not retry unsafe POST by default", async () => {
+      global.fetch.mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: jest.fn().mockResolvedValue("{}"),
+      });
+
+      const result = await postJson("http://unsafe-post.local", "/test", {
+        value: 1,
+      });
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(result.ok).toBe(false);
+    });
+
+    test("retries unsafe request when retrySafe is enabled", async () => {
+      global.fetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          text: jest.fn().mockResolvedValue("{}"),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: jest.fn().mockResolvedValue("{}"),
+        });
+
+      const result = await request("http://unsafe-retry.local", "/test", {
+        method: "POST",
+        body: {
+          value: 1,
+        },
+        retrySafe: true,
+      });
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(result.ok).toBe(true);
+    });
+  });
+
+  describe("network errors", () => {
+    test("retries network failure", async () => {
+      global.fetch
+        .mockRejectedValueOnce(new Error("connection refused"))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: jest.fn().mockResolvedValue("{}"),
+        });
+
+      const result = await getJson("http://network-retry.local", "/test");
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+
+      expect(result.ok).toBe(true);
+      expect(result.data).toEqual({});
+      expect(result.attempts).toBe(2);
+    });
+
+    test("returns downstream unavailable after network failures", async () => {
+      global.fetch.mockRejectedValue(new Error("connection refused"));
+
+      const result = await getJson("http://network-failure.local", "/test");
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+
+      expect(result.ok).toBe(false);
+      expect(result.data).toBeDefined();
+      expect(result.data.error.code).toBe("DOWNSTREAM_UNAVAILABLE");
+    });
+  });
+
+  describe("timeouts", () => {
+    test("returns downstream timeout for AbortError", async () => {
+      global.fetch.mockImplementation(
+        (url, options) =>
+          new Promise((resolve, reject) => {
+            options.signal.addEventListener("abort", () => {
+              const error = new Error("aborted");
+              error.name = "AbortError";
+              reject(error);
+            });
+          }),
+      );
+
+      const result = await getJson("http://timeout.local", "/test", {
+        timeoutMs: 1,
+        retries: 0,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.data).toBeDefined();
+      expect(result.data.error.code).toBe("DOWNSTREAM_TIMEOUT");
+      expect(result.status).toBe(504);
+    });
+  });
+
+  describe("circuit breaker", () => {
+    it("opens after configured failures", async () => {
+      const baseUrl = "http://circuit-test.local";
+
+      global.fetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          headers: new Headers({ "content-type": "application/json" }),
+          text: async () => JSON.stringify({ message: "server error" }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          headers: new Headers({ "content-type": "application/json" }),
+          text: async () => JSON.stringify({ message: "server error" }),
+        });
+
+      await getJson(`${baseUrl}/first`, {
+        retries: 0,
+      });
+
+      await getJson(`${baseUrl}/second`, {
+        retries: 0,
+      });
+
+      const status = getCircuitStatus(baseUrl);
+
+      expect(status).toBeDefined();
+      expect(status.state).toBe("OPEN");
+      expect(status.failures).toBe(2);
+
+      global.fetch.mockClear();
+
+      const blocked = await getJson(`${baseUrl}/third`, {
+        retries: 0,
+      });
+
+      expect(blocked.ok).toBe(false);
+      expect(blocked.data.error.code).toBe("CIRCUIT_OPEN");
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it("recovers after circuit reset timeout", async () => {
+      const baseUrl = "http://half-open.local";
+
+      global.fetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          headers: new Headers({ "content-type": "application/json" }),
+          text: async () => JSON.stringify({ message: "server error" }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          headers: new Headers({ "content-type": "application/json" }),
+          text: async () => JSON.stringify({ message: "server error" }),
+        });
+
+      await getJson(`${baseUrl}/one`, {
+        retries: 0,
+      });
+
+      await getJson(`${baseUrl}/two`, {
+        retries: 0,
+      });
+
+      expect(getCircuitStatus(baseUrl)).toBeDefined();
+      expect(getCircuitStatus(baseUrl).state).toBe("OPEN");
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "application/json",
+        }),
+        text: async () => JSON.stringify({ success: true }),
+      });
+
+      const result = await getJson(`${baseUrl}/three`, {
+        retries: 0,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.data).toEqual({ success: true });
+
+      expect(getCircuitStatus(baseUrl).state).toBe("CLOSED");
+    });
+  });
+});
+

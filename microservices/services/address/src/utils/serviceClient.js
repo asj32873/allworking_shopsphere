@@ -1,7 +1,7 @@
 const DEFAULT_TIMEOUT_MS = Number(
   process.env.SERVICE_REQUEST_TIMEOUT_MS || 8000,
 );
-
+const crypto = require("node:crypto");
 const DEFAULT_RETRIES = Number(process.env.SERVICE_REQUEST_RETRIES || 2);
 
 const DEFAULT_RETRY_DELAY_MS = Number(
@@ -20,15 +20,6 @@ const CIRCUIT_RESET_TIMEOUT_MS = Number(
 |--------------------------------------------------------------------------
 | Circuit breaker state
 |--------------------------------------------------------------------------
-|
-| Each downstream service gets its own circuit.
-|
-| Example:
-|
-| auth-service
-| vendor-service
-| payment-service
-|
 */
 
 const circuits = new Map();
@@ -75,21 +66,9 @@ function getCircuit(baseUrl) {
 function canRequest(baseUrl) {
   const circuit = getCircuit(baseUrl);
 
-  /*
-   * CLOSED
-   *
-   * Everything is normal.
-   */
-
   if (circuit.state === "CLOSED") {
     return true;
   }
-
-  /*
-   * OPEN
-   *
-   * Fail immediately until reset timeout expires.
-   */
 
   if (circuit.state === "OPEN") {
     const elapsed = Date.now() - circuit.openedAt;
@@ -98,21 +77,9 @@ function canRequest(baseUrl) {
       return false;
     }
 
-    /*
-     * Move to HALF_OPEN.
-     *
-     * Allow one test request.
-     */
-
     circuit.state = "HALF_OPEN";
     circuit.halfOpenRequests = 0;
   }
-
-  /*
-   * HALF_OPEN
-   *
-   * Allow only one request to test recovery.
-   */
 
   if (circuit.state === "HALF_OPEN") {
     if (circuit.halfOpenRequests >= 1) {
@@ -120,6 +87,7 @@ function canRequest(baseUrl) {
     }
 
     circuit.halfOpenRequests += 1;
+
     return true;
   }
 
@@ -139,10 +107,9 @@ function recordFailure(baseUrl) {
   const circuit = getCircuit(baseUrl);
 
   /*
-   * HALF_OPEN failure means
-   * the service is still unhealthy.
+   * If a HALF_OPEN request fails,
+   * immediately reopen the circuit.
    */
-
   if (circuit.state === "HALF_OPEN") {
     circuit.state = "OPEN";
     circuit.openedAt = Date.now();
@@ -152,10 +119,6 @@ function recordFailure(baseUrl) {
   }
 
   circuit.failures += 1;
-
-  /*
-   * Open the circuit after enough failures.
-   */
 
   if (circuit.failures >= CIRCUIT_FAILURE_THRESHOLD) {
     circuit.state = "OPEN";
@@ -169,13 +132,6 @@ function recordFailure(baseUrl) {
 |--------------------------------------------------------------------------
 | Retry policy
 |--------------------------------------------------------------------------
-|
-| GET, HEAD and OPTIONS are safe to retry automatically.
-|
-| POST, PATCH, PUT and DELETE are NOT retried automatically.
-|
-| They can be retried only when explicitly marked retrySafe.
-|
 */
 
 function isSafeMethod(method) {
@@ -185,62 +141,48 @@ function isSafeMethod(method) {
 }
 
 function isRetryableStatus(status) {
-  return [
-    408, // Request Timeout
-    429, // Too Many Requests
-    500,
-    502,
-    503,
-    504,
-  ].includes(status);
+  return [408, 429, 500, 502, 503, 504].includes(status);
 }
 
 function shouldRetry({ method, retrySafe, status, error }) {
   /*
-   * Never retry unsafe writes automatically.
+   * Unsafe HTTP methods are not retried
+   * unless explicitly marked retrySafe.
    */
-
   if (!isSafeMethod(method) && retrySafe !== true) {
     return false;
   }
 
   /*
-   * Network / timeout errors.
+   * Network and timeout errors can be retried.
    */
-
   if (error) {
     return true;
   }
 
   /*
-   * Retry temporary server failures.
+   * Temporary HTTP errors can be retried.
    */
-
   return isRetryableStatus(status);
 }
 
 /*
 |--------------------------------------------------------------------------
-| Exponential backoff with jitter
+| Retry delay
 |--------------------------------------------------------------------------
 */
 
 function getRetryDelay(attempt) {
   const exponentialDelay = DEFAULT_RETRY_DELAY_MS * Math.pow(2, attempt);
 
-  /*
-   * Add random jitter to prevent
-   * retry storms.
-   */
-
-  const jitter = Math.floor(Math.random() * DEFAULT_RETRY_DELAY_MS);
+  const jitter = crypto.randomInt(0, DEFAULT_RETRY_DELAY_MS);
 
   return exponentialDelay + jitter;
 }
 
 /*
 |--------------------------------------------------------------------------
-| Parse response safely
+| Response parsing
 |--------------------------------------------------------------------------
 */
 
@@ -291,29 +233,31 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 |--------------------------------------------------------------------------
 */
 
-async function request(baseUrl, path, options = {}) {
+async function request(baseUrl, path = "", options = {}) {
   const {
     headers: customHeaders = {},
     timeoutMs = DEFAULT_TIMEOUT_MS,
     retries = DEFAULT_RETRIES,
     retrySafe = false,
-
-    /*
-     * Prevent internal control options
-     * from being passed into fetch().
-     */
-
     ...fetchOptions
   } = options;
 
   const method = String(fetchOptions.method || "GET").toUpperCase();
 
-  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+  /*
+   * Support both:
+   *
+   * request("http://service", "/path")
+   *
+   * and:
+   *
+   * request("http://service/path", "")
+   */
+  const url = path === "" ? baseUrl : `${baseUrl.replace(/\/$/, "")}${path}`;
 
   /*
    * Circuit breaker check.
    */
-
   if (!canRequest(baseUrl)) {
     return {
       ok: false,
@@ -321,11 +265,11 @@ async function request(baseUrl, path, options = {}) {
 
       data: {
         success: false,
-
         message:
           "Downstream service temporarily unavailable. Circuit breaker is open.",
-
-        code: "CIRCUIT_OPEN",
+        error: {
+          code: "CIRCUIT_OPEN",
+        },
       },
 
       error: {
@@ -340,16 +284,13 @@ async function request(baseUrl, path, options = {}) {
   /*
    * Build headers.
    */
-
   const headers = {
     ...customHeaders,
   };
 
   /*
-   * Add internal service token only
-   * when configured.
+   * Add internal service token when configured.
    */
-
   if (
     process.env.INTERNAL_SERVICE_TOKEN &&
     !headers["x-internal-service-token"]
@@ -358,22 +299,16 @@ async function request(baseUrl, path, options = {}) {
   }
 
   /*
-   * Correlation / request ID propagation.
-   *
-   * If the caller already provides one,
-   * preserve it.
+   * Generate request ID unless caller supplied one.
    */
-
   if (!headers["x-request-id"] && !headers["X-Request-Id"]) {
-    headers["x-request-id"] = `${process.pid}-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 10)}`;
+    headers["x-request-id"] =
+      `${process.pid}-${Date.now()}-${crypto.randomUUID()}`;
   }
 
   /*
-   * Prepare body once.
+   * Prepare request body.
    */
-
   let body = fetchOptions.body;
 
   if (
@@ -396,7 +331,9 @@ async function request(baseUrl, path, options = {}) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       console.log(
-        `[SERVICE CLIENT] ${method} ${url} attempt ${attempt + 1}/${maxAttempts}`,
+        `[SERVICE CLIENT] ${method} ${url} attempt ${
+          attempt + 1
+        }/${maxAttempts}`,
       );
 
       const response = await fetchWithTimeout(
@@ -423,9 +360,8 @@ async function request(baseUrl, path, options = {}) {
       lastResult = result;
 
       /*
-       * Successful response.
+       * Successful response closes/resets circuit.
        */
-
       if (response.ok) {
         recordSuccess(baseUrl);
 
@@ -433,21 +369,27 @@ async function request(baseUrl, path, options = {}) {
       }
 
       /*
-       * Retry only temporary failures.
+       * Determine whether HTTP failure should retry.
        */
-
       const retry = shouldRetry({
         method,
         retrySafe,
         status: response.status,
       });
 
+      /*
+       * Return immediately if:
+       *
+       * - status isn't retryable
+       * - retry isn't allowed
+       * - this was the final attempt
+       */
       if (!retry || attempt === maxAttempts - 1) {
         /*
-         * 4xx business errors should not
-         * trip the circuit breaker.
+         * Only 5xx failures affect the circuit.
+         *
+         * 4xx responses are business/client errors.
          */
-
         if (response.status >= 500) {
           recordFailure(baseUrl);
         }
@@ -475,8 +417,17 @@ async function request(baseUrl, path, options = {}) {
         error,
       });
 
+      /*
+       * No more attempts.
+       */
       if (!retry || attempt === maxAttempts - 1) {
         recordFailure(baseUrl);
+
+        const errorCode = isTimeout
+          ? "DOWNSTREAM_TIMEOUT"
+          : "DOWNSTREAM_UNAVAILABLE";
+
+        const errorType = isTimeout ? "TIMEOUT" : "NETWORK_ERROR";
 
         return {
           ok: false,
@@ -490,12 +441,19 @@ async function request(baseUrl, path, options = {}) {
               ? "Downstream service request timed out."
               : "Downstream service unavailable.",
 
-            code: isTimeout ? "DOWNSTREAM_TIMEOUT" : "DOWNSTREAM_UNAVAILABLE",
+            /*
+             * Keep the error code inside data.error
+             * because callers/tests expect this shape.
+             */
+            error: {
+              code: errorCode,
+              type: errorType,
+              message: error.message,
+            },
           },
 
           error: {
-            type: isTimeout ? "TIMEOUT" : "NETWORK_ERROR",
-
+            type: errorType,
             message: error.message,
           },
 
@@ -516,7 +474,6 @@ async function request(baseUrl, path, options = {}) {
   /*
    * Defensive fallback.
    */
-
   recordFailure(baseUrl);
 
   return (
@@ -528,6 +485,9 @@ async function request(baseUrl, path, options = {}) {
       data: {
         success: false,
         message: "Downstream service unavailable.",
+        error: {
+          code: "DOWNSTREAM_UNAVAILABLE",
+        },
       },
 
       error: lastError
@@ -548,8 +508,40 @@ async function request(baseUrl, path, options = {}) {
 |--------------------------------------------------------------------------
 */
 
-async function getJson(baseUrl, path, headers = {}, options = {}) {
-  return request(baseUrl, path, {
+/*
+ * GET supports both:
+ *
+ * getJson(
+ *   "http://localhost:5002",
+ *   "/internal/users/123"
+ * )
+ *
+ * and:
+ *
+ * getJson(
+ *   "http://localhost:5002/internal/users/123",
+ *   { retries: 0 }
+ * )
+ */
+async function getJson(baseUrl, pathOrOptions, headers = {}, options = {}) {
+  /*
+   * Full URL + options style.
+   */
+  if (
+    typeof pathOrOptions === "object" &&
+    pathOrOptions !== null &&
+    !Array.isArray(pathOrOptions)
+  ) {
+    return request(baseUrl, "", {
+      ...pathOrOptions,
+      method: "GET",
+    });
+  }
+
+  /*
+   * Base URL + path + headers + options style.
+   */
+  return request(baseUrl, pathOrOptions, {
     ...options,
     method: "GET",
     headers,
@@ -597,7 +589,27 @@ async function deleteJson(baseUrl, path, headers = {}, options = {}) {
 |--------------------------------------------------------------------------
 */
 
-function getCircuitStatus() {
+function getCircuitStatus(baseUrl) {
+  /*
+   * If a URL is provided, return that circuit only.
+   */
+  if (baseUrl) {
+    const circuit = circuits.get(getCircuitKey(baseUrl));
+
+    if (!circuit) {
+      return undefined;
+    }
+
+    return {
+      state: circuit.state,
+      failures: circuit.failures,
+      openedAt: circuit.openedAt,
+    };
+  }
+
+  /*
+   * Otherwise return all circuits.
+   */
   const status = {};
 
   for (const [key, value] of circuits.entries()) {
