@@ -1,0 +1,6 @@
+projectKey=shopsphere-cart
+serverUrl=http://localhost:9000
+serverVersion=26.9.0.129388
+dashboardUrl=http://localhost:9000/dashboard?id=shopsphere-cart
+ceTaskId=f6593dbb-d61e-41c3-8397-88d553be9114
+ceTaskUrl=http://localhost:9000/api/ce/task?id=f6593dbb-d61e-41c3-8397-88d553be9114

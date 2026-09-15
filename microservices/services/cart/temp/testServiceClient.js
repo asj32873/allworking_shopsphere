@@ -1,6 +1,6 @@
 require("dotenv").config();
 
-const { getJson, postJson } = require("./serviceClient");
+const { getJson, postJson } = require("../src/utils/serviceClient");
 
 const SERVICE_URL = "http://localhost:5004";
 

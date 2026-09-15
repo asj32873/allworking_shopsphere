@@ -233,6 +233,213 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 |--------------------------------------------------------------------------
 */
 
+function createCircuitOpenResult() {
+  return {
+    ok: false,
+    status: 503,
+    data: {
+      success: false,
+      message:
+        "Downstream service temporarily unavailable. Circuit breaker is open.",
+      error: {
+        code: "CIRCUIT_OPEN",
+      },
+    },
+    error: {
+      type: "CIRCUIT_OPEN",
+      message: "Circuit breaker is open for downstream service.",
+    },
+    attempts: 0,
+  };
+}
+
+function buildRequestHeaders(customHeaders) {
+  const headers = {
+    ...customHeaders,
+  };
+
+  if (
+    process.env.INTERNAL_SERVICE_TOKEN &&
+    !headers["x-internal-service-token"]
+  ) {
+    headers["x-internal-service-token"] = process.env.INTERNAL_SERVICE_TOKEN;
+  }
+
+  if (!headers["x-request-id"] && !headers["X-Request-Id"]) {
+    headers["x-request-id"] =
+      `${process.pid}-${Date.now()}-${crypto.randomUUID()}`;
+  }
+
+  return headers;
+}
+
+function prepareRequestBody(body, headers) {
+  if (
+    body === undefined ||
+    body === null ||
+    typeof body === "string" ||
+    Buffer.isBuffer(body)
+  ) {
+    return body;
+  }
+
+  headers["content-type"] =
+    headers["content-type"] || headers["Content-Type"] || "application/json";
+
+  return JSON.stringify(body);
+}
+
+function createDownstreamErrorResult(error, attempt) {
+  const isTimeout = error.name === "AbortError";
+
+  const errorCode = isTimeout ? "DOWNSTREAM_TIMEOUT" : "DOWNSTREAM_UNAVAILABLE";
+
+  const errorType = isTimeout ? "TIMEOUT" : "NETWORK_ERROR";
+
+  return {
+    ok: false,
+    status: isTimeout ? 504 : 503,
+    data: {
+      success: false,
+      message: isTimeout
+        ? "Downstream service request timed out."
+        : "Downstream service unavailable.",
+      error: {
+        code: errorCode,
+        type: errorType,
+        message: error.message,
+      },
+    },
+    error: {
+      type: errorType,
+      message: error.message,
+    },
+    attempts: attempt + 1,
+  };
+}
+
+function shouldRetryResponse(method, retrySafe, status, attempt, maxAttempts) {
+  return (
+    shouldRetry({
+      method,
+      retrySafe,
+      status,
+    }) && attempt < maxAttempts - 1
+  );
+}
+
+async function executeRequestAttempt({
+  url,
+  baseUrl,
+  method,
+  headers,
+  body,
+  fetchOptions,
+  timeoutMs,
+  retrySafe,
+  attempt,
+  maxAttempts,
+}) {
+  try {
+    console.log(
+      `[SERVICE CLIENT] ${method} ${url} attempt ${attempt + 1}/${maxAttempts}`,
+    );
+
+    const response = await fetchWithTimeout(
+      url,
+      {
+        ...fetchOptions,
+        method,
+        headers,
+        body,
+      },
+      timeoutMs,
+    );
+
+    const data = await parseResponse(response);
+
+    const result = {
+      ok: response.ok,
+      status: response.status,
+      data,
+      error: null,
+      attempts: attempt + 1,
+    };
+
+    if (response.ok) {
+      recordSuccess(baseUrl);
+
+      return {
+        result,
+        retry: false,
+      };
+    }
+
+    const retry = shouldRetryResponse(
+      method,
+      retrySafe,
+      response.status,
+      attempt,
+      maxAttempts,
+    );
+
+    if (!retry) {
+      if (response.status >= 500) {
+        recordFailure(baseUrl);
+      }
+
+      return {
+        result,
+        retry: false,
+      };
+    }
+
+    const delay = getRetryDelay(attempt);
+
+    console.warn(
+      `[SERVICE CLIENT] retrying ${method} ${url} after ${delay}ms (status ${response.status})`,
+    );
+
+    await sleep(delay);
+
+    return {
+      result,
+      retry: true,
+    };
+  } catch (error) {
+    console.error(`[SERVICE CLIENT] ${method} ${url} failed:`, error.message);
+
+    const retry =
+      shouldRetry({
+        method,
+        retrySafe,
+        error,
+      }) && attempt < maxAttempts - 1;
+
+    if (!retry) {
+      recordFailure(baseUrl);
+
+      return {
+        result: createDownstreamErrorResult(error, attempt),
+        retry: false,
+      };
+    }
+
+    const delay = getRetryDelay(attempt);
+
+    console.warn(
+      `[SERVICE CLIENT] retrying ${method} ${url} after network failure in ${delay}ms`,
+    );
+
+    await sleep(delay);
+
+    return {
+      result: null,
+      retry: true,
+    };
+  }
+}
+
 async function request(baseUrl, path = "", options = {}) {
   const {
     headers: customHeaders = {},
@@ -244,262 +451,55 @@ async function request(baseUrl, path = "", options = {}) {
 
   const method = String(fetchOptions.method || "GET").toUpperCase();
 
-  /*
-   * Support both:
-   *
-   * request("http://service", "/path")
-   *
-   * and:
-   *
-   * request("http://service/path", "")
-   */
   const url = path === "" ? baseUrl : `${baseUrl.replace(/\/$/, "")}${path}`;
 
-  /*
-   * Circuit breaker check.
-   */
   if (!canRequest(baseUrl)) {
-    return {
-      ok: false,
-      status: 503,
-
-      data: {
-        success: false,
-        message:
-          "Downstream service temporarily unavailable. Circuit breaker is open.",
-        error: {
-          code: "CIRCUIT_OPEN",
-        },
-      },
-
-      error: {
-        type: "CIRCUIT_OPEN",
-        message: "Circuit breaker is open for downstream service.",
-      },
-
-      attempts: 0,
-    };
+    return createCircuitOpenResult();
   }
 
-  /*
-   * Build headers.
-   */
-  const headers = {
-    ...customHeaders,
-  };
+  const headers = buildRequestHeaders(customHeaders);
 
-  /*
-   * Add internal service token when configured.
-   */
-  if (
-    process.env.INTERNAL_SERVICE_TOKEN &&
-    !headers["x-internal-service-token"]
-  ) {
-    headers["x-internal-service-token"] = process.env.INTERNAL_SERVICE_TOKEN;
-  }
-
-  /*
-   * Generate request ID unless caller supplied one.
-   */
-  if (!headers["x-request-id"] && !headers["X-Request-Id"]) {
-    headers["x-request-id"] =
-      `${process.pid}-${Date.now()}-${crypto.randomUUID()}`;
-  }
-
-  /*
-   * Prepare request body.
-   */
-  let body = fetchOptions.body;
-
-  if (
-    body !== undefined &&
-    body !== null &&
-    typeof body !== "string" &&
-    !Buffer.isBuffer(body)
-  ) {
-    headers["content-type"] =
-      headers["content-type"] || headers["Content-Type"] || "application/json";
-
-    body = JSON.stringify(body);
-  }
+  const body = prepareRequestBody(fetchOptions.body, headers);
 
   const maxAttempts = Math.max(1, Number(retries) + 1);
 
-  let lastError = null;
-  let lastResult = null;
-
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      console.log(
-        `[SERVICE CLIENT] ${method} ${url} attempt ${
-          attempt + 1
-        }/${maxAttempts}`,
-      );
+    const { result, retry } = await executeRequestAttempt({
+      url,
+      baseUrl,
+      method,
+      headers,
+      body,
+      fetchOptions,
+      timeoutMs,
+      retrySafe,
+      attempt,
+      maxAttempts,
+    });
 
-      const response = await fetchWithTimeout(
-        url,
-        {
-          ...fetchOptions,
-          method,
-          headers,
-          body,
-        },
-        timeoutMs,
-      );
-
-      const data = await parseResponse(response);
-
-      const result = {
-        ok: response.ok,
-        status: response.status,
-        data,
-        error: null,
-        attempts: attempt + 1,
-      };
-
-      lastResult = result;
-
-      /*
-       * Successful response closes/resets circuit.
-       */
-      if (response.ok) {
-        recordSuccess(baseUrl);
-
-        return result;
-      }
-
-      /*
-       * Determine whether HTTP failure should retry.
-       */
-      const retry = shouldRetry({
-        method,
-        retrySafe,
-        status: response.status,
-      });
-
-      /*
-       * Return immediately if:
-       *
-       * - status isn't retryable
-       * - retry isn't allowed
-       * - this was the final attempt
-       */
-      if (!retry || attempt === maxAttempts - 1) {
-        /*
-         * Only 5xx failures affect the circuit.
-         *
-         * 4xx responses are business/client errors.
-         */
-        if (response.status >= 500) {
-          recordFailure(baseUrl);
-        }
-
-        return result;
-      }
-
-      const delay = getRetryDelay(attempt);
-
-      console.warn(
-        `[SERVICE CLIENT] retrying ${method} ${url} after ${delay}ms (status ${response.status})`,
-      );
-
-      await sleep(delay);
-    } catch (error) {
-      lastError = error;
-
-      const isTimeout = error.name === "AbortError";
-
-      console.error(`[SERVICE CLIENT] ${method} ${url} failed:`, error.message);
-
-      const retry = shouldRetry({
-        method,
-        retrySafe,
-        error,
-      });
-
-      /*
-       * No more attempts.
-       */
-      if (!retry || attempt === maxAttempts - 1) {
-        recordFailure(baseUrl);
-
-        const errorCode = isTimeout
-          ? "DOWNSTREAM_TIMEOUT"
-          : "DOWNSTREAM_UNAVAILABLE";
-
-        const errorType = isTimeout ? "TIMEOUT" : "NETWORK_ERROR";
-
-        return {
-          ok: false,
-
-          status: isTimeout ? 504 : 503,
-
-          data: {
-            success: false,
-
-            message: isTimeout
-              ? "Downstream service request timed out."
-              : "Downstream service unavailable.",
-
-            /*
-             * Keep the error code inside data.error
-             * because callers/tests expect this shape.
-             */
-            error: {
-              code: errorCode,
-              type: errorType,
-              message: error.message,
-            },
-          },
-
-          error: {
-            type: errorType,
-            message: error.message,
-          },
-
-          attempts: attempt + 1,
-        };
-      }
-
-      const delay = getRetryDelay(attempt);
-
-      console.warn(
-        `[SERVICE CLIENT] retrying ${method} ${url} after network failure in ${delay}ms`,
-      );
-
-      await sleep(delay);
+    if (!retry) {
+      return result;
     }
   }
 
-  /*
-   * Defensive fallback.
-   */
   recordFailure(baseUrl);
 
-  return (
-    lastResult || {
-      ok: false,
-
-      status: 503,
-
-      data: {
-        success: false,
-        message: "Downstream service unavailable.",
-        error: {
-          code: "DOWNSTREAM_UNAVAILABLE",
-        },
+  return {
+    ok: false,
+    status: 503,
+    data: {
+      success: false,
+      message: "Downstream service unavailable.",
+      error: {
+        code: "DOWNSTREAM_UNAVAILABLE",
       },
-
-      error: lastError
-        ? {
-            type: "NETWORK_ERROR",
-            message: lastError.message,
-          }
-        : null,
-
-      attempts: maxAttempts,
-    }
-  );
+    },
+    error: {
+      type: "NETWORK_ERROR",
+      message: "Downstream service unavailable.",
+    },
+    attempts: maxAttempts,
+  };
 }
 
 /*
