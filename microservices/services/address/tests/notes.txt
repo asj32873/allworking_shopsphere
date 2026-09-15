@@ -1542,7 +1542,11 @@ jest.mock("@shopsphere/common", () => ({
  */
 const controller = require("../../src/controllers/address.controller");
 const auth = require("../../src/middleware/auth");
-const router = require("../../src/routes");
+let router;
+
+beforeAll(() => {
+  router = require("../../src/routes");
+});
 
 function createApp() {
   const app = express();
@@ -1660,7 +1664,19 @@ describe("address routes", () => {
   });
 
   test("authorize middleware is configured for the routes", () => {
-    expect(auth.authorize).toHaveBeenCalledWith("USER");
+    const routes = router.stack.filter((layer) => layer.route);
+
+    expect(routes).toHaveLength(6);
+
+    const protectedRoutes = routes.filter((layer) =>
+      layer.route.path.startsWith("/api/addresses"),
+    );
+
+    expect(protectedRoutes).toHaveLength(5);
+
+    protectedRoutes.forEach((layer) => {
+      expect(layer.route.stack.length).toBe(3);
+    });
   });
 });
 
@@ -1671,6 +1687,11 @@ process.env.SERVICE_RETRY_DELAY_MS = "0";
 process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD = "2";
 process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS = "10";
 process.env.INTERNAL_SERVICE_TOKEN = "test-internal-token";
+
+jest.mock("crypto", () => ({
+  ...jest.requireActual("crypto"),
+  randomInt: jest.fn(),
+}));
 
 const crypto = require("crypto");
 

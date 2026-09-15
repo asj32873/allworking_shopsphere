@@ -396,37 +396,15 @@ app.use((req, res) => {
 
 const PORT = Number(process.env.GATEWAY_PORT || 5001);
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`ShopSphere API Gateway running on http://localhost:${PORT}`);
-});
+function startServer() {
+  return app.listen(PORT, "0.0.0.0", () => {
+    console.log(`ShopSphere API Gateway running on http://localhost:${PORT}`);
+  });
+}
 
-// require('dotenv').config({path:require('path').resolve(__dirname,'../../../.env')});
-// const express=require('express');const cors=require('cors');const helmet=require('helmet');const morgan=require('morgan');const rateLimit=require('express-rate-limit');
-// const {createProxyMiddleware,fixRequestBody}=require('http-proxy-middleware');
-// const app=express();
-// const services={
-//  auth:process.env.AUTH_SERVICE_URL||'http://localhost:5002',users:process.env.USER_SERVICE_URL||'http://localhost:5007',products:process.env.PRODUCT_SERVICE_URL||'http://localhost:5003',cart:process.env.CART_SERVICE_URL||'http://localhost:5004',orders:process.env.ORDER_SERVICE_URL||'http://localhost:5005',payments:process.env.PAYMENT_SERVICE_URL||'http://localhost:5006',addresses:process.env.ADDRESS_SERVICE_URL||'http://localhost:5008',reviews:process.env.REVIEW_SERVICE_URL||'http://localhost:5009',rag:process.env.RAG_SERVICE_URL||'http://localhost:5010',issues:process.env.SUPPORT_SERVICE_URL||'http://localhost:5011',vendor:process.env.VENDOR_SERVICE_URL||'http://localhost:5012',admin:process.env.ADMIN_SERVICE_URL||'http://localhost:5013'
-// };
-// app.use(helmet());app.use(cors({origin:process.env.FRONTEND_URL||'http://localhost:5173',credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization']}));
-// app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev'));
-// app.use('/api',rateLimit({windowMs:15*60*1000,limit:3000,standardHeaders:true,legacyHeaders:false}));
-// app.get('/health',(req,res)=>res.json({success:true,service:'shopsphere-api-gateway',timestamp:new Date().toISOString()}));
-// app.get('/api/health',(req,res)=>res.json({success:true,service:'shopsphere-api-gateway',timestamp:new Date().toISOString()}));
-// // Stripe webhook MUST be proxied with its raw body before express.json().
-// app.use('/api/payments/webhook',createProxyMiddleware({target:services.payments,changeOrigin:true,pathRewrite:{'^/':'/api/payments/webhook'},buffer:async(req)=>{const chunks=[];for await(const c of req)chunks.push(c);return Buffer.concat(chunks);},on:{proxyReq:(proxyReq,req)=>{if(req.headers['stripe-signature'])proxyReq.setHeader('stripe-signature',req.headers['stripe-signature']);}}}));
-// app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true}));
-// function proxy(target,pathRewrite){return createProxyMiddleware({target,changeOrigin:true,pathRewrite,proxyTimeout:15000,on:{proxyReq:(proxyReq,req)=>{fixRequestBody(proxyReq,req);proxyReq.setHeader('x-gateway-request','shopsphere');},error:(err,req,res)=>{if(!res.headersSent)res.status(502).json({success:false,message:'Upstream service unavailable.',error:err.message});}}});}
-// app.use('/api/auth',proxy(services.auth,{ '^/':'/api/auth/' }));
-// app.use('/api/users',proxy(services.users,{ '^/':'/api/users/' }));
-// app.use('/api/products',proxy(services.products,{ '^/':'/api/products/' }));
-// app.use('/api/cart',proxy(services.cart,{ '^/':'/api/cart/' }));
-// app.use('/api/orders',proxy(services.orders,{ '^/':'/api/orders/' }));
-// app.use('/api/payments',proxy(services.payments,{ '^/':'/api/payments/' }));
-// app.use('/api/addresses',proxy(services.addresses,{ '^/':'/api/addresses/' }));
-// app.use('/api/reviews',proxy(services.reviews,{ '^/':'/api/reviews/' }));
-// app.use('/api/rag',proxy(services.rag,{ '^/':'/api/rag/' }));
-// app.use('/api/issues',proxy(services.issues,{ '^/':'/api/issues/' }));
-// app.use('/api/vendor',proxy(services.vendor,{ '^/':'/api/vendor/' }));
-// app.use('/api/admin',proxy(services.admin,{ '^/':'/api/admin/' }));
-// app.post('/api/payment-debug',(req,res)=>res.json({success:true,message:'Gateway payment debug route works'}));
-// app.listen(Number(process.env.GATEWAY_PORT||5001),'0.0.0.0',()=>console.log('ShopSphere API Gateway running on http://localhost:5001'));
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;
+module.exports.startServer = startServer;

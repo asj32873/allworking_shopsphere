@@ -1,3 +1,5 @@
+const crypto = require("node:crypto");
+
 const DEFAULT_TIMEOUT_MS = Number(
   process.env.SERVICE_REQUEST_TIMEOUT_MS || 8000,
 );
@@ -22,12 +24,6 @@ const CIRCUIT_RESET_TIMEOUT_MS = Number(
 |--------------------------------------------------------------------------
 |
 | Each downstream service gets its own circuit.
-|
-| Example:
-|
-| auth-service
-| vendor-service
-| payment-service
 |
 */
 
@@ -75,21 +71,9 @@ function getCircuit(baseUrl) {
 function canRequest(baseUrl) {
   const circuit = getCircuit(baseUrl);
 
-  /*
-   * CLOSED
-   *
-   * Everything is normal.
-   */
-
   if (circuit.state === "CLOSED") {
     return true;
   }
-
-  /*
-   * OPEN
-   *
-   * Fail immediately until reset timeout expires.
-   */
 
   if (circuit.state === "OPEN") {
     const elapsed = Date.now() - circuit.openedAt;
@@ -98,21 +82,9 @@ function canRequest(baseUrl) {
       return false;
     }
 
-    /*
-     * Move to HALF_OPEN.
-     *
-     * Allow one test request.
-     */
-
     circuit.state = "HALF_OPEN";
     circuit.halfOpenRequests = 0;
   }
-
-  /*
-   * HALF_OPEN
-   *
-   * Allow only one request to test recovery.
-   */
 
   if (circuit.state === "HALF_OPEN") {
     if (circuit.halfOpenRequests >= 1) {
@@ -120,6 +92,7 @@ function canRequest(baseUrl) {
     }
 
     circuit.halfOpenRequests += 1;
+
     return true;
   }
 
@@ -138,11 +111,6 @@ function recordSuccess(baseUrl) {
 function recordFailure(baseUrl) {
   const circuit = getCircuit(baseUrl);
 
-  /*
-   * HALF_OPEN failure means
-   * the service is still unhealthy.
-   */
-
   if (circuit.state === "HALF_OPEN") {
     circuit.state = "OPEN";
     circuit.openedAt = Date.now();
@@ -152,10 +120,6 @@ function recordFailure(baseUrl) {
   }
 
   circuit.failures += 1;
-
-  /*
-   * Open the circuit after enough failures.
-   */
 
   if (circuit.failures >= CIRCUIT_FAILURE_THRESHOLD) {
     circuit.state = "OPEN";
@@ -169,13 +133,6 @@ function recordFailure(baseUrl) {
 |--------------------------------------------------------------------------
 | Retry policy
 |--------------------------------------------------------------------------
-|
-| GET, HEAD and OPTIONS are safe to retry automatically.
-|
-| POST, PATCH, PUT and DELETE are NOT retried automatically.
-|
-| They can be retried only when explicitly marked retrySafe.
-|
 */
 
 function isSafeMethod(method) {
@@ -185,21 +142,13 @@ function isSafeMethod(method) {
 }
 
 function isRetryableStatus(status) {
-  return [
-    408, // Request Timeout
-    429, // Too Many Requests
-    500,
-    502,
-    503,
-    504,
-  ].includes(status);
+  return [408, 429, 500, 502, 503, 504].includes(status);
 }
 
 function shouldRetry({ method, retrySafe, status, error }) {
   /*
    * Never retry unsafe writes automatically.
    */
-
   if (!isSafeMethod(method) && retrySafe !== true) {
     return false;
   }
@@ -207,40 +156,122 @@ function shouldRetry({ method, retrySafe, status, error }) {
   /*
    * Network / timeout errors.
    */
-
   if (error) {
     return true;
   }
 
   /*
-   * Retry temporary server failures.
+   * Temporary server failures.
    */
-
   return isRetryableStatus(status);
 }
 
 /*
 |--------------------------------------------------------------------------
-| Exponential backoff with jitter
+| Retry delay
 |--------------------------------------------------------------------------
+|
+| crypto.randomInt() is used instead of Math.random().
+|
+| This avoids SonarQube's pseudorandom-number-generator security hotspot
+| while also providing unbiased jitter.
+|
 */
 
 function getRetryDelay(attempt) {
   const exponentialDelay = DEFAULT_RETRY_DELAY_MS * Math.pow(2, attempt);
 
-  /*
-   * Add random jitter to prevent
-   * retry storms.
-   */
-
-  const jitter = Math.floor(Math.random() * DEFAULT_RETRY_DELAY_MS);
+  const jitter = crypto.randomInt(0, Math.max(1, DEFAULT_RETRY_DELAY_MS));
 
   return exponentialDelay + jitter;
 }
 
 /*
 |--------------------------------------------------------------------------
-| Parse response safely
+| URL / options
+|--------------------------------------------------------------------------
+*/
+
+function buildUrl(baseUrl, path) {
+  return `${baseUrl.replace(/\/$/, "")}${path}`;
+}
+
+function normalizeOptions(options) {
+  const {
+    headers: customHeaders = {},
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    retries = DEFAULT_RETRIES,
+    retrySafe = false,
+    ...fetchOptions
+  } = options;
+
+  return {
+    customHeaders,
+    timeoutMs,
+    retries,
+    retrySafe,
+    fetchOptions,
+  };
+}
+
+/*
+|--------------------------------------------------------------------------
+| Headers
+|--------------------------------------------------------------------------
+*/
+
+function buildHeaders(customHeaders) {
+  const headers = {
+    ...customHeaders,
+  };
+
+  /*
+   * Add internal service token only when configured.
+   */
+  if (
+    process.env.INTERNAL_SERVICE_TOKEN &&
+    !headers["x-internal-service-token"]
+  ) {
+    headers["x-internal-service-token"] = process.env.INTERNAL_SERVICE_TOKEN;
+  }
+
+  /*
+   * Correlation / request ID propagation.
+   *
+   * Use an RFC-compliant UUID rather than Math.random().
+   */
+  if (!headers["x-request-id"] && !headers["X-Request-Id"]) {
+    headers["x-request-id"] = crypto.randomUUID();
+  }
+
+  return headers;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Body
+|--------------------------------------------------------------------------
+*/
+
+function prepareBody(body, headers) {
+  if (
+    body === undefined ||
+    body === null ||
+    typeof body === "string" ||
+    Buffer.isBuffer(body)
+  ) {
+    return body;
+  }
+
+  headers["content-type"] =
+    headers["content-type"] || headers["Content-Type"] || "application/json";
+
+  return JSON.stringify(body);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Response parsing
 |--------------------------------------------------------------------------
 */
 
@@ -287,236 +318,266 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 
 /*
 |--------------------------------------------------------------------------
-| Main request
+| Results
 |--------------------------------------------------------------------------
 */
 
-async function request(baseUrl, path, options = {}) {
-  const {
-    headers: customHeaders = {},
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-    retries = DEFAULT_RETRIES,
-    retrySafe = false,
+function circuitOpenResult() {
+  return {
+    ok: false,
+    status: 503,
 
+    data: {
+      success: false,
+      message:
+        "Downstream service temporarily unavailable. Circuit breaker is open.",
+      code: "CIRCUIT_OPEN",
+    },
+
+    error: {
+      type: "CIRCUIT_OPEN",
+      message: "Circuit breaker is open for downstream service.",
+    },
+
+    attempts: 0,
+  };
+}
+
+function networkErrorResult(error) {
+  const isTimeout = error.name === "AbortError";
+
+  return {
+    ok: false,
+
+    status: isTimeout ? 504 : 503,
+
+    data: {
+      success: false,
+
+      message: isTimeout
+        ? "Downstream service request timed out."
+        : "Downstream service unavailable.",
+
+      code: isTimeout ? "DOWNSTREAM_TIMEOUT" : "DOWNSTREAM_UNAVAILABLE",
+    },
+
+    error: {
+      type: isTimeout ? "TIMEOUT" : "NETWORK_ERROR",
+      message: error.message,
+    },
+  };
+}
+
+/*
+|--------------------------------------------------------------------------
+| Response attempt
+|--------------------------------------------------------------------------
+*/
+
+async function executeAttempt({
+  baseUrl,
+  url,
+  method,
+  fetchOptions,
+  timeoutMs,
+  attempt,
+  maxAttempts,
+}) {
+  console.log(
+    `[SERVICE CLIENT] ${method} ${url} attempt ${attempt}/${maxAttempts}`,
+  );
+
+  const response = await fetchWithTimeout(url, fetchOptions, timeoutMs);
+
+  const data = await parseResponse(response);
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    data,
+    error: null,
+    attempts: attempt,
+    baseUrl,
+    method,
+    url,
+  };
+}
+
+/*
+|--------------------------------------------------------------------------
+| HTTP response handling
+|--------------------------------------------------------------------------
+*/
+
+function handleHttpFailure({
+  result,
+  baseUrl,
+  method,
+  url,
+  retrySafe,
+  attempt,
+  maxAttempts,
+}) {
+  const retry = shouldRetry({
+    method,
+    retrySafe,
+    status: result.status,
+  });
+
+  if (!retry || attempt === maxAttempts) {
     /*
-     * Prevent internal control options
-     * from being passed into fetch().
+     * Only server-side failures trip the circuit breaker.
+     * 4xx business errors do not.
      */
+    if (result.status >= 500) {
+      recordFailure(baseUrl);
+    }
 
-    ...fetchOptions
-  } = options;
-
-  const method = String(fetchOptions.method || "GET").toUpperCase();
-
-  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
-
-  /*
-   * Circuit breaker check.
-   */
-
-  if (!canRequest(baseUrl)) {
     return {
-      ok: false,
-      status: 503,
-
-      data: {
-        success: false,
-
-        message:
-          "Downstream service temporarily unavailable. Circuit breaker is open.",
-
-        code: "CIRCUIT_OPEN",
-      },
-
-      error: {
-        type: "CIRCUIT_OPEN",
-        message: "Circuit breaker is open for downstream service.",
-      },
-
-      attempts: 0,
+      shouldReturn: true,
+      result,
     };
   }
 
-  /*
-   * Build headers.
-   */
+  const delay = getRetryDelay(attempt - 1);
 
-  const headers = {
-    ...customHeaders,
+  console.warn(
+    `[SERVICE CLIENT] retrying ${method} ${url} after ${delay}ms ` +
+      `(status ${result.status})`,
+  );
+
+  return {
+    shouldReturn: false,
+    delay,
   };
+}
 
-  /*
-   * Add internal service token only
-   * when configured.
-   */
+/*
+|--------------------------------------------------------------------------
+| Network error handling
+|--------------------------------------------------------------------------
+*/
 
-  if (
-    process.env.INTERNAL_SERVICE_TOKEN &&
-    !headers["x-internal-service-token"]
-  ) {
-    headers["x-internal-service-token"] = process.env.INTERNAL_SERVICE_TOKEN;
+function handleNetworkFailure({
+  error,
+  baseUrl,
+  method,
+  url,
+  retrySafe,
+  attempt,
+  maxAttempts,
+}) {
+  const retry = shouldRetry({
+    method,
+    retrySafe,
+    error,
+  });
+
+  const isLastAttempt = attempt === maxAttempts;
+
+  console.error(`[SERVICE CLIENT] ${method} ${url} failed:`, error.message);
+
+  if (!retry || isLastAttempt) {
+    recordFailure(baseUrl);
+
+    return {
+      shouldReturn: true,
+      result: {
+        ...networkErrorResult(error),
+        attempts: attempt,
+      },
+    };
   }
 
-  /*
-   * Correlation / request ID propagation.
-   *
-   * If the caller already provides one,
-   * preserve it.
-   */
+  const delay = getRetryDelay(attempt - 1);
 
-  if (!headers["x-request-id"] && !headers["X-Request-Id"]) {
-    headers["x-request-id"] = `${process.pid}-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 10)}`;
-  }
+  console.warn(
+    `[SERVICE CLIENT] retrying ${method} ${url} ` +
+      `after network failure in ${delay}ms`,
+  );
 
-  /*
-   * Prepare body once.
-   */
+  return {
+    shouldReturn: false,
+    delay,
+  };
+}
 
-  let body = fetchOptions.body;
+/*
+|--------------------------------------------------------------------------
+| Retry execution
+|--------------------------------------------------------------------------
+*/
 
-  if (
-    body !== undefined &&
-    body !== null &&
-    typeof body !== "string" &&
-    !Buffer.isBuffer(body)
-  ) {
-    headers["content-type"] =
-      headers["content-type"] || headers["Content-Type"] || "application/json";
-
-    body = JSON.stringify(body);
-  }
-
+async function executeWithRetries({
+  baseUrl,
+  url,
+  method,
+  fetchOptions,
+  timeoutMs,
+  retries,
+  retrySafe,
+}) {
   const maxAttempts = Math.max(1, Number(retries) + 1);
 
-  let lastError = null;
   let lastResult = null;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      console.log(
-        `[SERVICE CLIENT] ${method} ${url} attempt ${attempt + 1}/${maxAttempts}`,
-      );
-
-      const response = await fetchWithTimeout(
+      const result = await executeAttempt({
+        baseUrl,
         url,
-        {
-          ...fetchOptions,
-          method,
-          headers,
-          body,
-        },
+        method,
+        fetchOptions,
         timeoutMs,
-      );
-
-      const data = await parseResponse(response);
-
-      const result = {
-        ok: response.ok,
-        status: response.status,
-        data,
-        error: null,
-        attempts: attempt + 1,
-      };
+        attempt,
+        maxAttempts,
+      });
 
       lastResult = result;
 
-      /*
-       * Successful response.
-       */
-
-      if (response.ok) {
+      if (result.ok) {
         recordSuccess(baseUrl);
 
         return result;
       }
 
-      /*
-       * Retry only temporary failures.
-       */
-
-      const retry = shouldRetry({
+      const failure = handleHttpFailure({
+        result,
+        baseUrl,
         method,
+        url,
         retrySafe,
-        status: response.status,
+        attempt,
+        maxAttempts,
       });
 
-      if (!retry || attempt === maxAttempts - 1) {
-        /*
-         * 4xx business errors should not
-         * trip the circuit breaker.
-         */
-
-        if (response.status >= 500) {
-          recordFailure(baseUrl);
-        }
-
-        return result;
+      if (failure.shouldReturn) {
+        return failure.result;
       }
 
-      const delay = getRetryDelay(attempt);
-
-      console.warn(
-        `[SERVICE CLIENT] retrying ${method} ${url} after ${delay}ms (status ${response.status})`,
-      );
-
-      await sleep(delay);
+      await sleep(failure.delay);
     } catch (error) {
-      lastError = error;
-
-      const isTimeout = error.name === "AbortError";
-
-      console.error(`[SERVICE CLIENT] ${method} ${url} failed:`, error.message);
-
-      const retry = shouldRetry({
-        method,
-        retrySafe,
+      const failure = handleNetworkFailure({
         error,
+        baseUrl,
+        method,
+        url,
+        retrySafe,
+        attempt,
+        maxAttempts,
       });
 
-      if (!retry || attempt === maxAttempts - 1) {
-        recordFailure(baseUrl);
-
-        return {
-          ok: false,
-
-          status: isTimeout ? 504 : 503,
-
-          data: {
-            success: false,
-
-            message: isTimeout
-              ? "Downstream service request timed out."
-              : "Downstream service unavailable.",
-
-            code: isTimeout ? "DOWNSTREAM_TIMEOUT" : "DOWNSTREAM_UNAVAILABLE",
-          },
-
-          error: {
-            type: isTimeout ? "TIMEOUT" : "NETWORK_ERROR",
-
-            message: error.message,
-          },
-
-          attempts: attempt + 1,
-        };
+      if (failure.shouldReturn) {
+        return failure.result;
       }
 
-      const delay = getRetryDelay(attempt);
-
-      console.warn(
-        `[SERVICE CLIENT] retrying ${method} ${url} after network failure in ${delay}ms`,
-      );
-
-      await sleep(delay);
+      await sleep(failure.delay);
     }
   }
 
   /*
    * Defensive fallback.
    */
-
   recordFailure(baseUrl);
 
   return (
@@ -530,16 +591,58 @@ async function request(baseUrl, path, options = {}) {
         message: "Downstream service unavailable.",
       },
 
-      error: lastError
-        ? {
-            type: "NETWORK_ERROR",
-            message: lastError.message,
-          }
-        : null,
+      error: null,
 
       attempts: maxAttempts,
     }
   );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Main request
+|--------------------------------------------------------------------------
+*/
+
+async function request(baseUrl, path, options = {}) {
+  const { customHeaders, timeoutMs, retries, retrySafe, fetchOptions } =
+    normalizeOptions(options);
+
+  const method = String(fetchOptions.method || "GET").toUpperCase();
+
+  const url = buildUrl(baseUrl, path);
+
+  /*
+   * Circuit breaker check.
+   */
+  if (!canRequest(baseUrl)) {
+    return circuitOpenResult();
+  }
+
+  /*
+   * Build headers.
+   */
+  const headers = buildHeaders(customHeaders);
+
+  /*
+   * Prepare body once.
+   */
+  const body = prepareBody(fetchOptions.body, headers);
+
+  return executeWithRetries({
+    baseUrl,
+    url,
+    method,
+    timeoutMs,
+    retries,
+    retrySafe,
+    fetchOptions: {
+      ...fetchOptions,
+      method,
+      headers,
+      body,
+    },
+  });
 }
 
 /*
