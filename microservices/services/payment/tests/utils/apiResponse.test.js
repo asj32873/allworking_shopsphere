@@ -1,0 +1,3 @@
+const {ok,fail}=require("../../src/utils/apiResponse");
+const res=()=>({status:jest.fn().mockReturnThis(),json:jest.fn().mockReturnThis()});
+describe("apiResponse",()=>{test("ok defaults",()=>{const r=res();ok(r,{id:1});expect(r.status).toHaveBeenCalledWith(200);expect(r.json).toHaveBeenCalledWith({success:true,message:"OK",data:{id:1}})});test("ok custom",()=>{const r=res();ok(r,1,"Created",201);expect(r.status).toHaveBeenCalledWith(201)});test("fail defaults",()=>{const r=res();fail(r,"Bad");expect(r.status).toHaveBeenCalledWith(400);expect(r.json).toHaveBeenCalledWith({success:false,message:"Bad"})});test("fail details",()=>{const r=res();fail(r,"Bad",422,{field:"x"});expect(r.json).toHaveBeenCalledWith({success:false,message:"Bad",details:{field:"x"}})})});
