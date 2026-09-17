@@ -1,7 +1,7 @@
 const DEFAULT_TIMEOUT_MS = Number(
   process.env.SERVICE_REQUEST_TIMEOUT_MS || 8000,
 );
-
+const crypto = require("node:crypto");
 const DEFAULT_RETRIES = Number(process.env.SERVICE_REQUEST_RETRIES || 2);
 
 const DEFAULT_RETRY_DELAY_MS = Number(
@@ -20,15 +20,6 @@ const CIRCUIT_RESET_TIMEOUT_MS = Number(
 |--------------------------------------------------------------------------
 | Circuit breaker state
 |--------------------------------------------------------------------------
-|
-| Each downstream service gets its own circuit.
-|
-| Example:
-|
-| auth-service
-| vendor-service
-| payment-service
-|
 */
 
 const circuits = new Map();
@@ -75,21 +66,9 @@ function getCircuit(baseUrl) {
 function canRequest(baseUrl) {
   const circuit = getCircuit(baseUrl);
 
-  /*
-   * CLOSED
-   *
-   * Everything is normal.
-   */
-
   if (circuit.state === "CLOSED") {
     return true;
   }
-
-  /*
-   * OPEN
-   *
-   * Fail immediately until reset timeout expires.
-   */
 
   if (circuit.state === "OPEN") {
     const elapsed = Date.now() - circuit.openedAt;
@@ -98,21 +77,9 @@ function canRequest(baseUrl) {
       return false;
     }
 
-    /*
-     * Move to HALF_OPEN.
-     *
-     * Allow one test request.
-     */
-
     circuit.state = "HALF_OPEN";
     circuit.halfOpenRequests = 0;
   }
-
-  /*
-   * HALF_OPEN
-   *
-   * Allow only one request to test recovery.
-   */
 
   if (circuit.state === "HALF_OPEN") {
     if (circuit.halfOpenRequests >= 1) {
@@ -120,6 +87,7 @@ function canRequest(baseUrl) {
     }
 
     circuit.halfOpenRequests += 1;
+
     return true;
   }
 
@@ -139,10 +107,9 @@ function recordFailure(baseUrl) {
   const circuit = getCircuit(baseUrl);
 
   /*
-   * HALF_OPEN failure means
-   * the service is still unhealthy.
+   * If a HALF_OPEN request fails,
+   * immediately reopen the circuit.
    */
-
   if (circuit.state === "HALF_OPEN") {
     circuit.state = "OPEN";
     circuit.openedAt = Date.now();
@@ -152,10 +119,6 @@ function recordFailure(baseUrl) {
   }
 
   circuit.failures += 1;
-
-  /*
-   * Open the circuit after enough failures.
-   */
 
   if (circuit.failures >= CIRCUIT_FAILURE_THRESHOLD) {
     circuit.state = "OPEN";
@@ -169,13 +132,6 @@ function recordFailure(baseUrl) {
 |--------------------------------------------------------------------------
 | Retry policy
 |--------------------------------------------------------------------------
-|
-| GET, HEAD and OPTIONS are safe to retry automatically.
-|
-| POST, PATCH, PUT and DELETE are NOT retried automatically.
-|
-| They can be retried only when explicitly marked retrySafe.
-|
 */
 
 function isSafeMethod(method) {
@@ -185,62 +141,48 @@ function isSafeMethod(method) {
 }
 
 function isRetryableStatus(status) {
-  return [
-    408, // Request Timeout
-    429, // Too Many Requests
-    500,
-    502,
-    503,
-    504,
-  ].includes(status);
+  return [408, 429, 500, 502, 503, 504].includes(status);
 }
 
 function shouldRetry({ method, retrySafe, status, error }) {
   /*
-   * Never retry unsafe writes automatically.
+   * Unsafe HTTP methods are not retried
+   * unless explicitly marked retrySafe.
    */
-
   if (!isSafeMethod(method) && retrySafe !== true) {
     return false;
   }
 
   /*
-   * Network / timeout errors.
+   * Network and timeout errors can be retried.
    */
-
   if (error) {
     return true;
   }
 
   /*
-   * Retry temporary server failures.
+   * Temporary HTTP errors can be retried.
    */
-
   return isRetryableStatus(status);
 }
 
 /*
 |--------------------------------------------------------------------------
-| Exponential backoff with jitter
+| Retry delay
 |--------------------------------------------------------------------------
 */
 
 function getRetryDelay(attempt) {
   const exponentialDelay = DEFAULT_RETRY_DELAY_MS * Math.pow(2, attempt);
 
-  /*
-   * Add random jitter to prevent
-   * retry storms.
-   */
-
-  const jitter = Math.floor(Math.random() * DEFAULT_RETRY_DELAY_MS);
+  const jitter = crypto.randomInt(0, DEFAULT_RETRY_DELAY_MS);
 
   return exponentialDelay + jitter;
 }
 
 /*
 |--------------------------------------------------------------------------
-| Parse response safely
+| Response parsing
 |--------------------------------------------------------------------------
 */
 
@@ -291,64 +233,30 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 |--------------------------------------------------------------------------
 */
 
-async function request(baseUrl, path, options = {}) {
-  const {
-    headers: customHeaders = {},
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-    retries = DEFAULT_RETRIES,
-    retrySafe = false,
-
-    /*
-     * Prevent internal control options
-     * from being passed into fetch().
-     */
-
-    ...fetchOptions
-  } = options;
-
-  const method = String(fetchOptions.method || "GET").toUpperCase();
-
-  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
-
-  /*
-   * Circuit breaker check.
-   */
-
-  if (!canRequest(baseUrl)) {
-    return {
-      ok: false,
-      status: 503,
-
-      data: {
-        success: false,
-
-        message:
-          "Downstream service temporarily unavailable. Circuit breaker is open.",
-
+function createCircuitOpenResult() {
+  return {
+    ok: false,
+    status: 503,
+    data: {
+      success: false,
+      message:
+        "Downstream service temporarily unavailable. Circuit breaker is open.",
+      error: {
         code: "CIRCUIT_OPEN",
       },
+    },
+    error: {
+      type: "CIRCUIT_OPEN",
+      message: "Circuit breaker is open for downstream service.",
+    },
+    attempts: 0,
+  };
+}
 
-      error: {
-        type: "CIRCUIT_OPEN",
-        message: "Circuit breaker is open for downstream service.",
-      },
-
-      attempts: 0,
-    };
-  }
-
-  /*
-   * Build headers.
-   */
-
+function buildRequestHeaders(customHeaders) {
   const headers = {
     ...customHeaders,
   };
-
-  /*
-   * Add internal service token only
-   * when configured.
-   */
 
   if (
     process.env.INTERNAL_SERVICE_TOKEN &&
@@ -357,189 +265,241 @@ async function request(baseUrl, path, options = {}) {
     headers["x-internal-service-token"] = process.env.INTERNAL_SERVICE_TOKEN;
   }
 
-  /*
-   * Correlation / request ID propagation.
-   *
-   * If the caller already provides one,
-   * preserve it.
-   */
-
   if (!headers["x-request-id"] && !headers["X-Request-Id"]) {
-    headers["x-request-id"] = `${process.pid}-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 10)}`;
+    headers["x-request-id"] =
+      `${process.pid}-${Date.now()}-${crypto.randomUUID()}`;
   }
 
-  /*
-   * Prepare body once.
-   */
+  return headers;
+}
 
-  let body = fetchOptions.body;
-
+function prepareRequestBody(body, headers) {
   if (
-    body !== undefined &&
-    body !== null &&
-    typeof body !== "string" &&
-    !Buffer.isBuffer(body)
+    body === undefined ||
+    body === null ||
+    typeof body === "string" ||
+    Buffer.isBuffer(body)
   ) {
-    headers["content-type"] =
-      headers["content-type"] || headers["Content-Type"] || "application/json";
-
-    body = JSON.stringify(body);
+    return body;
   }
 
-  const maxAttempts = Math.max(1, Number(retries) + 1);
+  headers["content-type"] =
+    headers["content-type"] || headers["Content-Type"] || "application/json";
 
-  let lastError = null;
-  let lastResult = null;
+  return JSON.stringify(body);
+}
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      console.log(
-        `[SERVICE CLIENT] ${method} ${url} attempt ${attempt + 1}/${maxAttempts}`,
-      );
+function createDownstreamErrorResult(error, attempt) {
+  const isTimeout = error.name === "AbortError";
 
-      const response = await fetchWithTimeout(
-        url,
-        {
-          ...fetchOptions,
-          method,
-          headers,
-          body,
-        },
-        timeoutMs,
-      );
+  const errorCode = isTimeout ? "DOWNSTREAM_TIMEOUT" : "DOWNSTREAM_UNAVAILABLE";
 
-      const data = await parseResponse(response);
+  const errorType = isTimeout ? "TIMEOUT" : "NETWORK_ERROR";
 
-      const result = {
-        ok: response.ok,
-        status: response.status,
-        data,
-        error: null,
-        attempts: attempt + 1,
-      };
+  return {
+    ok: false,
+    status: isTimeout ? 504 : 503,
+    data: {
+      success: false,
+      message: isTimeout
+        ? "Downstream service request timed out."
+        : "Downstream service unavailable.",
+      error: {
+        code: errorCode,
+        type: errorType,
+        message: error.message,
+      },
+    },
+    error: {
+      type: errorType,
+      message: error.message,
+    },
+    attempts: attempt + 1,
+  };
+}
 
-      lastResult = result;
+function shouldRetryResponse(method, retrySafe, status, attempt, maxAttempts) {
+  return (
+    shouldRetry({
+      method,
+      retrySafe,
+      status,
+    }) && attempt < maxAttempts - 1
+  );
+}
 
-      /*
-       * Successful response.
-       */
+async function executeRequestAttempt({
+  url,
+  baseUrl,
+  method,
+  headers,
+  body,
+  fetchOptions,
+  timeoutMs,
+  retrySafe,
+  attempt,
+  maxAttempts,
+}) {
+  try {
+    console.log(
+      `[SERVICE CLIENT] ${method} ${url} attempt ${attempt + 1}/${maxAttempts}`,
+    );
 
-      if (response.ok) {
-        recordSuccess(baseUrl);
-
-        return result;
-      }
-
-      /*
-       * Retry only temporary failures.
-       */
-
-      const retry = shouldRetry({
+    const response = await fetchWithTimeout(
+      url,
+      {
+        ...fetchOptions,
         method,
-        retrySafe,
-        status: response.status,
-      });
+        headers,
+        body,
+      },
+      timeoutMs,
+    );
 
-      if (!retry || attempt === maxAttempts - 1) {
-        /*
-         * 4xx business errors should not
-         * trip the circuit breaker.
-         */
+    const data = await parseResponse(response);
 
-        if (response.status >= 500) {
-          recordFailure(baseUrl);
-        }
+    const result = {
+      ok: response.ok,
+      status: response.status,
+      data,
+      error: null,
+      attempts: attempt + 1,
+    };
 
-        return result;
+    if (response.ok) {
+      recordSuccess(baseUrl);
+
+      return {
+        result,
+        retry: false,
+      };
+    }
+
+    const retry = shouldRetryResponse(
+      method,
+      retrySafe,
+      response.status,
+      attempt,
+      maxAttempts,
+    );
+
+    if (!retry) {
+      if (response.status >= 500) {
+        recordFailure(baseUrl);
       }
 
-      const delay = getRetryDelay(attempt);
+      return {
+        result,
+        retry: false,
+      };
+    }
 
-      console.warn(
-        `[SERVICE CLIENT] retrying ${method} ${url} after ${delay}ms (status ${response.status})`,
-      );
+    const delay = getRetryDelay(attempt);
 
-      await sleep(delay);
-    } catch (error) {
-      lastError = error;
+    console.warn(
+      `[SERVICE CLIENT] retrying ${method} ${url} after ${delay}ms (status ${response.status})`,
+    );
 
-      const isTimeout = error.name === "AbortError";
+    await sleep(delay);
 
-      console.error(`[SERVICE CLIENT] ${method} ${url} failed:`, error.message);
+    return {
+      result,
+      retry: true,
+    };
+  } catch (error) {
+    console.error(`[SERVICE CLIENT] ${method} ${url} failed:`, error.message);
 
-      const retry = shouldRetry({
+    const retry =
+      shouldRetry({
         method,
         retrySafe,
         error,
-      });
+      }) && attempt < maxAttempts - 1;
 
-      if (!retry || attempt === maxAttempts - 1) {
-        recordFailure(baseUrl);
+    if (!retry) {
+      recordFailure(baseUrl);
 
-        return {
-          ok: false,
+      return {
+        result: createDownstreamErrorResult(error, attempt),
+        retry: false,
+      };
+    }
 
-          status: isTimeout ? 504 : 503,
+    const delay = getRetryDelay(attempt);
 
-          data: {
-            success: false,
+    console.warn(
+      `[SERVICE CLIENT] retrying ${method} ${url} after network failure in ${delay}ms`,
+    );
 
-            message: isTimeout
-              ? "Downstream service request timed out."
-              : "Downstream service unavailable.",
+    await sleep(delay);
 
-            code: isTimeout ? "DOWNSTREAM_TIMEOUT" : "DOWNSTREAM_UNAVAILABLE",
-          },
+    return {
+      result: null,
+      retry: true,
+    };
+  }
+}
 
-          error: {
-            type: isTimeout ? "TIMEOUT" : "NETWORK_ERROR",
+async function request(baseUrl, path = "", options = {}) {
+  const {
+    headers: customHeaders = {},
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    retries = DEFAULT_RETRIES,
+    retrySafe = false,
+    ...fetchOptions
+  } = options;
 
-            message: error.message,
-          },
+  const method = String(fetchOptions.method || "GET").toUpperCase();
 
-          attempts: attempt + 1,
-        };
-      }
+  const url = path === "" ? baseUrl : `${baseUrl.replace(/\/$/, "")}${path}`;
 
-      const delay = getRetryDelay(attempt);
+  if (!canRequest(baseUrl)) {
+    return createCircuitOpenResult();
+  }
 
-      console.warn(
-        `[SERVICE CLIENT] retrying ${method} ${url} after network failure in ${delay}ms`,
-      );
+  const headers = buildRequestHeaders(customHeaders);
 
-      await sleep(delay);
+  const body = prepareRequestBody(fetchOptions.body, headers);
+
+  const maxAttempts = Math.max(1, Number(retries) + 1);
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const { result, retry } = await executeRequestAttempt({
+      url,
+      baseUrl,
+      method,
+      headers,
+      body,
+      fetchOptions,
+      timeoutMs,
+      retrySafe,
+      attempt,
+      maxAttempts,
+    });
+
+    if (!retry) {
+      return result;
     }
   }
 
-  /*
-   * Defensive fallback.
-   */
-
   recordFailure(baseUrl);
 
-  return (
-    lastResult || {
-      ok: false,
-
-      status: 503,
-
-      data: {
-        success: false,
-        message: "Downstream service unavailable.",
+  return {
+    ok: false,
+    status: 503,
+    data: {
+      success: false,
+      message: "Downstream service unavailable.",
+      error: {
+        code: "DOWNSTREAM_UNAVAILABLE",
       },
-
-      error: lastError
-        ? {
-            type: "NETWORK_ERROR",
-            message: lastError.message,
-          }
-        : null,
-
-      attempts: maxAttempts,
-    }
-  );
+    },
+    error: {
+      type: "NETWORK_ERROR",
+      message: "Downstream service unavailable.",
+    },
+    attempts: maxAttempts,
+  };
 }
 
 /*
@@ -548,8 +508,40 @@ async function request(baseUrl, path, options = {}) {
 |--------------------------------------------------------------------------
 */
 
-async function getJson(baseUrl, path, headers = {}, options = {}) {
-  return request(baseUrl, path, {
+/*
+ * GET supports both:
+ *
+ * getJson(
+ *   "http://localhost:5002",
+ *   "/internal/users/123"
+ * )
+ *
+ * and:
+ *
+ * getJson(
+ *   "http://localhost:5002/internal/users/123",
+ *   { retries: 0 }
+ * )
+ */
+async function getJson(baseUrl, pathOrOptions, headers = {}, options = {}) {
+  /*
+   * Full URL + options style.
+   */
+  if (
+    typeof pathOrOptions === "object" &&
+    pathOrOptions !== null &&
+    !Array.isArray(pathOrOptions)
+  ) {
+    return request(baseUrl, "", {
+      ...pathOrOptions,
+      method: "GET",
+    });
+  }
+
+  /*
+   * Base URL + path + headers + options style.
+   */
+  return request(baseUrl, pathOrOptions, {
     ...options,
     method: "GET",
     headers,
@@ -597,7 +589,27 @@ async function deleteJson(baseUrl, path, headers = {}, options = {}) {
 |--------------------------------------------------------------------------
 */
 
-function getCircuitStatus() {
+function getCircuitStatus(baseUrl) {
+  /*
+   * If a URL is provided, return that circuit only.
+   */
+  if (baseUrl) {
+    const circuit = circuits.get(getCircuitKey(baseUrl));
+
+    if (!circuit) {
+      return undefined;
+    }
+
+    return {
+      state: circuit.state,
+      failures: circuit.failures,
+      openedAt: circuit.openedAt,
+    };
+  }
+
+  /*
+   * Otherwise return all circuits.
+   */
   const status = {};
 
   for (const [key, value] of circuits.entries()) {
