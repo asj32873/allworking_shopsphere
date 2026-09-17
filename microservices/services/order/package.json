@@ -4,11 +4,12 @@
   "private": true,
   "main": "src/server.js",
   "scripts": {
-  "start": "node src/server.js",
-  "dev": "nodemon src/server.js",
-  "test": "jest --runInBand --config jest.config.js",
-  "test:coverage": "jest --runInBand --config jest.config.js --coverage"
-},
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch"
+  },
   "dependencies": {
     "@shopsphere/common": "file:../../packages/common",
     "bcryptjs": "^3.0.2",
