@@ -4,8 +4,9 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const routes = require("./routes");
-const { notFound, errorHandler } = require("./middleware/error");
 const app = express();
+const { requestId, notFound, errorHandler } = require("@shopsphere/common");
+app.use(requestId);
 app.use(helmet());
 app.use(
   cors({

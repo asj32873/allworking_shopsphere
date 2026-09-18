@@ -1,0 +1,234 @@
+﻿address
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/address ./services/address
+
+RUN npm install
+
+WORKDIR /app/services/address
+
+EXPOSE 5004
+
+CMD ["node", "src/server.js"]
+----
+admin
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/admin ./services/admin
+
+RUN npm install
+
+WORKDIR /app/services/admin
+
+EXPOSE 5013
+
+CMD ["node", "src/server.js"]
+----
+auth
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/auth ./services/auth
+
+RUN npm install
+
+WORKDIR /app/services/auth
+
+EXPOSE 5002
+
+CMD ["node", "src/server.js"]
+----
+api-gateway
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/api-gateway ./services/api-gateway
+
+RUN npm install
+
+WORKDIR /app/services/api-gateway
+
+EXPOSE 5001
+
+CMD ["node", "src/server.js"]
+----
+cart
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/cart ./services/cart
+
+RUN npm install
+
+WORKDIR /app/services/cart
+
+EXPOSE 5004
+
+CMD ["node", "src/server.js"]
+----
+order
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/order ./services/order
+
+RUN npm install
+
+WORKDIR /app/services/order
+
+EXPOSE 5005
+
+CMD ["node", "src/server.js"]
+----
+payment
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/payment ./services/payment
+
+RUN npm install
+
+WORKDIR /app/services/payment
+
+EXPOSE 5006
+
+CMD ["node", "src/server.js"]
+----
+product
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/product ./services/product
+
+RUN npm install
+
+WORKDIR /app/services/product
+
+EXPOSE 5003
+
+CMD ["node", "src/server.js"]
+----
+rag
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/rag ./services/rag
+
+RUN npm install
+
+WORKDIR /app/services/rag
+
+EXPOSE 5010
+
+CMD ["node", "src/server.js"]
+----
+support
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/support ./services/support
+
+RUN npm install
+
+WORKDIR /app/services/support
+
+EXPOSE 5011
+
+CMD ["node", "src/server.js"]
+----
+user
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/user ./services/user
+
+RUN npm install
+
+WORKDIR /app/services/user
+
+EXPOSE 5007
+
+CMD ["node", "src/server.js"]
+----
+review
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/review ./services/review
+
+RUN npm install
+
+WORKDIR /app/services/review
+
+EXPOSE 5009
+
+CMD ["node", "src/server.js"]
+----
+vendor
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/vendor ./services/vendor
+
+RUN npm install
+
+WORKDIR /app/services/vendor
+
+EXPOSE 5012
+
+CMD ["node", "src/server.js"]
+----

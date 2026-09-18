@@ -5,8 +5,9 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const routes = require("./routes");
-const { notFound, errorHandler } = require("./middleware/error");
 const app = express();
+const { requestId, notFound, errorHandler } = require("@shopsphere/common");
+app.use(requestId);
 app.use(helmet());
 app.use(
   cors({
@@ -67,10 +68,20 @@ module.exports = { getEnv };
 ===== auth.controller.js =====
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+
 const User = require("../models/User");
+
 const { postJson, getJson } = require("../utils/serviceClient");
+
 const { ok, fail } = require("../utils/apiResponse");
-const { verifyAuth0Token } = require("../utils/auth0");
+
+const { verifyAuth0Token, getAuth0UserInfo } = require("../utils/auth0");
+
+/*
+ * Convert database user into
+ * safe public response.
+ */
+
 function publicUser(u) {
   return {
     id: u._id.toString(),
@@ -90,7 +101,26 @@ function publicUser(u) {
     auth0Sub: u.auth0Sub || null,
   };
 }
+
+/*
+ * Generate ShopSphere JWT.
+ *
+ * This is the ONLY token used by:
+ *
+ * - Gateway
+ * - Product Service
+ * - Cart Service
+ * - Order Service
+ * - Vendor Service
+ * - Payment Service
+ * - Other microservices
+ */
+
 function tokenFor(u) {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured.");
+  }
+
   return jwt.sign(
     {
       id: u._id.toString(),
@@ -109,118 +139,259 @@ function tokenFor(u) {
     },
   );
 }
+
+/* =====================================================
+   NORMAL USER REGISTRATION
+===================================================== */
+
 async function register(req, res) {
   const { name, email, phone, password } = req.body;
-  const e = email.toLowerCase();
-  if (await User.exists({ email: e }))
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const exists = await User.exists({
+    email: normalizedEmail,
+  });
+
+  if (exists) {
     return fail(res, "Email already exists.", 409);
-  const u = await User.create({
+  }
+
+  const passwordHash = await bcrypt.hash(
+    password,
+    Number(process.env.BCRYPT_SALT_ROUNDS || 12),
+  );
+
+  const user = await User.create({
     name,
-    email: e,
+
+    email: normalizedEmail,
+
     phone,
-    passwordHash: await bcrypt.hash(
-      password,
-      Number(process.env.BCRYPT_SALT_ROUNDS || 12),
-    ),
+
+    passwordHash,
+
     role: "USER",
   });
-  ok(res, { user: publicUser(u), token: tokenFor(u) }, "Account created.", 201);
-}
-async function registerVendor(req, res) {
-  const { ownerName, storeName, email, phone, storeAddress, password } =
-    req.body;
-  const e = email.toLowerCase();
-  if (await User.exists({ email: e }))
-    return fail(res, "Email already exists.", 409);
-  const u = await User.create({
-    name: ownerName,
-    email: e,
-    phone,
-    passwordHash: await bcrypt.hash(
-      password,
-      Number(process.env.BCRYPT_SALT_ROUNDS || 12),
-    ),
-    role: "VENDOR",
-  });
-  const vr = await postJson(
-    process.env.VENDOR_SERVICE_URL || "http://localhost:5012",
-    "/internal/vendors",
-    {
-      userId: u._id,
-      storeName,
-      email: e,
-      phone,
-      storeAddress,
-      status: "APPLIED",
-    },
-  );
-  if (!vr.ok) {
-    await User.findByIdAndDelete(u._id);
-    return res.status(vr.status).json(vr.data);
-  }
-  ok(
+
+  return ok(
     res,
-    { user: publicUser(u), vendor: vr.data.data },
-    "Vendor application submitted.",
+
+    {
+      user: publicUser(user),
+
+      token: tokenFor(user),
+    },
+
+    "Account created.",
+
     201,
   );
 }
+
+/* =====================================================
+   VENDOR REGISTRATION
+===================================================== */
+
+async function registerVendor(req, res) {
+  const { ownerName, storeName, email, phone, storeAddress, password } =
+    req.body;
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const exists = await User.exists({
+    email: normalizedEmail,
+  });
+
+  if (exists) {
+    return fail(res, "Email already exists.", 409);
+  }
+
+  const passwordHash = await bcrypt.hash(
+    password,
+    Number(process.env.BCRYPT_SALT_ROUNDS || 12),
+  );
+
+  const user = await User.create({
+    name: ownerName,
+
+    email: normalizedEmail,
+
+    phone,
+
+    passwordHash,
+
+    role: "VENDOR",
+  });
+
+  const vendorResponse = await postJson(
+    process.env.VENDOR_SERVICE_URL || "http://localhost:5012",
+
+    "/internal/vendors",
+
+    {
+      userId: user._id,
+
+      storeName,
+
+      email: normalizedEmail,
+
+      phone,
+
+      storeAddress,
+
+      status: "APPLIED",
+    },
+  );
+
+  /*
+   * Roll back user creation if
+   * vendor service fails.
+   */
+
+  if (!vendorResponse.ok) {
+    await User.findByIdAndDelete(user._id);
+
+    return res.status(vendorResponse.status).json(vendorResponse.data);
+  }
+
+  return ok(
+    res,
+
+    {
+      user: publicUser(user),
+
+      vendor: vendorResponse.data?.data,
+    },
+
+    "Vendor application submitted.",
+
+    201,
+  );
+}
+
+/* =====================================================
+   EMAIL / PASSWORD LOGIN
+===================================================== */
+
 async function login(req, res) {
   const { email, password } = req.body;
-  const u = await User.findOne({ email: email.trim().toLowerCase() }).select(
-    "+passwordHash",
-  );
-  if (!u || !u.passwordHash) return fail(res, "Invalid credentials.", 401);
-  if (u.status === "DISABLED") return fail(res, "Account disabled.", 403);
-  if (!(await bcrypt.compare(password, u.passwordHash)))
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const user = await User.findOne({
+    email: normalizedEmail,
+  }).select("+passwordHash");
+
+  if (!user || !user.passwordHash) {
     return fail(res, "Invalid credentials.", 401);
-  if (u.role === "VENDOR") {
-    const vr = await getJson(
-      process.env.VENDOR_SERVICE_URL || "http://localhost:5012",
-      `/internal/vendors/by-user/${u._id}`,
-    );
-    const v = vr.data?.data;
-    if (!vr.ok || !v || v.status !== "VERIFIED")
-      return fail(res, "Vendor is not verified yet.", 403);
   }
-  ok(res, { user: publicUser(u), token: tokenFor(u) }, "Login successful.");
+
+  if (user.status === "DISABLED") {
+    return fail(res, "Account disabled.", 403);
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+
+  if (!passwordMatches) {
+    return fail(res, "Invalid credentials.", 401);
+  }
+
+  /*
+   * Vendor accounts must be verified.
+   */
+
+  if (user.role === "VENDOR") {
+    const vendorResponse = await getJson(
+      process.env.VENDOR_SERVICE_URL || "http://localhost:5012",
+
+      `/internal/vendors/by-user/${user._id}`,
+    );
+
+    const vendor = vendorResponse.data?.data;
+
+    if (!vendorResponse.ok || !vendor || vendor.status !== "VERIFIED") {
+      return fail(res, "Vendor is not verified yet.", 403);
+    }
+  }
+
+  return ok(
+    res,
+
+    {
+      user: publicUser(user),
+
+      token: tokenFor(user),
+    },
+
+    "Login successful.",
+  );
 }
+
+/* =====================================================
+   AUTH0 / GOOGLE LOGIN
+===================================================== */
 
 async function auth0Login(req, res) {
   try {
     const { token } = req.body;
 
     if (!token) {
-      return fail(res, "Auth0 token is required.", 400);
+      return fail(res, "Auth0 access token is required.", 400);
     }
 
     /*
-     * 1. Verify Auth0 token using RS256 + JWKS
+     * STEP 1
+     *
+     * Verify Auth0 Access Token.
+     *
+     * Verification checks:
+     *
+     * - RS256
+     * - Auth0 JWKS
+     * - issuer
+     * - audience
      */
 
-    const identity = await verifyAuth0Token(token);
+    const tokenIdentity = await verifyAuth0Token(token);
 
     /*
-     * Auth0's unique user identifier.
-     *
-     * Examples:
-     *
-     * google-oauth2|12345
-     * github|12345
-     * auth0|12345
+     * Auth0 subject is required.
      */
 
-    const auth0Sub = identity.sub;
+    const auth0Sub = tokenIdentity?.sub;
 
     if (!auth0Sub) {
       return fail(res, "Auth0 token does not contain a subject.", 401);
     }
 
     /*
+     * STEP 2
+     *
+     * Get the Auth0 user profile.
+     *
+     * Access Tokens do not necessarily
+     * contain email/name claims.
+     */
+
+    const profile = await getAuth0UserInfo(token);
+
+    /*
+     * Security check:
+     *
+     * The /userinfo subject must match
+     * the verified JWT subject.
+     */
+
+    if (!profile?.sub || profile.sub !== auth0Sub) {
+      return fail(res, "Auth0 identity verification failed.", 401);
+    }
+
+    /*
      * Get email.
      */
 
-    const email = identity.email?.trim().toLowerCase();
+    const email = profile.email?.trim().toLowerCase();
 
     if (!email) {
       return fail(
@@ -231,7 +402,19 @@ async function auth0Login(req, res) {
     }
 
     /*
-     * 2. Find user by Auth0 identity
+     * Require verified email before
+     * automatically linking accounts.
+     */
+
+    if (profile.email_verified !== true) {
+      return fail(res, "Your Auth0 email address must be verified.", 403);
+    }
+
+    /*
+     * STEP 3
+     *
+     * Find existing ShopSphere user
+     * using Auth0 identity.
      */
 
     let user = await User.findOne({
@@ -239,8 +422,11 @@ async function auth0Login(req, res) {
     }).select("+passwordHash");
 
     /*
-     * 3. If not found, check whether a traditional
-     * account already exists with this email.
+     * STEP 4
+     *
+     * If this Auth0 identity is not
+     * linked yet, check existing
+     * ShopSphere account by email.
      */
 
     if (!user) {
@@ -249,8 +435,8 @@ async function auth0Login(req, res) {
       }).select("+passwordHash");
 
       /*
-       * Link existing ShopSphere account
-       * to this Auth0 identity.
+       * Link Auth0 identity to the
+       * existing ShopSphere account.
        */
 
       if (user) {
@@ -261,12 +447,15 @@ async function auth0Login(req, res) {
     }
 
     /*
-     * 4. Create a new ShopSphere account
+     * STEP 5
+     *
+     * Create new ShopSphere user if
+     * no account exists.
      */
 
     if (!user) {
       user = await User.create({
-        name: identity.name || identity.nickname || email.split("@")[0],
+        name: profile.name || profile.nickname || email.split("@")[0],
 
         email,
 
@@ -279,7 +468,9 @@ async function auth0Login(req, res) {
     }
 
     /*
-     * 5. Check account status
+     * STEP 6
+     *
+     * Check ShopSphere account status.
      */
 
     if (user.status === "DISABLED") {
@@ -287,22 +478,29 @@ async function auth0Login(req, res) {
     }
 
     /*
-     * 6. Generate YOUR ShopSphere JWT
+     * STEP 7
+     *
+     * Generate ShopSphere JWT.
      */
 
     const shopsphereToken = tokenFor(user);
 
     /*
-     * 7. Return your JWT
+     * STEP 8
+     *
+     * Return ONLY ShopSphere JWT
+     * to the frontend for normal API use.
      */
 
     return ok(
       res,
+
       {
         user: publicUser(user),
 
         token: shopsphereToken,
       },
+
       "Login successful.",
     );
   } catch (error) {
@@ -311,52 +509,97 @@ async function auth0Login(req, res) {
     return fail(res, "Invalid or expired Auth0 token.", 401);
   }
 }
+
+/* =====================================================
+   CURRENT USER
+===================================================== */
+
 async function me(req, res) {
-  ok(res, req.user);
+  return ok(res, req.user);
 }
+
+/* =====================================================
+   INTERNAL USER LOOKUP
+===================================================== */
+
 async function internalUser(req, res) {
-  const u = await User.findById(req.params.id).lean();
-  if (!u) return fail(res, "User not found.", 404);
-  delete u.passwordHash;
-  ok(res, u);
+  const user = await User.findById(req.params.id).lean();
+
+  if (!user) {
+    return fail(res, "User not found.", 404);
+  }
+
+  delete user.passwordHash;
+
+  return ok(res, user);
 }
+
+/* =====================================================
+   INTERNAL USER LIST
+===================================================== */
+
 async function internalUsers(req, res) {
   const users = await User.find()
     .select("-passwordHash")
-    .sort({ createdAt: -1 })
+    .sort({
+      createdAt: -1,
+    })
     .lean();
-  ok(res, users);
+
+  return ok(res, users);
 }
-async function internalUsers(req, res) {
-  const users = await User.find()
-    .select("-passwordHash")
-    .sort({ createdAt: -1 })
-    .lean();
-  ok(res, users);
-}
+
+/* =====================================================
+   INTERNAL USER UPDATE
+===================================================== */
+
 async function updateInternal(req, res) {
   const allowed = ["name", "phone", "status", "role"];
+
   const updates = {};
-  for (const k of allowed)
-    if (req.body[k] !== undefined) updates[k] = req.body[k];
-  const u = await User.findByIdAndUpdate(req.params.id, updates, {
-    new: true,
-    runValidators: true,
-  }).lean();
-  if (!u) return fail(res, "User not found.", 404);
-  delete u.passwordHash;
-  ok(res, u);
+
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) {
+      updates[key] = req.body[key];
+    }
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+
+    updates,
+
+    {
+      new: true,
+
+      runValidators: true,
+    },
+  ).lean();
+
+  if (!user) {
+    return fail(res, "User not found.", 404);
+  }
+
+  delete user.passwordHash;
+
+  return ok(res, user);
 }
+
 module.exports = {
   register,
+
   registerVendor,
+
   login,
 
   auth0Login,
 
   me,
+
   internalUser,
+
   internalUsers,
+
   updateInternal,
 };
 
@@ -541,23 +784,6 @@ module.exports = {
   authorize,
 };
 
-===== error.js =====
-function notFound(req,res){res.status(404).json({success:false,message:`Route not found: ${req.method} ${req.originalUrl}`});}
-function errorHandler(err,req,res,next){
- console.error(err);
- if(err.name==='ValidationError') return res.status(400).json({success:false,message:'Validation error.',details:Object.values(err.errors).map(e=>e.message)});
- if(err.code===11000) return res.status(409).json({success:false,message:'A record with a unique field already exists.',details:err.keyValue});
- if(err.name==='CastError') return res.status(400).json({success:false,message:'Invalid resource ID.'});
- res.status(err.status||500).json({success:false,message:err.status?err.message:'Internal server error.'});
-}
-module.exports={notFound,errorHandler};
-
-===== internal.js =====
-module.exports=(req,res,next)=>{const expected=process.env.INTERNAL_SERVICE_TOKEN;if(!expected || req.headers['x-internal-service-token']!==expected)return res.status(401).json({success:false,message:'Invalid internal service credentials.'});next();};
-
-===== validate.js =====
-module.exports=(schema,source='body')=>(req,res,next)=>{const result=schema.safeParse(req[source]);if(!result.success)return res.status(400).json({success:false,message:'Invalid request.',details:result.error.issues.map(i=>({path:i.path,message:i.message}))});req[source]=result.data;next();};
-
 ===== User.js =====
 const mongoose = require("mongoose");
 
@@ -630,11 +856,11 @@ const router = require("express").Router();
 
 const controller = require("../controllers/auth.controller");
 
-const validate = require("../middleware/validate");
+const { validate } = require("@shopsphere/common");
 
 const { authenticate } = require("../middleware/auth");
 
-const internal = require("../middleware/internal");
+const { internal } = require("@shopsphere/common");
 
 const {
   registerSchema,
@@ -695,7 +921,7 @@ router.patch("/internal/users/:id", internal, controller.updateInternal);
 
 module.exports = router;
 
-// const router=require('express').Router();const c=require('../controllers/auth.controller');const validate=require('../middleware/validate');const {authenticate}=require('../middleware/auth');const internal=require('../middleware/internal');const {registerSchema,vendorRegisterSchema,loginSchema}=require('../validators/auth');
+// const router=require('express').Router();const c=require('../controllers/auth.controller');const validate=require('@shopsphere/common');const {authenticate}=require('../middleware/auth');const internal=require('@shopsphere/common');const {registerSchema,vendorRegisterSchema,loginSchema}=require('../validators/auth');
 // router.post('/api/auth/register',validate(registerSchema),c.register);router.post('/api/auth/vendor/register',validate(vendorRegisterSchema),c.registerVendor);router.post('/api/auth/login',validate(loginSchema),c.login);router.get('/api/auth/me',authenticate,c.me);router.post('/api/auth/logout',authenticate,(req,res)=>res.json({success:true,message:'Logged out.'}));
 // router.get('/internal/users/:id',internal,c.internalUser);router.get('/internal/admin/users',internal,c.internalUsers);router.get('/internal/admin/users',internal,c.internalUsers);router.patch('/internal/users/:id',internal,c.updateInternal);module.exports=router;
 
@@ -725,9 +951,74 @@ function ok(res,data,message='OK',status=200){return res.status(status).json({su
 function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
 module.exports={ok,fail};
 
+===== AppError.js =====
+class AppError extends Error {
+  constructor(message, statusCode = 500, options = {}) {
+    super(message);
+
+    this.name = "AppError";
+
+    this.statusCode = statusCode;
+
+    this.code =
+      options.code ||
+      (statusCode >= 500 ? "INTERNAL_SERVER_ERROR" : "BAD_REQUEST");
+
+    this.details = options.details;
+
+    this.isOperational = options.isOperational !== false;
+
+    Error.captureStackTrace(this, this.constructor);
+  }
+
+  static badRequest(message, details) {
+    return new AppError(message, 400, {
+      code: "BAD_REQUEST",
+      details,
+    });
+  }
+
+  static unauthorized(message = "Unauthorized") {
+    return new AppError(message, 401, {
+      code: "UNAUTHORIZED",
+    });
+  }
+
+  static forbidden(message = "Forbidden") {
+    return new AppError(message, 403, {
+      code: "FORBIDDEN",
+    });
+  }
+
+  static notFound(message = "Resource not found") {
+    return new AppError(message, 404, {
+      code: "NOT_FOUND",
+    });
+  }
+
+  static conflict(message, details) {
+    return new AppError(message, 409, {
+      code: "CONFLICT",
+      details,
+    });
+  }
+
+  static serviceUnavailable(message = "Service temporarily unavailable") {
+    return new AppError(message, 503, {
+      code: "SERVICE_UNAVAILABLE",
+    });
+  }
+}
+
+module.exports = AppError;
+
 ===== auth0.js =====
 const jwt = require("jsonwebtoken");
 const jwksClient = require("jwks-rsa");
+
+/*
+ * Auth0 configuration
+ */
 
 const auth0Domain = (process.env.AUTH0_DOMAIN || "")
   .replace(/^https?:\/\//, "")
@@ -743,7 +1034,15 @@ if (!auth0Audience) {
   console.warn("[AUTH0] AUTH0_AUDIENCE is not configured.");
 }
 
+/*
+ * Auth0 issuer
+ */
+
 const issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+
+/*
+ * JWKS client
+ */
 
 const client = auth0Domain
   ? jwksClient({
@@ -761,13 +1060,19 @@ const client = auth0Domain
     })
   : null;
 
+/*
+ * Get Auth0 signing key.
+ */
+
 function getSigningKey(header, callback) {
   if (!client) {
     return callback(new Error("Auth0 is not configured."));
   }
 
   if (!header.kid) {
-    return callback(new Error("Auth0 token does not contain a kid."));
+    return callback(
+      new Error("Auth0 token does not contain a signing key identifier."),
+    );
   }
 
   client
@@ -777,6 +1082,17 @@ function getSigningKey(header, callback) {
     })
     .catch(callback);
 }
+
+/*
+ * Verify Auth0 Access Token.
+ *
+ * Expected:
+ *
+ * - RS256
+ * - Correct issuer
+ * - Correct audience
+ * - Valid Auth0 JWKS signing key
+ */
 
 function verifyAuth0Token(token) {
   return new Promise((resolve, reject) => {
@@ -804,26 +1120,685 @@ function verifyAuth0Token(token) {
   });
 }
 
+/*
+ * Get authenticated Auth0 user profile.
+ *
+ * The Access Token may NOT contain:
+ *
+ * - email
+ * - name
+ * - nickname
+ *
+ * Therefore we use /userinfo.
+ */
+
+async function getAuth0UserInfo(accessToken) {
+  if (!issuer) {
+    throw new Error("Auth0 issuer is not configured.");
+  }
+
+  const response = await fetch(`${issuer}userinfo`, {
+    method: "GET",
+
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const text = await response.text();
+
+  let data;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    console.error("[AUTH0 USERINFO ERROR]", response.status, data || text);
+
+    throw new Error("Unable to retrieve Auth0 user profile.");
+  }
+
+  if (!data) {
+    throw new Error("Auth0 returned an empty user profile.");
+  }
+
+  return data;
+}
+
 module.exports = {
   verifyAuth0Token,
+
+  getAuth0UserInfo,
 };
 
 ===== serviceClient.js =====
-async function request(baseUrl,path,options={}){
-  const url=`${baseUrl.replace(/\/$/,'')}${path}`;
-  const headers={...(options.headers||{}),'x-internal-service-token':process.env.INTERNAL_SERVICE_TOKEN||''};
-  if(options.body && typeof options.body!=='string'){
-    headers['content-type']='application/json'; options.body=JSON.stringify(options.body);
-  }
-  const response=await fetch(url,{...options,headers});
-  const text=await response.text();
-  let data; try{data=text?JSON.parse(text):null}catch{data={success:false,message:text||'Invalid service response'};}
-  return {status:response.status,ok:response.ok,data};
+const DEFAULT_TIMEOUT_MS = Number(
+  process.env.SERVICE_REQUEST_TIMEOUT_MS || 8000,
+);
+
+const DEFAULT_RETRIES = Number(process.env.SERVICE_REQUEST_RETRIES || 2);
+
+const DEFAULT_RETRY_DELAY_MS = Number(
+  process.env.SERVICE_RETRY_DELAY_MS || 250,
+);
+
+const CIRCUIT_FAILURE_THRESHOLD = Number(
+  process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD || 5,
+);
+
+const CIRCUIT_RESET_TIMEOUT_MS = Number(
+  process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS || 30000,
+);
+
+/*
+|--------------------------------------------------------------------------
+| Circuit breaker state
+|--------------------------------------------------------------------------
+|
+| Each downstream service gets its own circuit.
+|
+| Example:
+|
+| auth-service
+| vendor-service
+| payment-service
+|
+*/
+
+const circuits = new Map();
+
+/*
+|--------------------------------------------------------------------------
+| Helpers
+|--------------------------------------------------------------------------
+*/
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
-async function getJson(baseUrl,path,headers={}){return request(baseUrl,path,{method:'GET',headers});}
-async function postJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'POST',body,headers});}
-async function patchJson(baseUrl,path,body,headers={}){return request(baseUrl,path,{method:'PATCH',body,headers});}
-module.exports={request,getJson,postJson,patchJson};
+
+function getCircuitKey(baseUrl) {
+  try {
+    return new URL(baseUrl).origin;
+  } catch {
+    return baseUrl;
+  }
+}
+
+function getCircuit(baseUrl) {
+  const key = getCircuitKey(baseUrl);
+
+  if (!circuits.has(key)) {
+    circuits.set(key, {
+      state: "CLOSED",
+      failures: 0,
+      openedAt: null,
+      halfOpenRequests: 0,
+    });
+  }
+
+  return circuits.get(key);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Circuit breaker
+|--------------------------------------------------------------------------
+*/
+
+function canRequest(baseUrl) {
+  const circuit = getCircuit(baseUrl);
+
+  /*
+   * CLOSED
+   *
+   * Everything is normal.
+   */
+
+  if (circuit.state === "CLOSED") {
+    return true;
+  }
+
+  /*
+   * OPEN
+   *
+   * Fail immediately until reset timeout expires.
+   */
+
+  if (circuit.state === "OPEN") {
+    const elapsed = Date.now() - circuit.openedAt;
+
+    if (elapsed < CIRCUIT_RESET_TIMEOUT_MS) {
+      return false;
+    }
+
+    /*
+     * Move to HALF_OPEN.
+     *
+     * Allow one test request.
+     */
+
+    circuit.state = "HALF_OPEN";
+    circuit.halfOpenRequests = 0;
+  }
+
+  /*
+   * HALF_OPEN
+   *
+   * Allow only one request to test recovery.
+   */
+
+  if (circuit.state === "HALF_OPEN") {
+    if (circuit.halfOpenRequests >= 1) {
+      return false;
+    }
+
+    circuit.halfOpenRequests += 1;
+    return true;
+  }
+
+  return true;
+}
+
+function recordSuccess(baseUrl) {
+  const circuit = getCircuit(baseUrl);
+
+  circuit.state = "CLOSED";
+  circuit.failures = 0;
+  circuit.openedAt = null;
+  circuit.halfOpenRequests = 0;
+}
+
+function recordFailure(baseUrl) {
+  const circuit = getCircuit(baseUrl);
+
+  /*
+   * HALF_OPEN failure means
+   * the service is still unhealthy.
+   */
+
+  if (circuit.state === "HALF_OPEN") {
+    circuit.state = "OPEN";
+    circuit.openedAt = Date.now();
+    circuit.halfOpenRequests = 0;
+
+    return;
+  }
+
+  circuit.failures += 1;
+
+  /*
+   * Open the circuit after enough failures.
+   */
+
+  if (circuit.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+    circuit.state = "OPEN";
+    circuit.openedAt = Date.now();
+
+    console.error(`[CIRCUIT BREAKER] OPEN for ${getCircuitKey(baseUrl)}`);
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Retry policy
+|--------------------------------------------------------------------------
+|
+| GET, HEAD and OPTIONS are safe to retry automatically.
+|
+| POST, PATCH, PUT and DELETE are NOT retried automatically.
+|
+| They can be retried only when explicitly marked retrySafe.
+|
+*/
+
+function isSafeMethod(method) {
+  return ["GET", "HEAD", "OPTIONS"].includes(
+    String(method || "GET").toUpperCase(),
+  );
+}
+
+function isRetryableStatus(status) {
+  return [
+    408, // Request Timeout
+    429, // Too Many Requests
+    500,
+    502,
+    503,
+    504,
+  ].includes(status);
+}
+
+function shouldRetry({ method, retrySafe, status, error }) {
+  /*
+   * Never retry unsafe writes automatically.
+   */
+
+  if (!isSafeMethod(method) && retrySafe !== true) {
+    return false;
+  }
+
+  /*
+   * Network / timeout errors.
+   */
+
+  if (error) {
+    return true;
+  }
+
+  /*
+   * Retry temporary server failures.
+   */
+
+  return isRetryableStatus(status);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Exponential backoff with jitter
+|--------------------------------------------------------------------------
+*/
+
+function getRetryDelay(attempt) {
+  const exponentialDelay = DEFAULT_RETRY_DELAY_MS * Math.pow(2, attempt);
+
+  /*
+   * Add random jitter to prevent
+   * retry storms.
+   */
+
+  const jitter = Math.floor(Math.random() * DEFAULT_RETRY_DELAY_MS);
+
+  return exponentialDelay + jitter;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Parse response safely
+|--------------------------------------------------------------------------
+*/
+
+async function parseResponse(response) {
+  const text = await response.text();
+
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      success: false,
+      message: "Invalid JSON response from downstream service.",
+      raw: text.slice(0, 1000),
+    };
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Timeout fetch
+|--------------------------------------------------------------------------
+*/
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Main request
+|--------------------------------------------------------------------------
+*/
+
+async function request(baseUrl, path, options = {}) {
+  const {
+    headers: customHeaders = {},
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    retries = DEFAULT_RETRIES,
+    retrySafe = false,
+
+    /*
+     * Prevent internal control options
+     * from being passed into fetch().
+     */
+
+    ...fetchOptions
+  } = options;
+
+  const method = String(fetchOptions.method || "GET").toUpperCase();
+
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+
+  /*
+   * Circuit breaker check.
+   */
+
+  if (!canRequest(baseUrl)) {
+    return {
+      ok: false,
+      status: 503,
+
+      data: {
+        success: false,
+
+        message:
+          "Downstream service temporarily unavailable. Circuit breaker is open.",
+
+        code: "CIRCUIT_OPEN",
+      },
+
+      error: {
+        type: "CIRCUIT_OPEN",
+        message: "Circuit breaker is open for downstream service.",
+      },
+
+      attempts: 0,
+    };
+  }
+
+  /*
+   * Build headers.
+   */
+
+  const headers = {
+    ...customHeaders,
+  };
+
+  /*
+   * Add internal service token only
+   * when configured.
+   */
+
+  if (
+    process.env.INTERNAL_SERVICE_TOKEN &&
+    !headers["x-internal-service-token"]
+  ) {
+    headers["x-internal-service-token"] = process.env.INTERNAL_SERVICE_TOKEN;
+  }
+
+  /*
+   * Correlation / request ID propagation.
+   *
+   * If the caller already provides one,
+   * preserve it.
+   */
+
+  if (!headers["x-request-id"] && !headers["X-Request-Id"]) {
+    headers["x-request-id"] = `${process.pid}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+  }
+
+  /*
+   * Prepare body once.
+   */
+
+  let body = fetchOptions.body;
+
+  if (
+    body !== undefined &&
+    body !== null &&
+    typeof body !== "string" &&
+    !Buffer.isBuffer(body)
+  ) {
+    headers["content-type"] =
+      headers["content-type"] || headers["Content-Type"] || "application/json";
+
+    body = JSON.stringify(body);
+  }
+
+  const maxAttempts = Math.max(1, Number(retries) + 1);
+
+  let lastError = null;
+  let lastResult = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      console.log(
+        `[SERVICE CLIENT] ${method} ${url} attempt ${attempt + 1}/${maxAttempts}`,
+      );
+
+      const response = await fetchWithTimeout(
+        url,
+        {
+          ...fetchOptions,
+          method,
+          headers,
+          body,
+        },
+        timeoutMs,
+      );
+
+      const data = await parseResponse(response);
+
+      const result = {
+        ok: response.ok,
+        status: response.status,
+        data,
+        error: null,
+        attempts: attempt + 1,
+      };
+
+      lastResult = result;
+
+      /*
+       * Successful response.
+       */
+
+      if (response.ok) {
+        recordSuccess(baseUrl);
+
+        return result;
+      }
+
+      /*
+       * Retry only temporary failures.
+       */
+
+      const retry = shouldRetry({
+        method,
+        retrySafe,
+        status: response.status,
+      });
+
+      if (!retry || attempt === maxAttempts - 1) {
+        /*
+         * 4xx business errors should not
+         * trip the circuit breaker.
+         */
+
+        if (response.status >= 500) {
+          recordFailure(baseUrl);
+        }
+
+        return result;
+      }
+
+      const delay = getRetryDelay(attempt);
+
+      console.warn(
+        `[SERVICE CLIENT] retrying ${method} ${url} after ${delay}ms (status ${response.status})`,
+      );
+
+      await sleep(delay);
+    } catch (error) {
+      lastError = error;
+
+      const isTimeout = error.name === "AbortError";
+
+      console.error(`[SERVICE CLIENT] ${method} ${url} failed:`, error.message);
+
+      const retry = shouldRetry({
+        method,
+        retrySafe,
+        error,
+      });
+
+      if (!retry || attempt === maxAttempts - 1) {
+        recordFailure(baseUrl);
+
+        return {
+          ok: false,
+
+          status: isTimeout ? 504 : 503,
+
+          data: {
+            success: false,
+
+            message: isTimeout
+              ? "Downstream service request timed out."
+              : "Downstream service unavailable.",
+
+            code: isTimeout ? "DOWNSTREAM_TIMEOUT" : "DOWNSTREAM_UNAVAILABLE",
+          },
+
+          error: {
+            type: isTimeout ? "TIMEOUT" : "NETWORK_ERROR",
+
+            message: error.message,
+          },
+
+          attempts: attempt + 1,
+        };
+      }
+
+      const delay = getRetryDelay(attempt);
+
+      console.warn(
+        `[SERVICE CLIENT] retrying ${method} ${url} after network failure in ${delay}ms`,
+      );
+
+      await sleep(delay);
+    }
+  }
+
+  /*
+   * Defensive fallback.
+   */
+
+  recordFailure(baseUrl);
+
+  return (
+    lastResult || {
+      ok: false,
+
+      status: 503,
+
+      data: {
+        success: false,
+        message: "Downstream service unavailable.",
+      },
+
+      error: lastError
+        ? {
+            type: "NETWORK_ERROR",
+            message: lastError.message,
+          }
+        : null,
+
+      attempts: maxAttempts,
+    }
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Convenience methods
+|--------------------------------------------------------------------------
+*/
+
+async function getJson(baseUrl, path, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "GET",
+    headers,
+  });
+}
+
+async function postJson(baseUrl, path, body, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "POST",
+    body,
+    headers,
+  });
+}
+
+async function putJson(baseUrl, path, body, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "PUT",
+    body,
+    headers,
+  });
+}
+
+async function patchJson(baseUrl, path, body, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "PATCH",
+    body,
+    headers,
+  });
+}
+
+async function deleteJson(baseUrl, path, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "DELETE",
+    headers,
+  });
+}
+
+/*
+|--------------------------------------------------------------------------
+| Circuit breaker diagnostics
+|--------------------------------------------------------------------------
+*/
+
+function getCircuitStatus() {
+  const status = {};
+
+  for (const [key, value] of circuits.entries()) {
+    status[key] = {
+      state: value.state,
+      failures: value.failures,
+      openedAt: value.openedAt,
+    };
+  }
+
+  return status;
+}
+
+module.exports = {
+  request,
+
+  getJson,
+  postJson,
+  putJson,
+  patchJson,
+  deleteJson,
+
+  getCircuitStatus,
+};
 
 ===== auth.js =====
 const { z } = require("zod");

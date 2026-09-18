@@ -2,11 +2,14 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package.json ./
+
+COPY packages ./packages
+COPY services/admin ./services/admin
 
 RUN npm install
 
-COPY . .
+WORKDIR /app/services/admin
 
 EXPOSE 5013
 

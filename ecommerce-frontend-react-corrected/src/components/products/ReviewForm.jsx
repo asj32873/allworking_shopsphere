@@ -1,24 +1,22 @@
 import { useState } from "react";
-import { useApp } from "../../context/AppContext";
+import { useDispatch } from "react-redux";
+
+import {
+  addReview,
+  updateReview,
+  deleteReview,
+} from "../../store/slices/reviewSlice";
 
 export default function ReviewForm({
   productId,
   existingReview = null,
   onDone,
 }) {
-  const {
-    addReview,
-    updateReview,
-    deleteReview,
-  } = useApp();
+  const dispatch = useDispatch();
 
-  const [rating, setRating] = useState(
-    existingReview?.rating || 5
-  );
+  const [rating, setRating] = useState(existingReview?.rating || 5);
 
-  const [review, setReview] = useState(
-    existingReview?.review || ""
-  );
+  const [review, setReview] = useState(existingReview?.review || "");
 
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,28 +37,35 @@ export default function ReviewForm({
 
     try {
       if (editing) {
-        await updateReview(
-          existingReview.id,
-          {
-            rating,
-            review: review.trim(),
-          }
-        );
+        await dispatch(
+          updateReview({
+            id: existingReview.id,
+            data: {
+              rating,
+              review: review.trim(),
+            },
+          }),
+        ).unwrap();
 
         setMsg("Review updated successfully.");
       } else {
-        await addReview(
-          productId,
-          rating,
-          review.trim()
-        );
+        await dispatch(
+          addReview({
+            productId,
+            rating,
+            review: review.trim(),
+          }),
+        ).unwrap();
 
         setReview("");
         setRating(5);
+
         setMsg("Review submitted successfully.");
       }
 
-      if (onDone) onDone();
+      if (onDone) {
+        onDone();
+      }
     } catch (error) {
       setMsg(error.message);
     } finally {
@@ -75,9 +80,13 @@ export default function ReviewForm({
     setMsg("");
 
     try {
-      await deleteReview(existingReview.id);
+      await dispatch(deleteReview(existingReview.id)).unwrap();
+
       setMsg("Review deleted.");
-      if (onDone) onDone();
+
+      if (onDone) {
+        onDone();
+      }
     } catch (error) {
       setMsg(error.message);
     } finally {
@@ -88,27 +97,17 @@ export default function ReviewForm({
   return (
     <div className="card mt-3">
       <div className="card-body">
-        <h5>
-          {editing ? "Edit Your Review" : "Write a Review"}
-        </h5>
+        <h5>{editing ? "Edit Your Review" : "Write a Review"}</h5>
 
-        {msg && (
-          <div className="alert alert-info py-2">
-            {msg}
-          </div>
-        )}
+        {msg && <div className="alert alert-info py-2">{msg}</div>}
 
         <form onSubmit={submit}>
-          <label className="form-label">
-            Rating
-          </label>
+          <label className="form-label">Rating</label>
 
           <select
             className="form-select mb-2"
             value={rating}
-            onChange={(e) =>
-              setRating(Number(e.target.value))
-            }
+            onChange={(e) => setRating(Number(e.target.value))}
           >
             {[5, 4, 3, 2, 1].map((x) => (
               <option key={x} value={x}>
@@ -117,36 +116,23 @@ export default function ReviewForm({
             ))}
           </select>
 
-          <label className="form-label">
-            Review
-          </label>
+          <label className="form-label">Review</label>
 
           <textarea
             className="form-control mb-2"
             rows="4"
             maxLength={2000}
             value={review}
-            onChange={(e) =>
-              setReview(e.target.value)
-            }
+            onChange={(e) => setReview(e.target.value)}
             placeholder="Share your experience..."
             required
           />
 
-          <div className="small text-muted mb-2">
-            {review.length}/2000
-          </div>
+          <div className="small text-muted mb-2">{review.length}/2000</div>
 
           <div className="d-flex gap-2">
-            <button
-              className="btn btn-primary"
-              disabled={busy}
-            >
-              {busy
-                ? "Saving..."
-                : editing
-                ? "Update Review"
-                : "Submit Review"}
+            <button className="btn btn-primary" disabled={busy}>
+              {busy ? "Saving..." : editing ? "Update Review" : "Submit Review"}
             </button>
 
             {editing && (

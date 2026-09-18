@@ -1,9 +1,10 @@
 import { Navigate, Outlet } from "react-router-dom";
-
-import { useApp } from "../../context/AppContext";
+import { useSelector } from "react-redux";
 
 export default function ProtectedRoute({ roles }) {
-  const { user, loading } = useApp();
+  const user = useSelector((state) => state.auth.user);
+
+  const loading = useSelector((state) => state.auth.loading);
 
   if (loading) {
     return (

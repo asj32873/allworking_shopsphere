@@ -1,0 +1,7 @@
+{
+  "name": "@shopsphere/common",
+  "version": "1.0.0",
+  "description": "Shared middleware for ShopSphere services",
+  "main": "index.js",
+  "private": true
+}

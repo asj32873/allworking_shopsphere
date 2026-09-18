@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+import { useDispatch } from "react-redux";
+
+import { registerUser } from "../store/slices/authSlice";
 
 export default function Register() {
-  const { registerUser } = useApp();
+  const dispatch = useDispatch();
   const nav = useNavigate();
 
   const [f, setF] = useState({
@@ -14,57 +16,103 @@ export default function Register() {
   });
 
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const s = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
+
     setErr("");
-    const r = await registerUser(f);
+    setBusy(true);
 
-    if (!r.ok) {
-      return setErr(r.message);
+    try {
+      await dispatch(registerUser(f)).unwrap();
+
+      nav("/login");
+    } catch (error) {
+      setErr(error || "Registration failed.");
+    } finally {
+      setBusy(false);
     }
-
-    nav("/login");
   };
 
   return (
     <div className="container py-5">
-      <div className="col-md-6 mx-auto card">
+      <div className="col-md-7 mx-auto card">
         <div className="card-body">
           <h2>Create Account</h2>
 
           {err && <div className="alert alert-danger">{err}</div>}
 
-          <form onSubmit={s}>
-            {Object.keys(f).map((k) => (
-              <div className="mb-3" key={k}>
-                <label className="form-label">{k}</label>
+          <form onSubmit={submit}>
+            <div className="mb-3">
+              <label className="form-label">Name</label>
 
-                <input
-                  className="form-control"
-                  name={k}
-                  type={
-                    k === "password"
-                      ? "password"
-                      : k === "email"
-                        ? "email"
-                        : k === "phone"
-                          ? "tel"
-                          : "text"
-                  }
-                  required
-                  value={f[k]}
-                  onChange={(e) =>
-                    setF({
-                      ...f,
-                      [e.target.name]: e.target.value,
-                    })
-                  }
-                />
-              </div>
-            ))}
+              <input
+                className="form-control"
+                value={f.name}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    name: e.target.value,
+                  })
+                }
+                required
+              />
+            </div>
 
-            <button className="btn btn-primary w-100">Create Account</button>
+            <div className="mb-3">
+              <label className="form-label">Email</label>
+
+              <input
+                type="email"
+                className="form-control"
+                value={f.email}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    email: e.target.value,
+                  })
+                }
+                required
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label">Phone</label>
+
+              <input
+                className="form-control"
+                value={f.phone}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    phone: e.target.value,
+                  })
+                }
+                required
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label">Password</label>
+
+              <input
+                type="password"
+                className="form-control"
+                value={f.password}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    password: e.target.value,
+                  })
+                }
+                required
+              />
+            </div>
+
+            <button className="btn btn-primary" disabled={busy}>
+              {busy ? "Creating..." : "Create Account"}
+            </button>
           </form>
         </div>
       </div>
