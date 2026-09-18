@@ -11,6 +11,6 @@ RUN npm install
 
 WORKDIR /app/services/address
 
-EXPOSE 5004
+EXPOSE 5008
 
 CMD ["node", "src/server.js"]

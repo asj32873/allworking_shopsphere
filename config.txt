@@ -1,0 +1,149 @@
+﻿address
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+admin
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+auth
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+api-gateway
+package.json NOT FOUND
+----
+cart
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+order
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+payment
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+product
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+rag
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+support
+const mongoose = require("mongoose");
+async function connectDB() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error("MONGODB_URI is not configured");
+  mongoose.set("strictQuery", true);
+  await mongoose.connect(uri);
+  console.log(
+    `MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`,
+  );
+}
+module.exports = connectDB;
+
+----
+user
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+review
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----
+vendor
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+----

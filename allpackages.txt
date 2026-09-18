@@ -1,0 +1,426 @@
+﻿address
+{
+  "name": "shopsphere-address-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "sonar": "sonar-scanner"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "jest": "^30.5.1",
+    "nodemon": "^3.1.10",
+    "sonar-scanner": "^3.1.0",
+    "supertest": "^7.2.2"
+  }
+}
+
+----
+admin
+{
+  "name": "shopsphere-admin-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "sonar": "sonar-scanner"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cookie-signature": "^1.2.2",
+    "cors": "^2.8.5",
+    "debug": "^4.4.3",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "once": "^1.4.0",
+    "qs": "^6.16.0",
+    "sonar-scanner": "^3.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
+
+----
+auth
+{
+  "name": "shopsphere-auth-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
+
+----
+api-gateway
+{
+  "name": "shopsphere-api-gateway",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "http-proxy-middleware": "^3.0.5",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
+
+----
+cart
+{
+  "name": "shopsphere-cart-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
+
+----
+order
+{
+  "name": "shopsphere-order-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+  "start": "node src/server.js",
+  "dev": "nodemon src/server.js",
+  "test": "jest --runInBand --config jest.config.js",
+  "test:coverage": "jest --runInBand --config jest.config.js --coverage"
+},
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "jest": "^30.5.1",
+    "nodemon": "^3.1.10",
+    "supertest": "^7.2.2"
+  }
+}
+
+----
+payment
+{
+  "name": "shopsphere-payment-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "stripe": "^18.5.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "jest": "^30.5.1",
+    "nodemon": "^3.1.10",
+    "supertest": "^7.2.2"
+  }
+}
+
+----
+product
+{
+  "name": "shopsphere-product-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "redis": "^6.2.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
+
+----
+rag
+{
+  "name": "shopsphere-rag-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "zod": "^4.4.3",
+    "@langchain/community": "^1.1.29",
+    "@langchain/core": "^1.0.0",
+    "@langchain/langgraph": "^1.0.0",
+    "@huggingface/inference": "^4.13.7",
+    "chromadb": "^3.0.16"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
+
+----
+support
+{
+  "name": "shopsphere-support-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
+
+----
+user
+{
+  "name": "shopsphere-user-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
+
+----
+review
+{
+  "name": "shopsphere-review-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "redis": "^6.2.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "jest": "^30.5.1",
+    "nodemon": "^3.1.10",
+    "supertest": "^7.2.2"
+  }
+}
+
+----
+vendor
+{
+  "name": "shopsphere-vendor-service",
+  "version": "3.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@shopsphere/common": "file:../../packages/common",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
+    "mongoose": "^8.19.1",
+    "morgan": "^1.10.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
+
+----
