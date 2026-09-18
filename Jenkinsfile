@@ -6,11 +6,8 @@ pipeline {
         timestamps()
         disableConcurrentBuilds()
 
-        //edited
-        // We perform checkout explicitly in the Checkout stage.
         skipDefaultCheckout(true)
 
-        // Keep only the last 10 builds
         buildDiscarder(
             logRotator(
                 numToKeepStr: '10',
@@ -21,43 +18,101 @@ pipeline {
 
     environment {
 
+        // ========================================================
         // Docker Compose configuration
+        // ========================================================
+
         COMPOSE_DIR = 'microservices'
         COMPOSE_FILE = 'docker-compose.yml'
         COMPOSE_PROJECT_NAME = 'shopsphere'
 
+        // ========================================================
         // SonarQube
+        // ========================================================
+
         SONAR_PROJECT_KEY = 'shopsphere-microservices'
 
-        /*
-         * Explicitly add Node.js to Jenkins PATH.
-         *
-         * This is useful because Jenkins runs as a Windows service and
-         * may not have the same PATH as your Administrator CMD session.
-         */
+        // ========================================================
+        // Node.js
+        // ========================================================
+
         PATH = "C:\\Program Files\\nodejs;${env.PATH}"
     }
 
+
     stages {
 
-        // ============================================================
+        // ========================================================
         // CHECKOUT
-        // ============================================================
+        // ========================================================
 
         stage('Checkout') {
             steps {
+
                 echo 'Checking out ShopSphere source code...'
+
                 checkout scm
             }
         }
 
 
-        // ============================================================
+        // ========================================================
+        // LOAD ENVIRONMENT FILE
+        // ========================================================
+
+        stage('Load Environment') {
+
+            steps {
+
+                withCredentials([
+                    file(
+                        credentialsId: 'shopsphere-env',
+                        variable: 'SHOPSPHERE_ENV_FILE'
+                    )
+                ]) {
+
+                    dir("${COMPOSE_DIR}") {
+
+                        bat '''
+                            @echo off
+
+                            echo ========================================
+                            echo Loading ShopSphere environment
+                            echo ========================================
+
+                            if not exist "%SHOPSPHERE_ENV_FILE%" (
+                                echo ERROR: Jenkins environment credential file was not found.
+                                exit /b 1
+                            )
+
+                            copy /Y "%SHOPSPHERE_ENV_FILE%" ".env" >nul
+
+                            if errorlevel 1 (
+                                echo ERROR: Failed to copy Jenkins environment file.
+                                exit /b 1
+                            )
+
+                            if not exist ".env" (
+                                echo ERROR: .env file was not created.
+                                exit /b 1
+                            )
+
+                            echo ShopSphere environment file loaded successfully.
+                        '''
+                    }
+                }
+            }
+        }
+
+
+        // ========================================================
         // VERIFY ENVIRONMENT
-        // ============================================================
+        // ========================================================
 
         stage('Verify Environment') {
+
             steps {
+
                 bat '''
                     @echo off
 
@@ -68,42 +123,58 @@ pipeline {
                     echo.
                     echo Docker:
                     docker --version
+
                     if errorlevel 1 exit /b 1
+
 
                     echo.
                     echo Docker Compose:
                     docker compose version
+
                     if errorlevel 1 exit /b 1
+
 
                     echo.
                     echo Node.js:
                     where node
+
                     if errorlevel 1 (
                         echo ERROR: Node.js was not found in Jenkins PATH.
                         exit /b 1
                     )
+
                     node --version
+
                     if errorlevel 1 exit /b 1
+
 
                     echo.
                     echo npm:
                     where npm
+
                     if errorlevel 1 (
                         echo ERROR: npm was not found in Jenkins PATH.
                         exit /b 1
                     )
+
                     npm --version
+
                     if errorlevel 1 exit /b 1
+
 
                     echo.
                     echo Git:
                     git --version
+
                     if errorlevel 1 exit /b 1
+
 
                     echo.
                     echo SonarScanner:
                     sonar-scanner --version
+
                     if errorlevel 1 exit /b 1
+
 
                     echo.
                     echo ========================================
@@ -114,13 +185,16 @@ pipeline {
         }
 
 
-        // ============================================================
+        // ========================================================
         // VALIDATE DOCKER COMPOSE
-        // ============================================================
+        // ========================================================
 
         stage('Validate Docker Compose') {
+
             steps {
+
                 dir("${COMPOSE_DIR}") {
+
                     bat '''
                         @echo off
 
@@ -138,6 +212,11 @@ pipeline {
                             exit /b 1
                         )
 
+
+                        echo.
+                        echo Checking environment variables...
+
+
                         docker compose -f "%COMPOSE_FILE%" config -q
 
                         if errorlevel 1 (
@@ -145,21 +224,27 @@ pipeline {
                             exit /b 1
                         )
 
+
                         echo.
+                        echo ========================================
                         echo Docker Compose configuration is valid.
+                        echo ========================================
                     '''
                 }
             }
         }
 
 
-        // ============================================================
+        // ========================================================
         // VALIDATE NODE DEPENDENCIES / PACKAGE.JSON
-        // ============================================================
+        // ========================================================
 
         stage('Install / Validate Node Dependencies') {
+
             steps {
+
                 dir("${COMPOSE_DIR}") {
+
                     bat '''
                         @echo off
 
@@ -211,13 +296,16 @@ pipeline {
         }
 
 
-        // ============================================================
+        // ========================================================
         // BUILD DOCKER IMAGES
-        // ============================================================
+        // ========================================================
 
         stage('Build Docker Images') {
+
             steps {
+
                 dir("${COMPOSE_DIR}") {
+
                     bat '''
                         @echo off
 
@@ -233,20 +321,25 @@ pipeline {
                         )
 
                         echo.
+                        echo ========================================
                         echo Docker image build completed successfully.
+                        echo ========================================
                     '''
                 }
             }
         }
 
 
-        // ============================================================
+        // ========================================================
         // RUN TESTS
-        // ============================================================
+        // ========================================================
 
         stage('Run Tests') {
+
             steps {
+
                 dir("${COMPOSE_DIR}") {
+
                     bat '''
                         @echo off
 
@@ -276,14 +369,19 @@ pipeline {
                             echo ========================================
 
                             if not exist "services/%%S/package.json" (
+
                                 echo package.json not found for %%S - skipping.
+
                             ) else (
 
                                 node -e "const p=require('./services/%%S/package.json'); process.exit(p.scripts && p.scripts.test ? 0 : 1);"
 
                                 if errorlevel 1 (
+
                                     echo No test script defined for %%S - skipping.
+
                                 ) else (
+
                                     echo Test script found for %%S.
                                     echo Running npm test inside Docker container...
 
@@ -307,11 +405,12 @@ pipeline {
         }
 
 
-        // ============================================================
+        // ========================================================
         // SONARQUBE ANALYSIS
-        // ============================================================
+        // ========================================================
 
         stage('SonarQube Analysis') {
+
             steps {
 
                 withCredentials([
@@ -345,7 +444,9 @@ pipeline {
                                 )
 
                                 echo.
+                                echo ========================================
                                 echo SonarQube analysis completed successfully.
+                                echo ========================================
                             '''
                         }
                     }
@@ -354,70 +455,57 @@ pipeline {
         }
 
 
-        // ============================================================
+        // ========================================================
         // START INFRASTRUCTURE
-        // ============================================================
+        // ========================================================
 
         stage('Start Infrastructure') {
+
             steps {
 
-                withCredentials([
-                    file(
-                        credentialsId: 'shopsphere-env',
-                        variable: 'SHOPSPHERE_ENV_FILE'
-                    )
-                ]) {
+                dir("${COMPOSE_DIR}") {
 
-                    dir("${COMPOSE_DIR}") {
+                    bat '''
+                        @echo off
 
-                        bat '''
-                            @echo off
+                        echo ========================================
+                        echo Starting ShopSphere infrastructure
+                        echo ========================================
 
-                            echo ========================================
-                            echo Starting ShopSphere infrastructure
-                            echo ========================================
+                        if not exist ".env" (
+                            echo ERROR: .env file is missing.
+                            echo The Load Environment stage should have created it.
+                            exit /b 1
+                        )
 
-                            echo Copying Jenkins environment file...
+                        echo.
+                        echo Starting Docker Compose services...
 
-                            copy /Y "%SHOPSPHERE_ENV_FILE%" ".env"
+                        docker compose -f "%COMPOSE_FILE%" up -d
 
-                            if errorlevel 1 (
-                                echo ERROR: Failed to copy environment file.
-                                exit /b 1
-                            )
+                        if errorlevel 1 (
+                            echo ERROR: Docker Compose failed to start.
+                            exit /b 1
+                        }
 
-                            if not exist ".env" (
-                                echo ERROR: .env file was not created.
-                                exit /b 1
-                            )
-
-                            echo Environment file created successfully.
-
-                            echo.
-                            echo Starting Docker Compose services...
-
-                            docker compose -f "%COMPOSE_FILE%" up -d
-
-                            if errorlevel 1 (
-                                echo ERROR: Docker Compose failed to start.
-                                exit /b 1
-                            )
-
-                            echo.
-                            echo ShopSphere infrastructure started successfully.
-                        '''
-                    }
+                        echo.
+                        echo ========================================
+                        echo ShopSphere infrastructure started successfully.
+                        echo ========================================
+                    '''
                 }
             }
         }
 
 
-        // ============================================================
+        // ========================================================
         // WAIT FOR SERVICES
-        // ============================================================
+        // ========================================================
 
         stage('Wait For Services') {
+
             steps {
+
                 dir("${COMPOSE_DIR}") {
 
                     bat '''
@@ -428,6 +516,7 @@ pipeline {
                         echo ========================================
 
                         timeout /t 20 /nobreak >nul
+
 
                         echo.
                         echo ========================================
@@ -440,6 +529,7 @@ pipeline {
                             echo WARNING: Could not retrieve Compose status.
                         )
 
+
                         echo.
                         echo ========================================
                         echo Docker Container Health / Status
@@ -449,6 +539,7 @@ pipeline {
                             --filter "name=shopsphere" ^
                             --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
 
+
                         echo.
                         echo Service startup check completed.
                     '''
@@ -457,12 +548,14 @@ pipeline {
         }
 
 
-        // ============================================================
+        // ========================================================
         // SMOKE CHECK
-        // ============================================================
+        // ========================================================
 
         stage('Smoke Check') {
+
             steps {
+
                 dir("${COMPOSE_DIR}") {
 
                     bat '''
@@ -477,16 +570,20 @@ pipeline {
                         curl.exe -fsS http://localhost:5001/health >nul 2>&1
 
                         if errorlevel 1 (
+
                             echo.
                             echo WARNING: /health endpoint was not available.
+
                             echo.
                             echo Checking API Gateway container logs...
+
                             echo.
 
                             docker compose -f "%COMPOSE_FILE%" logs --tail=50 api-gateway
 
                             echo.
                             echo Smoke check did not pass.
+
                             exit /b 1
                         )
 
@@ -499,9 +596,9 @@ pipeline {
     }
 
 
-    // ================================================================
+    // ============================================================
     // POST ACTIONS
-    // ================================================================
+    // ============================================================
 
     post {
 
@@ -540,6 +637,7 @@ pipeline {
 
                     docker compose -f "%COMPOSE_FILE%" ps
 
+
                     echo.
                     echo ========================================
                     echo Docker Compose Logs
@@ -562,12 +660,26 @@ pipeline {
 
                     echo.
                     echo ========================================
+                    echo Cleaning ShopSphere environment file
+                    echo ========================================
+
+                    if exist ".env" (
+                        del /F /Q ".env"
+                        echo Jenkins .env file removed.
+                    ) else (
+                        echo No .env file found.
+                    )
+
+
+                    echo.
+                    echo ========================================
                     echo Cleaning unused Docker resources
                     echo ========================================
 
                     docker image prune -f
 
                     echo Docker cleanup completed.
+
                     exit /b 0
                 '''
             }
