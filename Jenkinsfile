@@ -51,7 +51,7 @@ pipeline {
         stage('Validate Docker Compose') {
             steps {
                 dir("${COMPOSE_DIR}") {
-                    sh '''
+                    bat '''
                         set -e
 
                         echo "Validating docker-compose.yml..."
@@ -69,7 +69,7 @@ pipeline {
         stage('Install / Validate Node Dependencies') {
             steps {
                 dir("${COMPOSE_DIR}") {
-                    sh '''
+                    bat '''
                         set -e
 
                         echo "Validating service package.json files..."
@@ -114,7 +114,7 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 dir("${COMPOSE_DIR}") {
-                    sh '''
+                    bat '''
                         set -e
 
                         echo "Building all ShopSphere Docker images..."
@@ -133,7 +133,7 @@ pipeline {
         stage('Run Tests') {
             steps {
                 dir("${COMPOSE_DIR}") {
-                    sh '''
+                    bat '''
                         set -e
 
                         echo "Running tests for services that define a test script."
@@ -214,7 +214,7 @@ pipeline {
 
                         dir("${COMPOSE_DIR}") {
 
-                            sh '''
+                            bat '''
                                 set -e
 
                                 echo "Running SonarQube analysis..."
@@ -244,7 +244,7 @@ pipeline {
                 ]) {
 
                     dir("${COMPOSE_DIR}") {
-                        sh '''
+                        bat '''
                             set -e
 
                             cp "$SHOPSHPERE_ENV_FILE" .env
@@ -262,7 +262,7 @@ pipeline {
         stage('Wait For Services') {
             steps {
                 dir("${COMPOSE_DIR}") {
-                    sh '''
+                    bat '''
                         set -e
 
                         echo "Waiting for services to start..."
@@ -293,7 +293,7 @@ pipeline {
         stage('Smoke Check') {
             steps {
                 dir("${COMPOSE_DIR}") {
-                    sh '''
+                    bat '''
                         set -e
 
                         echo "Checking API Gateway..."
@@ -342,7 +342,7 @@ pipeline {
             '''
 
             dir("${COMPOSE_DIR}") {
-                sh '''
+                bat '''
                     docker compose \
                         -f ${COMPOSE_FILE} \
                         ps || true
@@ -357,7 +357,7 @@ pipeline {
 
         always {
             dir("${COMPOSE_DIR}") {
-                sh '''
+                bat '''
                     echo "Cleaning unused Docker resources..."
 
                     docker image prune -f || true
