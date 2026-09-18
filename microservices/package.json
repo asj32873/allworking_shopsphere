@@ -9,6 +9,13 @@
   "scripts": {
     "install:all": "powershell -ExecutionPolicy Bypass -File scripts/install-all.ps1",
     "start:all": "powershell -ExecutionPolicy Bypass -File scripts/start-all.ps1",
-    "check": "node scripts/check.js"
+    "check": "node scripts/check.js",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^30.5.1"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.3"
   }
 }
