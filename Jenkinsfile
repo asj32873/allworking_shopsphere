@@ -38,31 +38,16 @@ pipeline {
 
         stage('Verify Environment') {
             steps {
-                sh '''
-                    set -e
-
-                    echo "===== Tool Versions ====="
-
-                    git --version
+                bat '''
                     docker --version
                     docker compose version
-
-                    echo ""
-                    echo "===== Repository ====="
-                    pwd
-                    ls -la
-
-                    echo ""
-                    echo "===== Microservices ====="
-                    ls -la microservices
-
-                    test -f microservices/docker-compose.yml
-
-                    echo "Environment verification successful."
+                    node --version
+                    npm --version
+                    git --version
+                    sonar-scanner --version
                 '''
             }
         }
-
         stage('Validate Docker Compose') {
             steps {
                 dir("${COMPOSE_DIR}") {
