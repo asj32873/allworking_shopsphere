@@ -5,7 +5,10 @@ pipeline {
     options {
         timestamps()
         disableConcurrentBuilds()
-        skipDefaultCheckout(false)
+
+        //edited
+        // We perform checkout explicitly in the Checkout stage.
+        skipDefaultCheckout(true)
 
         // Keep only the last 10 builds
         buildDiscarder(
@@ -17,17 +20,29 @@ pipeline {
     }
 
     environment {
+
+        // Docker Compose configuration
         COMPOSE_DIR = 'microservices'
         COMPOSE_FILE = 'docker-compose.yml'
-
-        // Docker image/project name
         COMPOSE_PROJECT_NAME = 'shopsphere'
 
-        // SonarQube project
+        // SonarQube
         SONAR_PROJECT_KEY = 'shopsphere-microservices'
+
+        /*
+         * Explicitly add Node.js to Jenkins PATH.
+         *
+         * This is useful because Jenkins runs as a Windows service and
+         * may not have the same PATH as your Administrator CMD session.
+         */
+        PATH = "C:\\Program Files\\nodejs;${env.PATH}"
     }
 
     stages {
+
+        // ============================================================
+        // CHECKOUT
+        // ============================================================
 
         stage('Checkout') {
             steps {
@@ -36,169 +51,265 @@ pipeline {
             }
         }
 
+
+        // ============================================================
+        // VERIFY ENVIRONMENT
+        // ============================================================
+
         stage('Verify Environment') {
             steps {
                 bat '''
+                    @echo off
+
+                    echo ========================================
+                    echo Verifying Jenkins Environment
+                    echo ========================================
+
+                    echo.
+                    echo Docker:
                     docker --version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo Docker Compose:
                     docker compose version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo Node.js:
+                    where node
+                    if errorlevel 1 (
+                        echo ERROR: Node.js was not found in Jenkins PATH.
+                        exit /b 1
+                    )
                     node --version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo npm:
+                    where npm
+                    if errorlevel 1 (
+                        echo ERROR: npm was not found in Jenkins PATH.
+                        exit /b 1
+                    )
                     npm --version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo Git:
                     git --version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo SonarScanner:
                     sonar-scanner --version
+                    if errorlevel 1 exit /b 1
+
+                    echo.
+                    echo ========================================
+                    echo Environment verification completed.
+                    echo ========================================
                 '''
             }
         }
+
+
+        // ============================================================
+        // VALIDATE DOCKER COMPOSE
+        // ============================================================
+
         stage('Validate Docker Compose') {
             steps {
                 dir("${COMPOSE_DIR}") {
                     bat '''
-                        set -e
+                        @echo off
 
-                        echo "Validating docker-compose.yml..."
+                        echo ========================================
+                        echo Validating Docker Compose configuration
+                        echo ========================================
 
-                        docker compose \
-                            -f ${COMPOSE_FILE} \
-                            config -q
+                        if not exist "%COMPOSE_FILE%" (
+                            echo ERROR: %COMPOSE_FILE% was not found.
+                            echo Current directory:
+                            cd
+                            echo.
+                            echo Files:
+                            dir
+                            exit /b 1
+                        )
 
-                        echo "Docker Compose configuration is valid."
+                        docker compose -f "%COMPOSE_FILE%" config -q
+
+                        if errorlevel 1 (
+                            echo ERROR: Docker Compose configuration is invalid.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo Docker Compose configuration is valid.
                     '''
                 }
             }
         }
+
+
+        // ============================================================
+        // VALIDATE NODE DEPENDENCIES / PACKAGE.JSON
+        // ============================================================
 
         stage('Install / Validate Node Dependencies') {
             steps {
                 dir("${COMPOSE_DIR}") {
                     bat '''
-                        set -e
+                        @echo off
 
-                        echo "Validating service package.json files..."
+                        echo ========================================
+                        echo Validating service package.json files
+                        echo ========================================
 
-                        for service in \
-                            api-gateway \
-                            auth \
-                            user \
-                            product \
-                            cart \
-                            order \
-                            payment \
-                            address \
-                            review \
-                            rag \
-                            support \
-                            vendor \
+                        for %%S in (
+                            api-gateway
+                            auth
+                            user
+                            product
+                            cart
+                            order
+                            payment
+                            address
+                            review
+                            rag
+                            support
+                            vendor
                             admin
-                        do
-                            echo ""
-                            echo "========================================"
-                            echo "Checking $service"
-                            echo "========================================"
+                        ) do (
 
-                            test -f "services/$service/package.json"
+                            echo.
+                            echo ========================================
+                            echo Checking %%S
+                            echo ========================================
 
-                            node -e "
-                                const p = require('./services/$service/package.json');
-                                console.log('Service:', p.name);
-                                console.log('Version:', p.version);
-                                console.log('Dependencies:', Object.keys(p.dependencies || {}).length);
-                            "
-                        done
+                            if not exist "services/%%S/package.json" (
+                                echo ERROR: services/%%S/package.json not found.
+                                exit /b 1
+                            )
 
-                        echo ""
-                        echo "All service package.json files are valid."
+                            node -e "const p=require('./services/%%S/package.json'); console.log('Service:',p.name); console.log('Version:',p.version); console.log('Dependencies:',Object.keys(p.dependencies||{}).length);"
+
+                            if errorlevel 1 (
+                                echo ERROR: Invalid package.json for %%S.
+                                exit /b 1
+                            )
+                        )
+
+                        echo.
+                        echo ========================================
+                        echo All service package.json files are valid.
+                        echo ========================================
                     '''
                 }
             }
         }
+
+
+        // ============================================================
+        // BUILD DOCKER IMAGES
+        // ============================================================
 
         stage('Build Docker Images') {
             steps {
                 dir("${COMPOSE_DIR}") {
                     bat '''
-                        set -e
+                        @echo off
 
-                        echo "Building all ShopSphere Docker images..."
+                        echo ========================================
+                        echo Building ShopSphere Docker images
+                        echo ========================================
 
-                        docker compose \
-                            -f ${COMPOSE_FILE} \
-                            build \
-                            --pull
+                        docker compose -f "%COMPOSE_FILE%" build --pull
 
-                        echo "Docker image build completed."
+                        if errorlevel 1 (
+                            echo ERROR: Docker image build failed.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo Docker image build completed successfully.
                     '''
                 }
             }
         }
+
+
+        // ============================================================
+        // RUN TESTS
+        // ============================================================
 
         stage('Run Tests') {
             steps {
                 dir("${COMPOSE_DIR}") {
                     bat '''
-                        set -e
+                        @echo off
 
-                        echo "Running tests for services that define a test script."
+                        echo ========================================
+                        echo Running service tests
+                        echo ========================================
 
-                        services="
-                        api-gateway
-                        auth
-                        user
-                        product
-                        cart
-                        order
-                        payment
-                        address
-                        review
-                        rag
-                        support
-                        vendor
-                        admin
-                        "
+                        for %%S in (
+                            api-gateway
+                            auth
+                            user
+                            product
+                            cart
+                            order
+                            payment
+                            address
+                            review
+                            rag
+                            support
+                            vendor
+                            admin
+                        ) do (
 
-                        for service in $services
-                        do
-                            echo ""
-                            echo "========================================"
-                            echo "Testing $service"
-                            echo "========================================"
+                            echo.
+                            echo ========================================
+                            echo Testing %%S
+                            echo ========================================
 
-                            if [ -f "services/$service/package.json" ]; then
+                            if not exist "services/%%S/package.json" (
+                                echo package.json not found for %%S - skipping.
+                            ) else (
 
-                                has_test=$(node -e "
-                                    const p = require('./services/$service/package.json');
-                                    process.stdout.write(
-                                        p.scripts && p.scripts.test ? 'yes' : 'no'
-                                    );
-                                ")
+                                node -e "const p=require('./services/%%S/package.json'); process.exit(p.scripts && p.scripts.test ? 0 : 1);"
 
-                                if [ "$has_test" = "yes" ]; then
+                                if errorlevel 1 (
+                                    echo No test script defined for %%S - skipping.
+                                ) else (
+                                    echo Test script found for %%S.
+                                    echo Running npm test inside Docker container...
 
-                                    echo "Test script found for $service"
+                                    docker compose -f "%COMPOSE_FILE%" run --rm --no-deps %%S npm test
 
-                                    docker compose \
-                                        -f ${COMPOSE_FILE} \
-                                        run \
-                                        --rm \
-                                        --no-deps \
-                                        "$service" \
-                                        npm test
+                                    if errorlevel 1 (
+                                        echo ERROR: Tests failed for %%S.
+                                        exit /b 1
+                                    )
+                                )
+                            )
+                        )
 
-                                else
-
-                                    echo "No test script defined for $service - skipping."
-
-                                fi
-
-                            else
-                                echo "package.json not found - skipping."
-                            fi
-                        done
-
-                        echo ""
-                        echo "Test stage completed."
+                        echo.
+                        echo ========================================
+                        echo Test stage completed successfully.
+                        echo ========================================
                     '''
                 }
             }
         }
+
+
+        // ============================================================
+        // SONARQUBE ANALYSIS
+        // ============================================================
 
         stage('SonarQube Analysis') {
             steps {
@@ -215,18 +326,26 @@ pipeline {
                         dir("${COMPOSE_DIR}") {
 
                             bat '''
-                                set -e
+                                @echo off
 
-                                echo "Running SonarQube analysis..."
+                                echo ========================================
+                                echo Running SonarQube analysis
+                                echo ========================================
 
-                                sonar-scanner \
-                                    -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                                    -Dsonar.projectName=ShopSphere-Microservices \
-                                    -Dsonar.sources=services,packages \
-                                    -Dsonar.exclusions="**/node_modules/**,**/coverage/**,**/tests/**" \
-                                    -Dsonar.token=${SONAR_TOKEN}
+                                sonar-scanner ^
+                                    -Dsonar.projectKey="%SONAR_PROJECT_KEY%" ^
+                                    -Dsonar.projectName="ShopSphere-Microservices" ^
+                                    -Dsonar.sources="services,packages" ^
+                                    -Dsonar.exclusions="**/node_modules/**,**/coverage/**,**/tests/**" ^
+                                    -Dsonar.token="%SONAR_TOKEN%"
 
-                                echo "SonarQube analysis completed."
+                                if errorlevel 1 (
+                                    echo ERROR: SonarQube analysis failed.
+                                    exit /b 1
+                                )
+
+                                echo.
+                                echo SonarQube analysis completed successfully.
                             '''
                         }
                     }
@@ -234,94 +353,160 @@ pipeline {
             }
         }
 
+
+        // ============================================================
+        // START INFRASTRUCTURE
+        // ============================================================
+
         stage('Start Infrastructure') {
             steps {
+
                 withCredentials([
                     file(
                         credentialsId: 'shopsphere-env',
-                        variable: 'SHOPSHPERE_ENV_FILE'
+                        variable: 'SHOPSPHERE_ENV_FILE'
                     )
                 ]) {
 
                     dir("${COMPOSE_DIR}") {
+
                         bat '''
-                            set -e
+                            @echo off
 
-                            cp "$SHOPSHPERE_ENV_FILE" .env
+                            echo ========================================
+                            echo Starting ShopSphere infrastructure
+                            echo ========================================
 
-                            chmod 600 .env
+                            echo Copying Jenkins environment file...
 
-                            docker compose \
-                                -f docker-compose.yml \
-                                up -d
+                            copy /Y "%SHOPSPHERE_ENV_FILE%" ".env"
+
+                            if errorlevel 1 (
+                                echo ERROR: Failed to copy environment file.
+                                exit /b 1
+                            )
+
+                            if not exist ".env" (
+                                echo ERROR: .env file was not created.
+                                exit /b 1
+                            )
+
+                            echo Environment file created successfully.
+
+                            echo.
+                            echo Starting Docker Compose services...
+
+                            docker compose -f "%COMPOSE_FILE%" up -d
+
+                            if errorlevel 1 (
+                                echo ERROR: Docker Compose failed to start.
+                                exit /b 1
+                            )
+
+                            echo.
+                            echo ShopSphere infrastructure started successfully.
                         '''
                     }
                 }
             }
         }
+
+
+        // ============================================================
+        // WAIT FOR SERVICES
+        // ============================================================
+
         stage('Wait For Services') {
             steps {
                 dir("${COMPOSE_DIR}") {
+
                     bat '''
-                        set -e
+                        @echo off
 
-                        echo "Waiting for services to start..."
+                        echo ========================================
+                        echo Waiting for services to start
+                        echo ========================================
 
-                        sleep 20
+                        timeout /t 20 /nobreak >nul
 
-                        echo ""
-                        echo "===== Container Status ====="
+                        echo.
+                        echo ========================================
+                        echo Container Status
+                        echo ========================================
 
-                        docker compose \
-                            -f ${COMPOSE_FILE} \
-                            ps
+                        docker compose -f "%COMPOSE_FILE%" ps
 
-                        echo ""
-                        echo "===== Container Health / Status ====="
+                        if errorlevel 1 (
+                            echo WARNING: Could not retrieve Compose status.
+                        )
 
-                        docker ps \
-                            --filter "name=shopsphere" \
+                        echo.
+                        echo ========================================
+                        echo Docker Container Health / Status
+                        echo ========================================
+
+                        docker ps ^
+                            --filter "name=shopsphere" ^
                             --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
 
-                        echo ""
-                        echo "Service startup check completed."
+                        echo.
+                        echo Service startup check completed.
                     '''
                 }
             }
         }
 
+
+        // ============================================================
+        // SMOKE CHECK
+        // ============================================================
+
         stage('Smoke Check') {
             steps {
                 dir("${COMPOSE_DIR}") {
+
                     bat '''
-                        set -e
+                        @echo off
 
-                        echo "Checking API Gateway..."
+                        echo ========================================
+                        echo Running API Gateway smoke check
+                        echo ========================================
 
-                        # Gateway is the externally exposed API.
-                        # Adjust /health if your gateway uses another health endpoint.
+                        echo Checking http://localhost:5001/health ...
 
-                        if curl -fsS http://localhost:5001/health > /dev/null 2>&1; then
-                            echo "API Gateway health check passed."
-                        else
-                            echo "WARNING: /health endpoint was not available."
-                            echo "Checking container logs instead..."
+                        curl.exe -fsS http://localhost:5001/health >nul 2>&1
 
-                            docker compose \
-                                -f ${COMPOSE_FILE} \
-                                logs \
-                                --tail=50 \
-                                api-gateway
-                        fi
+                        if errorlevel 1 (
+                            echo.
+                            echo WARNING: /health endpoint was not available.
+                            echo.
+                            echo Checking API Gateway container logs...
+                            echo.
+
+                            docker compose -f "%COMPOSE_FILE%" logs --tail=50 api-gateway
+
+                            echo.
+                            echo Smoke check did not pass.
+                            exit /b 1
+                        )
+
+                        echo.
+                        echo API Gateway health check passed.
                     '''
                 }
             }
         }
     }
 
+
+    // ================================================================
+    // POST ACTIONS
+    // ================================================================
+
     post {
 
         success {
+
             echo '''
             ============================================
             ShopSphere Jenkins Build SUCCESS
@@ -333,37 +518,59 @@ pipeline {
             '''
         }
 
+
         failure {
+
             echo '''
             ============================================
             ShopSphere Jenkins Build FAILED
             ============================================
-            Collecting Docker Compose logs...
+            Collecting Docker Compose information...
             '''
 
             dir("${COMPOSE_DIR}") {
-                bat '''
-                    docker compose \
-                        -f ${COMPOSE_FILE} \
-                        ps || true
 
-                    docker compose \
-                        -f ${COMPOSE_FILE} \
-                        logs \
-                        --tail=100 || true
+                bat '''
+                    @echo off
+
+                    echo.
+                    echo ========================================
+                    echo Docker Compose Container Status
+                    echo ========================================
+
+                    docker compose -f "%COMPOSE_FILE%" ps
+
+                    echo.
+                    echo ========================================
+                    echo Docker Compose Logs
+                    echo ========================================
+
+                    docker compose -f "%COMPOSE_FILE%" logs --tail=100
+
+                    exit /b 0
                 '''
             }
         }
 
-        always {
-            dir("${COMPOSE_DIR}") {
-                bat '''
-                    echo "Cleaning unused Docker resources..."
 
-                    docker image prune -f || true
+        always {
+
+            dir("${COMPOSE_DIR}") {
+
+                bat '''
+                    @echo off
+
+                    echo.
+                    echo ========================================
+                    echo Cleaning unused Docker resources
+                    echo ========================================
+
+                    docker image prune -f
+
+                    echo Docker cleanup completed.
+                    exit /b 0
                 '''
             }
         }
     }
 }
-
