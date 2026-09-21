@@ -5872,3 +5872,676 @@ a:hover {
   }
 }
 
+/* =========================================================
+   CUSTOMER ISSUES PAGE
+========================================================= */
+
+.issues-page {
+  min-height: calc(100vh - 72px);
+
+  padding: 30px 0 70px;
+
+  background:
+    radial-gradient(
+      700px 420px at 12% 8%,
+      rgba(99, 102, 241, 0.08),
+      transparent 65%
+    ),
+    linear-gradient(
+      180deg,
+      #f8f9fd 0%,
+      #f6f7fb 58%,
+      #ffffff 100%
+    );
+}
+
+/* ---------------------------------------------------------
+   HEADER
+--------------------------------------------------------- */
+
+.issues-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  gap: 24px;
+
+  padding: 20px 0 30px;
+}
+
+.issues-eyebrow {
+  margin-bottom: 7px;
+
+  color: var(--accent);
+
+  font-size: 0.68rem;
+  font-weight: 800;
+
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.issues-title {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: clamp(2.1rem, 4vw, 3rem);
+  line-height: 1;
+
+  font-weight: 700;
+
+  letter-spacing: -0.045em;
+}
+
+.issues-subtitle {
+  margin: 10px 0 0;
+
+  color: var(--text-muted);
+
+  font-size: 0.88rem;
+}
+
+.issues-count {
+  display: inline-flex;
+  align-items: center;
+
+  min-height: 36px;
+
+  padding: 7px 13px;
+
+  border: 1px solid var(--border);
+
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.75);
+
+  color: var(--text-secondary);
+
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------
+   MAIN LAYOUT
+--------------------------------------------------------- */
+
+.issues-layout {
+  display: grid;
+
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+
+  align-items: start;
+
+  gap: 28px;
+}
+
+/* ---------------------------------------------------------
+   CREATE ISSUE CARD
+--------------------------------------------------------- */
+
+.issue-create-card {
+  padding: 24px;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 20px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(249, 250, 253, 0.98)
+    );
+
+  box-shadow:
+    0 18px 45px rgba(15, 23, 42, 0.07);
+}
+
+.issue-card-header {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+}
+
+.issue-card-icon {
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  width: 44px;
+  height: 44px;
+
+  border-radius: 13px;
+
+  background: var(--accent-soft);
+
+  color: var(--accent);
+
+  font-size: 1rem;
+}
+
+.issue-card-eyebrow {
+  margin-bottom: 3px;
+
+  color: var(--accent);
+
+  font-size: 0.63rem;
+  font-weight: 800;
+
+  letter-spacing: 0.08em;
+}
+
+.issue-card-title {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: 1.25rem;
+  font-weight: 700;
+
+  letter-spacing: -0.025em;
+}
+
+.issue-card-description {
+  margin: 17px 0 22px;
+
+  color: var(--text-muted);
+
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+.issue-form {
+  display: flex;
+  flex-direction: column;
+
+  gap: 15px;
+}
+
+.issue-field {
+  display: flex;
+  flex-direction: column;
+
+  gap: 6px;
+}
+
+.issue-field label {
+  color: var(--text-secondary);
+
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.issue-input,
+.issue-textarea,
+.issue-select {
+  width: 100%;
+
+  border: 1px solid var(--border);
+
+  border-radius: 10px;
+
+  background: #fff;
+
+  color: var(--text);
+
+  font-size: 0.78rem;
+
+  outline: none;
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.issue-input,
+.issue-select {
+  min-height: 43px;
+
+  padding: 9px 11px;
+}
+
+.issue-textarea {
+  min-height: 120px;
+
+  padding: 10px 11px;
+
+  resize: vertical;
+
+  line-height: 1.55;
+}
+
+.issue-input::placeholder,
+.issue-textarea::placeholder {
+  color: #9ca3af;
+}
+
+.issue-input:focus,
+.issue-textarea:focus,
+.issue-select:focus {
+  border-color: #a5b4fc;
+
+  box-shadow:
+    0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.issue-submit-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+
+  width: 100%;
+
+  min-height: 46px;
+
+  margin-top: 3px;
+
+  padding: 10px 16px;
+
+  border: 0;
+
+  border-radius: 11px;
+
+  background: var(--accent);
+
+  color: #fff;
+
+  font-size: 0.8rem;
+  font-weight: 700;
+
+  box-shadow:
+    0 10px 25px rgba(99, 102, 241, 0.2);
+
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.issue-submit-button:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 14px 30px rgba(99, 102, 241, 0.25);
+}
+
+/* ---------------------------------------------------------
+   ISSUE HISTORY
+--------------------------------------------------------- */
+
+.issues-history {
+  min-width: 0;
+}
+
+.issues-history-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  margin-bottom: 12px;
+}
+
+.issues-history-eyebrow {
+  margin-bottom: 4px;
+
+  color: var(--accent);
+
+  font-size: 0.63rem;
+  font-weight: 800;
+
+  letter-spacing: 0.09em;
+}
+
+.issues-history-header h2 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: 1.35rem;
+  font-weight: 700;
+
+  letter-spacing: -0.025em;
+}
+
+.issues-history-header > span {
+  color: var(--text-muted);
+
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------
+   ISSUE CARD
+--------------------------------------------------------- */
+
+.issue-history-card {
+  padding: 19px 20px;
+
+  margin-bottom: 12px;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 17px;
+
+  background: rgba(255, 255, 255, 0.95);
+
+  box-shadow: var(--shadow-xs);
+
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+
+.issue-history-card:hover {
+  transform: translateY(-2px);
+
+  border-color: #d9def0;
+
+  box-shadow: var(--shadow-sm);
+}
+
+.issue-history-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 15px;
+}
+
+.issue-history-identity {
+  display: flex;
+  align-items: center;
+
+  gap: 11px;
+
+  min-width: 0;
+}
+
+.issue-history-icon {
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  width: 39px;
+  height: 39px;
+
+  border-radius: 11px;
+
+  background: #f1f5f9;
+
+  color: var(--text-secondary);
+
+  font-size: 0.9rem;
+}
+
+.issue-history-label {
+  margin-bottom: 3px;
+
+  color: var(--text-muted);
+
+  font-size: 0.6rem;
+  font-weight: 800;
+
+  letter-spacing: 0.07em;
+}
+
+.issue-history-identity h3 {
+  margin: 0;
+
+  overflow: hidden;
+
+  color: var(--text);
+
+  font-size: 0.9rem;
+  font-weight: 700;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------
+   ISSUE STATUS
+--------------------------------------------------------- */
+
+.issue-status-badge {
+  display: inline-flex;
+  align-items: center;
+
+  flex-shrink: 0;
+
+  gap: 7px;
+
+  padding: 6px 10px;
+
+  border: 1px solid #cbd5e1;
+
+  border-radius: 999px;
+
+  background: #f8fafc;
+
+  color: var(--text-secondary);
+
+  font-size: 0.63rem;
+  font-weight: 800;
+
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.issue-status-dot {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #64748b;
+}
+
+/* ---------------------------------------------------------
+   ISSUE CONTENT
+--------------------------------------------------------- */
+
+.issue-history-divider {
+  height: 1px;
+
+  margin: 16px 0;
+
+  background: var(--border-light);
+}
+
+.issue-history-description {
+  margin: 0;
+
+  color: var(--text-secondary);
+
+  font-size: 0.78rem;
+  line-height: 1.65;
+
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------------
+   SUPPORT RESPONSE
+--------------------------------------------------------- */
+
+.issue-response {
+  margin-top: 15px;
+
+  padding: 13px 14px;
+
+  border: 1px solid #e0e7ff;
+
+  border-radius: 12px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #f5f3ff,
+      #eef2ff
+    );
+}
+
+.issue-response-header {
+  display: flex;
+  align-items: center;
+
+  gap: 7px;
+
+  margin-bottom: 6px;
+
+  color: var(--accent-dark);
+
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.issue-response p {
+  margin: 0;
+
+  color: var(--text-secondary);
+
+  font-size: 0.75rem;
+  line-height: 1.6;
+
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------------
+   EMPTY STATE
+--------------------------------------------------------- */
+
+.issues-empty {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+
+  padding: 45px 25px;
+
+  text-align: center;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 18px;
+
+  background: rgba(255, 255, 255, 0.92);
+
+  box-shadow: var(--shadow-xs);
+}
+
+.issues-empty-icon {
+  display: grid;
+  place-items: center;
+
+  width: 58px;
+  height: 58px;
+
+  margin-bottom: 15px;
+
+  border-radius: 17px;
+
+  background: var(--accent-soft);
+
+  color: var(--accent);
+
+  font-size: 1.3rem;
+}
+
+.issues-empty h3 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.issues-empty p {
+  max-width: 300px;
+
+  margin: 7px 0 0;
+
+  color: var(--text-muted);
+
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+/* ---------------------------------------------------------
+   RESPONSIVE
+--------------------------------------------------------- */
+
+@media (max-width: 991.98px) {
+  .issues-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .issue-create-card {
+    max-width: 720px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .issues-page {
+    padding-top: 18px;
+  }
+
+  .issues-header {
+    align-items: flex-start;
+
+    flex-direction: column;
+
+    gap: 14px;
+
+    padding-bottom: 22px;
+  }
+
+  .issue-create-card {
+    padding: 19px;
+  }
+
+  .issue-history-card {
+    padding: 16px;
+  }
+
+  .issue-history-top {
+    align-items: flex-start;
+
+    flex-direction: column;
+  }
+
+  .issue-status-badge {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .issues-title {
+    font-size: 2rem;
+  }
+
+  .issues-subtitle {
+    font-size: 0.78rem;
+  }
+
+  .issue-card-title {
+    font-size: 1.1rem;
+  }
+
+  .issue-history-identity h3 {
+    max-width: 190px;
+  }
+}
