@@ -31,70 +31,117 @@ export default function ProductCard({ product }) {
 
   return (
     <Tilt3D max={7}>
-      <div className="card h-100 card-hover">
-        {product.image ? (
-          <img
-            src={product.image}
-            className="card-img-top product-img"
-            alt={product.name}
-          />
-        ) : (
-          <div className="card-img-top product-img d-flex align-items-center justify-content-center bg-light text-muted">
-            No image available
+      <article className="product-card">
+        {/* Product image */}
+        <Link
+          to={`/products/${product.id}`}
+          className="product-card-image-link"
+          aria-label={`View ${product.name}`}
+        >
+          <div className="product-card-image-wrap">
+            {product.image ? (
+              <img
+                src={product.image}
+                className="product-card-image"
+                alt={product.name}
+              />
+            ) : (
+              <div className="product-card-image product-card-no-image">
+                <i className="bi bi-image" />
+                <span>No image available</span>
+              </div>
+            )}
+
+            <div className="product-card-image-overlay" />
+
+            {product.stock ? (
+              <span className="product-card-stock-badge">
+                <span className="product-card-stock-dot" />
+                In stock
+              </span>
+            ) : (
+              <span className="product-card-stock-badge product-card-stock-badge-out">
+                Out of stock
+              </span>
+            )}
           </div>
-        )}
+        </Link>
 
-        <div className="card-body d-flex flex-column">
-          <small className="text-muted">
-            {product.brand} · {product.category}
-          </small>
+        {/* Product information */}
+        <div className="product-card-body">
+          <div className="product-card-meta">
+            <span>{product.brand}</span>
+            <span className="product-card-meta-separator">·</span>
+            <span>{product.category}</span>
+          </div>
 
-          <h5 className="mt-1">{product.name}</h5>
+          <Link
+            to={`/products/${product.id}`}
+            className="product-card-title-link"
+          >
+            <h3 className="product-card-title">{product.name}</h3>
+          </Link>
 
-          <p className="small text-muted flex-grow-1">{product.description}</p>
+          <p className="product-card-description">
+            {product.description}
+          </p>
 
-          <div className="d-flex justify-content-between align-items-center">
-            <strong className="price fs-5">
+          <div className="product-card-rating-row">
+            <div className="product-card-rating">
+              <i className="bi bi-star-fill" />
+              <span>{Number(product.rating || 0).toFixed(1)}</span>
+            </div>
+
+            <span className="product-card-review-count">
+              {product.reviewCount || 0}{" "}
+              {product.reviewCount === 1 ? "review" : "reviews"}
+            </span>
+          </div>
+
+          <div className="product-card-price-row">
+            <strong className="product-card-price price">
               ₹{product.price.toLocaleString("en-IN")}
             </strong>
-
-            <div className="text-end">
-              <span className="badge text-bg-warning">
-                ★ {Number(product.rating || 0).toFixed(1)}
-              </span>
-
-              <div className="small text-muted">
-                {product.reviewCount || 0} reviews
-              </div>
-            </div>
           </div>
 
-          <small className={product.stock ? "text-success" : "text-danger"}>
-            {product.stock ? `In stock (${product.stock})` : "Out of stock"}
-          </small>
+          {!product.stock && (
+            <div className="product-card-out-of-stock">
+              Currently unavailable
+            </div>
+          )}
 
-          {error && <small className="text-danger mt-1">{error}</small>}
+          {error && (
+            <div className="product-card-error">
+              <i className="bi bi-exclamation-circle" />
+              <span>{error}</span>
+            </div>
+          )}
 
-          <div className="d-flex gap-2 mt-2">
+          {/* Actions */}
+          <div className="product-card-actions">
             <Link
-              className="btn btn-outline-primary flex-grow-1"
+              className="product-card-view-button"
               to={`/products/${product.id}`}
             >
-              View
+              View product
+              <i className="bi bi-arrow-right" />
             </Link>
 
             {user?.role === "USER" && (
               <button
-                className="btn btn-primary"
+                className="product-card-add-button"
                 disabled={!product.stock}
                 onClick={add}
+                type="button"
+                aria-label={`Add ${product.name} to cart`}
               >
-                Add
+                <i className="bi bi-cart-plus" />
+                <span>Add</span>
               </button>
             )}
           </div>
         </div>
-      </div>
+      </article>
     </Tilt3D>
   );
 }
