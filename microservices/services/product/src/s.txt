@@ -1,0 +1,1754 @@
+﻿
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\app.js
+============================================================
+
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const routes = require("./routes");
+const app = express();
+const { requestId, notFound, errorHandler } = require("@shopsphere/common");
+app.use(requestId);
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-internal-service-token",
+    ],
+  }),
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 3000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+app.get("/health", (req, res) =>
+  res.json({
+    success: true,
+    service: "shopsphere-product",
+    timestamp: new Date().toISOString(),
+  }),
+);
+app.use("/", routes);
+app.use(notFound);
+app.use(errorHandler);
+module.exports = app;
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\config\db.js
+============================================================
+
+const mongoose = require('mongoose');
+async function connectDB(){
+  const uri=process.env.MONGODB_URI;
+  if(!uri) throw new Error('MONGODB_URI is not configured');
+  mongoose.set('strictQuery',true);
+  await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
+}
+module.exports=connectDB;
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\config\env.js
+============================================================
+
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../../../.env') });
+
+function getEnv(name, fallback = undefined) {
+  return process.env[name] ?? fallback;
+}
+
+module.exports = { getEnv };
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\controllers\product.controller.js
+============================================================
+
+const Product = require("../models/Product");
+const { ok, fail } = require("../utils/apiResponse");
+
+const {
+  pagination,
+  buildProductFilter,
+  productSort,
+  buildProductCacheKey,
+} = require("../services/query.service");
+
+const { ingestProduct, deleteProduct } = require("../services/rag.service");
+const cache = require("../services/cache.service");
+const {
+  getVendorByUserId,
+  getAllVendors,
+} = require("../services/vendor.service");
+
+async function list(req, res) {
+  const cacheKey = buildProductCacheKey(req.query);
+
+  const cached = await cache.get(cacheKey);
+
+  if (cached) {
+    return ok(res, cached);
+  }
+
+  const { page, limit, skip } = pagination(req);
+  const filter = buildProductFilter(req.query);
+
+  const [items, total] = await Promise.all([
+    Product.find(filter)
+      .sort(productSort(req.query.sort))
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+
+    Product.countDocuments(filter),
+  ]);
+
+  const vendors = await getAllVendors();
+
+  const vendorMap = new Map(
+    vendors.map((vendor) => [String(vendor.userId), vendor]),
+  );
+
+  const productsWithVendor = items.map((product) => ({
+    ...product,
+    vendor: vendorMap.get(String(product.vendorId)) || null,
+  }));
+
+  const result = {
+    items: productsWithVendor,
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  };
+
+  await cache.set(cacheKey, result);
+
+  return ok(res, result);
+}
+
+async function invalidateProductCache(productId) {
+  await Promise.all([
+    cache.del(`product:${productId}`),
+    cache.delByPattern("products:list:*"),
+  ]);
+}
+
+async function getById(req, res) {
+  const productId = req.params.id;
+
+  const cacheKey = `product:${productId}`;
+
+  const cached = await cache.get(cacheKey);
+
+  if (cached) {
+    return ok(res, cached, "OK");
+  }
+
+  const product = await Product.findById(productId).lean();
+
+  if (!product) {
+    return fail(res, "Product not found.", 404);
+  }
+
+  const vendor = await getVendorByUserId(product.vendorId);
+
+  const result = {
+    ...product,
+    vendor,
+  };
+
+  await cache.set(cacheKey, result);
+
+  return ok(res, result);
+}
+
+async function create(req, res) {
+  const product = await Product.create({
+    ...req.body,
+    vendorId: req.user._id,
+  });
+
+  await ingestProduct(product._id);
+  await cache.delByPattern("products:list:*");
+
+  return ok(res, product, "Product created.", 201);
+}
+
+async function update(req, res) {
+  const product = await Product.findOneAndUpdate(
+    {
+      _id: req.params.id,
+      vendorId: req.user._id,
+    },
+    req.body,
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
+
+  if (!product) {
+    return fail(res, "Product not found or not owned by you.", 404);
+  }
+
+  await ingestProduct(product._id);
+  await Promise.all([
+    cache.del(`product:${product._id}`),
+    cache.delByPattern("products:list:*"),
+  ]);
+
+  return ok(res, product, "Product updated.");
+}
+
+async function remove(req, res) {
+  const product = await Product.findOneAndDelete({
+    _id: req.params.id,
+    vendorId: req.user._id,
+  });
+
+  if (!product) {
+    return fail(res, "Product not found or not owned by you.", 404);
+  }
+
+  await deleteProduct(product._id);
+  await Promise.all([
+    cache.del(`product:${product._id}`),
+    cache.delByPattern("products:list:*"),
+  ]);
+
+  return ok(res, null, "Product deleted.");
+}
+
+async function updateStock(req, res) {
+  const stock = Number(req.body.stock);
+
+  if (!Number.isInteger(stock) || stock < 0) {
+    return fail(res, "Stock must be a non-negative integer.");
+  }
+
+  const product = await Product.findOneAndUpdate(
+    {
+      _id: req.params.id,
+      vendorId: req.user._id,
+    },
+    {
+      stock,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
+
+  if (!product) {
+    return fail(res, "Product not found or not owned by you.", 404);
+  }
+
+  await ingestProduct(product._id);
+
+  await Promise.all([
+    cache.del(`product:${product._id}`),
+    cache.delByPattern("products:list:*"),
+  ]);
+
+  return ok(res, product, "Stock updated.");
+}
+
+async function internalGet(req, res) {
+  const product = await Product.findById(req.params.id).lean();
+
+  if (!product) {
+    return fail(res, "Product not found.", 404);
+  }
+
+  return ok(res, product);
+}
+
+async function internalList(req, res) {
+  const products = await Product.find().select("_id").lean();
+
+  return ok(res, products);
+}
+
+async function internalReserve(req, res) {
+  const { items } = req.body;
+
+  if (!Array.isArray(items) || !items.length) {
+    return fail(res, "items are required.");
+  }
+
+  const session = await Product.startSession();
+
+  try {
+    const result = [];
+
+    await session.withTransaction(async () => {
+      for (const item of items) {
+        const product = await Product.findOneAndUpdate(
+          {
+            _id: item.productId,
+            stock: {
+              $gte: item.quantity,
+            },
+          },
+          {
+            $inc: {
+              stock: -item.quantity,
+            },
+          },
+          {
+            new: true,
+            session,
+          },
+        );
+
+        if (!product) {
+          const error = new Error(
+            `Insufficient stock for product ${item.productId}`,
+          );
+
+          error.status = 409;
+          throw error;
+        }
+
+        result.push(product);
+      }
+    });
+
+    // Sync updated stock to RAG
+    for (const product of result) {
+      await ingestProduct(product._id);
+
+      await cache.del(`product:${product._id}`);
+    }
+
+    await cache.delByPattern("products:list:*");
+
+    return ok(res, result, "Stock reserved.");
+  } finally {
+    await session.endSession();
+  }
+}
+
+async function internalRelease(req, res) {
+  const { items } = req.body;
+
+  if (!Array.isArray(items)) {
+    return fail(res, "items are required.");
+  }
+
+  await Product.bulkWrite(
+    items.map((item) => ({
+      updateOne: {
+        filter: {
+          _id: item.productId,
+        },
+        update: {
+          $inc: {
+            stock: item.quantity,
+          },
+        },
+      },
+    })),
+  );
+  const productIds = items.map((item) => item.productId);
+
+  await Promise.all(productIds.map((id) => cache.del(`product:${id}`)));
+
+  await cache.delByPattern("products:list:*");
+  // Sync all changed products to RAG
+  await ingestProduct(product._id);
+
+  await Promise.all([
+    cache.del(`product:${product._id}`),
+    cache.delByPattern("products:list:*"),
+  ]);
+
+  return ok(res, null, "Stock released.");
+}
+
+async function internalRating(req, res) {
+  const { rating, reviewCount } = req.body;
+
+  const product = await Product.findByIdAndUpdate(
+    req.params.id,
+    {
+      rating: Number(rating) || 0,
+      reviewCount: Number(reviewCount) || 0,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  );
+
+  if (!product) {
+    return fail(res, "Product not found.", 404);
+  }
+  await ingestProduct(product._id);
+
+  return ok(res, product);
+}
+
+module.exports = {
+  list,
+  getById,
+  create,
+  update,
+  remove,
+  updateStock,
+  internalGet,
+  internalList,
+  internalReserve,
+  internalRelease,
+  internalRating,
+};
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\controllers\qa.controller.js
+============================================================
+
+const {postJson}=require('../utils/serviceClient');const {fail}=require('../utils/apiResponse');async function ask(req,res){const r=await postJson(process.env.RAG_SERVICE_URL||'http://localhost:5010',`/internal/products/${req.params.id}/qa`,{question:req.body.question});if(!r.ok)return res.status(r.status).json(r.data);res.json(r.data);}module.exports={ask};
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\middleware\auth.js
+============================================================
+
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
+const { getJson } = require('../utils/serviceClient');
+
+const auth0Domain = (process.env.AUTH0_DOMAIN || '')
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
+const auth0Audience = process.env.AUTH0_AUDIENCE;
+const auth0Issuer = auth0Domain ? `https://${auth0Domain}/` : null;
+const jwks = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function signingKey(header, callback) {
+  if (!jwks) return callback(new Error('Auth0 is not configured.'));
+  if (!header?.kid) return callback(new Error('Token is missing kid.'));
+  jwks.getSigningKey(header.kid)
+    .then((key) => callback(null, key.getPublicKey()))
+    .catch(callback);
+}
+
+function verifyAuth0(token) {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      signingKey,
+      { algorithms: ['RS256'], audience: auth0Audience, issuer: auth0Issuer },
+      (error, payload) => (error ? reject(error) : resolve(payload)),
+    );
+  });
+}
+
+async function authenticate(req, res, next) {
+  try {
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
+    }
+
+    const token = header.slice(7);
+    let identity;
+
+    if (auth0Domain && auth0Audience && token.split('.').length === 3) {
+      try {
+        identity = await verifyAuth0(token);
+      } catch {
+        identity = null;
+      }
+    }
+
+    if (!identity) {
+      identity = jwt.verify(token, process.env.JWT_SECRET);
+    }
+
+    const userId = identity.id || identity['https://shopsphere/user_id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Token does not contain a user id.' });
+    }
+
+    const authService = process.env.AUTH_SERVICE_URL || 'http://localhost:5002';
+    const result = await getJson(authService, `/internal/users/${encodeURIComponent(userId)}`);
+
+    if (!result.ok || !result.data?.data) {
+      return res.status(401).json({ success: false, message: 'User account not found.' });
+    }
+
+    const user = result.data.data;
+    if (user.status === 'DISABLED') {
+      return res.status(403).json({ success: false, message: 'Account disabled.' });
+    }
+
+    req.user = user;
+    req.auth = { ...identity, id: String(userId) };
+    next();
+  } catch (error) {
+    console.error('AUTH ERROR:', error.message);
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+}
+
+function authorize(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission for this resource.' });
+    }
+    next();
+  };
+}
+
+module.exports = { authenticate, authorize };
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\models\Product.js
+============================================================
+
+const mongoose = require("mongoose");
+const schema = new mongoose.Schema(
+  {
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+    name: { type: String, required: true, trim: true, index: true },
+    description: { type: String, required: true },
+    brand: { type: String, required: true, trim: true, index: true },
+    category: {
+      type: String,
+      enum: [
+        "ELECTRONICS",
+        "MOBILE",
+        "LAPTOP",
+        "AUDIO",
+        "TV",
+        "HOME_APPLIANCES",
+        "ACCESSORIES",
+        "OTHER",
+      ],
+      required: true,
+      index: true,
+    },
+    price: { type: Number, required: true, min: 0 },
+    stock: { type: Number, required: true, min: 0, default: 0 },
+    imageUrl: String,
+    rating: { type: Number, min: 0, max: 5, default: 0 },
+    reviewCount: { type: Number, default: 0 },
+  },
+  { timestamps: true },
+);
+schema.index({ name: "text", brand: "text", description: "text" });
+schema.index({ category: 1, price: 1, rating: -1 });
+module.exports = mongoose.model("Product", schema);
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\routes\index.js
+============================================================
+
+const router = require("express").Router();
+const c = require("../controllers/product.controller");
+const qa = require("../controllers/qa.controller");
+const { validate } = require("@shopsphere/common");
+const { authenticate, authorize } = require("../middleware/auth");
+const { internal } = require("@shopsphere/common");
+const { productSchema } = require("../validators/product");
+router.get("/api/products", c.list);
+router.get("/api/products/:id", c.getById);
+router.post("/api/products/:id/qa", qa.ask);
+router.post(
+  "/api/products",
+  authenticate,
+  authorize("VENDOR"),
+  validate(productSchema),
+  c.create,
+);
+router.get("/internal/products", internal, c.internalList);
+router.put(
+  "/api/products/:id",
+  authenticate,
+  authorize("VENDOR"),
+  validate(productSchema.partial()),
+  c.update,
+);
+router.delete("/api/products/:id", authenticate, authorize("VENDOR"), c.remove);
+router.patch(
+  "/api/products/:id/stock",
+  authenticate,
+  authorize("VENDOR"),
+  c.updateStock,
+);
+router.get("/internal/products/:id", internal, c.internalGet);
+router.post("/internal/products/reserve", internal, c.internalReserve);
+router.post("/internal/products/release", internal, c.internalRelease);
+router.patch("/internal/products/:id/rating", internal, c.internalRating);
+module.exports = router;
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\server.js
+============================================================
+
+require("dotenv").config({
+  path: require("path").resolve(__dirname, "../../../.env"),
+});
+
+const app = require("./app");
+const connectDB = require("./config/db");
+const { connectRedis, disconnectRedis } = require("./services/redis.service");
+
+const PORT = Number(process.env.PORT || 5003);
+
+(async () => {
+  try {
+    await connectDB();
+    await connectRedis();
+
+    const server = app.listen(PORT, "0.0.0.0", () => {
+      console.log(
+        "ShopSphere product service running on http://localhost:" + PORT,
+      );
+    });
+
+    async function shutdown(signal) {
+      console.log(`${signal} received. Shutting down...`);
+
+      server.close(async () => {
+        try {
+          await disconnectRedis();
+          process.exit(0);
+        } catch (error) {
+          console.error("Shutdown failed:", error);
+          process.exit(1);
+        }
+      });
+    }
+
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
+  } catch (e) {
+    console.error("Startup failed:", e);
+    process.exit(1);
+  }
+})();
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\services\cache.service.js
+============================================================
+
+const { redis } = require("./redis.service");
+
+const DEFAULT_TTL = Number(process.env.REDIS_PRODUCT_TTL || 300);
+
+async function get(key) {
+  try {
+    const value = await redis.get(key);
+
+    if (!value) {
+      return null;
+    }
+
+    return JSON.parse(value);
+  } catch (error) {
+    console.error(`[CACHE] GET ${key} failed:`, error.message);
+
+    // Cache failure should never break the API.
+    return null;
+  }
+}
+
+async function set(key, value, ttl = DEFAULT_TTL) {
+  try {
+    await redis.set(key, JSON.stringify(value), {
+      EX: ttl,
+    });
+
+    return true;
+  } catch (error) {
+    console.error(`[CACHE] SET ${key} failed:`, error.message);
+    return false;
+  }
+}
+
+async function del(key) {
+  try {
+    await redis.del(key);
+    return true;
+  } catch (error) {
+    console.error(`[CACHE] DELETE ${key} failed:`, error.message);
+    return false;
+  }
+}
+
+async function delByPattern(pattern) {
+  try {
+    let cursor = 0;
+
+    do {
+      const result = await redis.scan(cursor, {
+        MATCH: pattern,
+        COUNT: 100,
+      });
+
+      cursor = result.cursor;
+
+      if (result.keys.length) {
+        await redis.del(result.keys);
+      }
+    } while (cursor !== 0);
+
+    return true;
+  } catch (error) {
+    console.error(`[CACHE] DELETE PATTERN ${pattern} failed:`, error.message);
+
+    return false;
+  }
+}
+
+module.exports = {
+  get,
+  set,
+  del,
+  delByPattern,
+};
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\services\query.service.js
+============================================================
+
+function pagination(req) {
+  const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+  const limit = Math.min(
+    Math.max(parseInt(req.query.limit || "9", 10), 1),
+    100,
+  );
+  return { page, limit, skip: (page - 1) * limit };
+}
+function buildProductFilter(q) {
+  const f = {};
+  if (q.q) {
+    const e = q.q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    f.$or = [
+      { name: { $regex: e, $options: "i" } },
+      { brand: { $regex: e, $options: "i" } },
+      { description: { $regex: e, $options: "i" } },
+    ];
+  }
+  if (q.brand) f.brand = q.brand;
+  if (q.category) f.category = q.category;
+  if (q.minPrice !== undefined || q.maxPrice !== undefined) {
+    f.price = {};
+    if (q.minPrice !== undefined) f.price.$gte = Number(q.minPrice);
+    if (q.maxPrice !== undefined) f.price.$lte = Number(q.maxPrice);
+  }
+  if (q.rating) f.rating = { $gte: Number(q.rating) };
+  if (q.stock === "in") f.stock = { $gt: 0 };
+  if (q.stock === "out") f.stock = 0;
+  if (q.vendorId) f.vendorId = q.vendorId;
+  return f;
+}
+function productSort(v) {
+  if (v === "low") return { price: 1 };
+  if (v === "high") return { price: -1 };
+  if (v === "rating") return { rating: -1 };
+  return { createdAt: -1 };
+}
+
+function buildProductCacheKey(query) {
+  const normalized = {};
+
+  Object.keys(query)
+    .sort()
+    .forEach((key) => {
+      normalized[key] = query[key];
+    });
+
+  return `products:list:${JSON.stringify(normalized)}`;
+}
+
+module.exports = {
+  pagination,
+  buildProductFilter,
+  productSort,
+  buildProductCacheKey,
+};
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\services\rag.service.js
+============================================================
+
+const { postJson, request } = require("../utils/serviceClient");
+
+const RAG_SERVICE = process.env.RAG_SERVICE_URL || "http://localhost:5010";
+
+async function ingestProduct(productId) {
+  try {
+    const result = await postJson(
+      RAG_SERVICE,
+      `/internal/products/${productId}/ingest`,
+      {},
+    );
+
+    if (!result.ok) {
+      console.error(
+        `RAG ingestion failed for product ${productId}:`,
+        result.data?.message || `HTTP ${result.status}`,
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error(
+      `Could not connect to RAG service for product ${productId}:`,
+      error.message,
+    );
+
+    return null;
+  }
+}
+
+async function deleteProduct(productId) {
+  try {
+    const result = await request(
+      RAG_SERVICE,
+      `/internal/products/${productId}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    if (!result.ok) {
+      console.error(
+        `RAG delete failed for product ${productId}:`,
+        result.data?.message || `HTTP ${result.status}`,
+      );
+    }
+
+    return result;
+  } catch (error) {
+    console.error(
+      `Could not connect to RAG service for deleting product ${productId}:`,
+      error.message,
+    );
+
+    return null;
+  }
+}
+
+module.exports = {
+  ingestProduct,
+  deleteProduct,
+};
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\services\redis.service.js
+============================================================
+
+const { createClient } = require("redis");
+
+const redis = createClient({
+  url: process.env.REDIS_URL || "redis://localhost:6379",
+});
+
+redis.on("error", (error) => {
+  console.error("[REDIS] Error:", error.message);
+});
+
+redis.on("connect", () => {
+  console.log("[REDIS] Connecting...");
+});
+
+redis.on("ready", () => {
+  console.log("[REDIS] Ready");
+});
+
+redis.on("reconnecting", () => {
+  console.log("[REDIS] Reconnecting...");
+});
+
+let connected = false;
+
+async function connectRedis() {
+  if (connected) return;
+
+  await redis.connect();
+  connected = true;
+}
+
+async function disconnectRedis() {
+  if (!connected) return;
+
+  await redis.quit();
+  connected = false;
+}
+
+module.exports = {
+  redis,
+  connectRedis,
+  disconnectRedis,
+};
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\services\vendor.service.js
+============================================================
+
+const { getJson } = require('../utils/serviceClient');
+
+const VENDOR_SERVICE =
+  process.env.VENDOR_SERVICE_URL || 'http://localhost:5012';
+
+/**
+ * Product.vendorId stores the authenticated user's ID.
+ * Vendor.userId stores the same ID.
+ *
+ * Therefore Product Service resolves a vendor through:
+ *
+ * GET /internal/vendors/by-user/:userId
+ */
+async function getVendorByUserId(userId) {
+  if (!userId) {
+    return null;
+  }
+
+  try {
+    const result = await getJson(
+      VENDOR_SERVICE,
+      `/internal/vendors/by-user/${encodeURIComponent(String(userId))}`,
+    );
+
+    if (!result.ok) {
+      console.error(
+        `Vendor lookup failed for user ${userId}: HTTP ${result.status}`,
+      );
+
+      return null;
+    }
+
+    return result.data?.data || null;
+  } catch (error) {
+    console.error(
+      `Vendor service request failed for user ${userId}:`,
+      error.message,
+    );
+
+    return null;
+  }
+}
+
+/**
+ * Gets all vendors through the internal Vendor Service endpoint.
+ *
+ * This is used for product LIST responses so we do not make
+ * one HTTP request per product.
+ */
+async function getAllVendors() {
+  try {
+    const result = await getJson(
+      VENDOR_SERVICE,
+      '/internal/vendors',
+    );
+
+    if (!result.ok) {
+      console.error(
+        `Vendor list lookup failed: HTTP ${result.status}`,
+      );
+
+      return [];
+    }
+
+    return Array.isArray(result.data?.data)
+      ? result.data.data
+      : [];
+  } catch (error) {
+    console.error(
+      'Vendor service list request failed:',
+      error.message,
+    );
+
+    return [];
+  }
+}
+
+module.exports = {
+  getVendorByUserId,
+  getAllVendors,
+};
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\tests\README.md
+============================================================
+
+# product service tests
+
+Place unit and integration tests for the product bounded context here. Tests must use the service's own models and APIs; do not import models from another service.
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\utils\apiResponse.js
+============================================================
+
+function ok(res,data,message='OK',status=200){return res.status(status).json({success:true,message,data});}
+function fail(res,message,status=400,details){return res.status(status).json({success:false,message,...(details?{details}:{})});}
+module.exports={ok,fail};
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\utils\AppError.js
+============================================================
+
+class AppError extends Error {
+  constructor(message, statusCode = 500, options = {}) {
+    super(message);
+
+    this.name = "AppError";
+
+    this.statusCode = statusCode;
+
+    this.code =
+      options.code ||
+      (statusCode >= 500 ? "INTERNAL_SERVER_ERROR" : "BAD_REQUEST");
+
+    this.details = options.details;
+
+    this.isOperational = options.isOperational !== false;
+
+    Error.captureStackTrace(this, this.constructor);
+  }
+
+  static badRequest(message, details) {
+    return new AppError(message, 400, {
+      code: "BAD_REQUEST",
+      details,
+    });
+  }
+
+  static unauthorized(message = "Unauthorized") {
+    return new AppError(message, 401, {
+      code: "UNAUTHORIZED",
+    });
+  }
+
+  static forbidden(message = "Forbidden") {
+    return new AppError(message, 403, {
+      code: "FORBIDDEN",
+    });
+  }
+
+  static notFound(message = "Resource not found") {
+    return new AppError(message, 404, {
+      code: "NOT_FOUND",
+    });
+  }
+
+  static conflict(message, details) {
+    return new AppError(message, 409, {
+      code: "CONFLICT",
+      details,
+    });
+  }
+
+  static serviceUnavailable(message = "Service temporarily unavailable") {
+    return new AppError(message, 503, {
+      code: "SERVICE_UNAVAILABLE",
+    });
+  }
+}
+
+module.exports = AppError;
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\utils\serviceClient.js
+============================================================
+
+const DEFAULT_TIMEOUT_MS = Number(
+  process.env.SERVICE_REQUEST_TIMEOUT_MS || 8000,
+);
+
+const DEFAULT_RETRIES = Number(process.env.SERVICE_REQUEST_RETRIES || 2);
+
+const DEFAULT_RETRY_DELAY_MS = Number(
+  process.env.SERVICE_RETRY_DELAY_MS || 250,
+);
+
+const CIRCUIT_FAILURE_THRESHOLD = Number(
+  process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD || 5,
+);
+
+const CIRCUIT_RESET_TIMEOUT_MS = Number(
+  process.env.CIRCUIT_BREAKER_RESET_TIMEOUT_MS || 30000,
+);
+
+/*
+|--------------------------------------------------------------------------
+| Circuit breaker state
+|--------------------------------------------------------------------------
+|
+| Each downstream service gets its own circuit.
+|
+| Example:
+|
+| auth-service
+| vendor-service
+| payment-service
+|
+*/
+
+const circuits = new Map();
+
+/*
+|--------------------------------------------------------------------------
+| Helpers
+|--------------------------------------------------------------------------
+*/
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getCircuitKey(baseUrl) {
+  try {
+    return new URL(baseUrl).origin;
+  } catch {
+    return baseUrl;
+  }
+}
+
+function getCircuit(baseUrl) {
+  const key = getCircuitKey(baseUrl);
+
+  if (!circuits.has(key)) {
+    circuits.set(key, {
+      state: "CLOSED",
+      failures: 0,
+      openedAt: null,
+      halfOpenRequests: 0,
+    });
+  }
+
+  return circuits.get(key);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Circuit breaker
+|--------------------------------------------------------------------------
+*/
+
+function canRequest(baseUrl) {
+  const circuit = getCircuit(baseUrl);
+
+  /*
+   * CLOSED
+   *
+   * Everything is normal.
+   */
+
+  if (circuit.state === "CLOSED") {
+    return true;
+  }
+
+  /*
+   * OPEN
+   *
+   * Fail immediately until reset timeout expires.
+   */
+
+  if (circuit.state === "OPEN") {
+    const elapsed = Date.now() - circuit.openedAt;
+
+    if (elapsed < CIRCUIT_RESET_TIMEOUT_MS) {
+      return false;
+    }
+
+    /*
+     * Move to HALF_OPEN.
+     *
+     * Allow one test request.
+     */
+
+    circuit.state = "HALF_OPEN";
+    circuit.halfOpenRequests = 0;
+  }
+
+  /*
+   * HALF_OPEN
+   *
+   * Allow only one request to test recovery.
+   */
+
+  if (circuit.state === "HALF_OPEN") {
+    if (circuit.halfOpenRequests >= 1) {
+      return false;
+    }
+
+    circuit.halfOpenRequests += 1;
+    return true;
+  }
+
+  return true;
+}
+
+function recordSuccess(baseUrl) {
+  const circuit = getCircuit(baseUrl);
+
+  circuit.state = "CLOSED";
+  circuit.failures = 0;
+  circuit.openedAt = null;
+  circuit.halfOpenRequests = 0;
+}
+
+function recordFailure(baseUrl) {
+  const circuit = getCircuit(baseUrl);
+
+  /*
+   * HALF_OPEN failure means
+   * the service is still unhealthy.
+   */
+
+  if (circuit.state === "HALF_OPEN") {
+    circuit.state = "OPEN";
+    circuit.openedAt = Date.now();
+    circuit.halfOpenRequests = 0;
+
+    return;
+  }
+
+  circuit.failures += 1;
+
+  /*
+   * Open the circuit after enough failures.
+   */
+
+  if (circuit.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+    circuit.state = "OPEN";
+    circuit.openedAt = Date.now();
+
+    console.error(`[CIRCUIT BREAKER] OPEN for ${getCircuitKey(baseUrl)}`);
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Retry policy
+|--------------------------------------------------------------------------
+|
+| GET, HEAD and OPTIONS are safe to retry automatically.
+|
+| POST, PATCH, PUT and DELETE are NOT retried automatically.
+|
+| They can be retried only when explicitly marked retrySafe.
+|
+*/
+
+function isSafeMethod(method) {
+  return ["GET", "HEAD", "OPTIONS"].includes(
+    String(method || "GET").toUpperCase(),
+  );
+}
+
+function isRetryableStatus(status) {
+  return [
+    408, // Request Timeout
+    429, // Too Many Requests
+    500,
+    502,
+    503,
+    504,
+  ].includes(status);
+}
+
+function shouldRetry({ method, retrySafe, status, error }) {
+  /*
+   * Never retry unsafe writes automatically.
+   */
+
+  if (!isSafeMethod(method) && retrySafe !== true) {
+    return false;
+  }
+
+  /*
+   * Network / timeout errors.
+   */
+
+  if (error) {
+    return true;
+  }
+
+  /*
+   * Retry temporary server failures.
+   */
+
+  return isRetryableStatus(status);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Exponential backoff with jitter
+|--------------------------------------------------------------------------
+*/
+
+function getRetryDelay(attempt) {
+  const exponentialDelay = DEFAULT_RETRY_DELAY_MS * Math.pow(2, attempt);
+
+  /*
+   * Add random jitter to prevent
+   * retry storms.
+   */
+
+  const jitter = Math.floor(Math.random() * DEFAULT_RETRY_DELAY_MS);
+
+  return exponentialDelay + jitter;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Parse response safely
+|--------------------------------------------------------------------------
+*/
+
+async function parseResponse(response) {
+  const text = await response.text();
+
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      success: false,
+      message: "Invalid JSON response from downstream service.",
+      raw: text.slice(0, 1000),
+    };
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Timeout fetch
+|--------------------------------------------------------------------------
+*/
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Main request
+|--------------------------------------------------------------------------
+*/
+
+async function request(baseUrl, path, options = {}) {
+  const {
+    headers: customHeaders = {},
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    retries = DEFAULT_RETRIES,
+    retrySafe = false,
+
+    /*
+     * Prevent internal control options
+     * from being passed into fetch().
+     */
+
+    ...fetchOptions
+  } = options;
+
+  const method = String(fetchOptions.method || "GET").toUpperCase();
+
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+
+  /*
+   * Circuit breaker check.
+   */
+
+  if (!canRequest(baseUrl)) {
+    return {
+      ok: false,
+      status: 503,
+
+      data: {
+        success: false,
+
+        message:
+          "Downstream service temporarily unavailable. Circuit breaker is open.",
+
+        code: "CIRCUIT_OPEN",
+      },
+
+      error: {
+        type: "CIRCUIT_OPEN",
+        message: "Circuit breaker is open for downstream service.",
+      },
+
+      attempts: 0,
+    };
+  }
+
+  /*
+   * Build headers.
+   */
+
+  const headers = {
+    ...customHeaders,
+  };
+
+  /*
+   * Add internal service token only
+   * when configured.
+   */
+
+  if (
+    process.env.INTERNAL_SERVICE_TOKEN &&
+    !headers["x-internal-service-token"]
+  ) {
+    headers["x-internal-service-token"] = process.env.INTERNAL_SERVICE_TOKEN;
+  }
+
+  /*
+   * Correlation / request ID propagation.
+   *
+   * If the caller already provides one,
+   * preserve it.
+   */
+
+  if (!headers["x-request-id"] && !headers["X-Request-Id"]) {
+    headers["x-request-id"] = `${process.pid}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+  }
+
+  /*
+   * Prepare body once.
+   */
+
+  let body = fetchOptions.body;
+
+  if (
+    body !== undefined &&
+    body !== null &&
+    typeof body !== "string" &&
+    !Buffer.isBuffer(body)
+  ) {
+    headers["content-type"] =
+      headers["content-type"] || headers["Content-Type"] || "application/json";
+
+    body = JSON.stringify(body);
+  }
+
+  const maxAttempts = Math.max(1, Number(retries) + 1);
+
+  let lastError = null;
+  let lastResult = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      console.log(
+        `[SERVICE CLIENT] ${method} ${url} attempt ${attempt + 1}/${maxAttempts}`,
+      );
+
+      const response = await fetchWithTimeout(
+        url,
+        {
+          ...fetchOptions,
+          method,
+          headers,
+          body,
+        },
+        timeoutMs,
+      );
+
+      const data = await parseResponse(response);
+
+      const result = {
+        ok: response.ok,
+        status: response.status,
+        data,
+        error: null,
+        attempts: attempt + 1,
+      };
+
+      lastResult = result;
+
+      /*
+       * Successful response.
+       */
+
+      if (response.ok) {
+        recordSuccess(baseUrl);
+
+        return result;
+      }
+
+      /*
+       * Retry only temporary failures.
+       */
+
+      const retry = shouldRetry({
+        method,
+        retrySafe,
+        status: response.status,
+      });
+
+      if (!retry || attempt === maxAttempts - 1) {
+        /*
+         * 4xx business errors should not
+         * trip the circuit breaker.
+         */
+
+        if (response.status >= 500) {
+          recordFailure(baseUrl);
+        }
+
+        return result;
+      }
+
+      const delay = getRetryDelay(attempt);
+
+      console.warn(
+        `[SERVICE CLIENT] retrying ${method} ${url} after ${delay}ms (status ${response.status})`,
+      );
+
+      await sleep(delay);
+    } catch (error) {
+      lastError = error;
+
+      const isTimeout = error.name === "AbortError";
+
+      console.error(`[SERVICE CLIENT] ${method} ${url} failed:`, error.message);
+
+      const retry = shouldRetry({
+        method,
+        retrySafe,
+        error,
+      });
+
+      if (!retry || attempt === maxAttempts - 1) {
+        recordFailure(baseUrl);
+
+        return {
+          ok: false,
+
+          status: isTimeout ? 504 : 503,
+
+          data: {
+            success: false,
+
+            message: isTimeout
+              ? "Downstream service request timed out."
+              : "Downstream service unavailable.",
+
+            code: isTimeout ? "DOWNSTREAM_TIMEOUT" : "DOWNSTREAM_UNAVAILABLE",
+          },
+
+          error: {
+            type: isTimeout ? "TIMEOUT" : "NETWORK_ERROR",
+
+            message: error.message,
+          },
+
+          attempts: attempt + 1,
+        };
+      }
+
+      const delay = getRetryDelay(attempt);
+
+      console.warn(
+        `[SERVICE CLIENT] retrying ${method} ${url} after network failure in ${delay}ms`,
+      );
+
+      await sleep(delay);
+    }
+  }
+
+  /*
+   * Defensive fallback.
+   */
+
+  recordFailure(baseUrl);
+
+  return (
+    lastResult || {
+      ok: false,
+
+      status: 503,
+
+      data: {
+        success: false,
+        message: "Downstream service unavailable.",
+      },
+
+      error: lastError
+        ? {
+            type: "NETWORK_ERROR",
+            message: lastError.message,
+          }
+        : null,
+
+      attempts: maxAttempts,
+    }
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Convenience methods
+|--------------------------------------------------------------------------
+*/
+
+async function getJson(baseUrl, path, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "GET",
+    headers,
+  });
+}
+
+async function postJson(baseUrl, path, body, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "POST",
+    body,
+    headers,
+  });
+}
+
+async function putJson(baseUrl, path, body, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "PUT",
+    body,
+    headers,
+  });
+}
+
+async function patchJson(baseUrl, path, body, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "PATCH",
+    body,
+    headers,
+  });
+}
+
+async function deleteJson(baseUrl, path, headers = {}, options = {}) {
+  return request(baseUrl, path, {
+    ...options,
+    method: "DELETE",
+    headers,
+  });
+}
+
+/*
+|--------------------------------------------------------------------------
+| Circuit breaker diagnostics
+|--------------------------------------------------------------------------
+*/
+
+function getCircuitStatus() {
+  const status = {};
+
+  for (const [key, value] of circuits.entries()) {
+    status[key] = {
+      state: value.state,
+      failures: value.failures,
+      openedAt: value.openedAt,
+    };
+  }
+
+  return status;
+}
+
+module.exports = {
+  request,
+
+  getJson,
+  postJson,
+  putJson,
+  patchJson,
+  deleteJson,
+
+  getCircuitStatus,
+};
+
+
+============================================================
+FILE: C:\Users\Administrator\Documents\My_projects\shopsphere-new\majorworking_services\microservices\services\product\src\validators\product.js
+============================================================
+
+const { z } = require("zod");
+const productSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  brand: z.string().min(1),
+  category: z.enum([
+    "ELECTRONICS",
+    "MOBILE",
+    "LAPTOP",
+    "AUDIO",
+    "TV",
+    "HOME_APPLIANCES",
+    "ACCESSORIES",
+    "OTHER",
+  ]),
+  price: z.number().nonnegative(),
+  stock: z.number().int().nonnegative().optional(),
+  imageUrl: z.string().optional(),
+});
+module.exports = { productSchema };
+

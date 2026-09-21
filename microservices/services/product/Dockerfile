@@ -2,12 +2,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json  ./
 
 COPY packages ./packages
 COPY services/product ./services/product
 
-RUN npm install
+RUN npm ci --legacy-peer-deps
 
 WORKDIR /app/services/product
 
