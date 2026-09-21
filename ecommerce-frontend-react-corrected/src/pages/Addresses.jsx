@@ -50,17 +50,91 @@ export default function Addresses() {
     setEdit(null);
   };
 
-  return (
-    <div className="container py-4">
-      <div className="row g-4">
-        <div className="col-lg-5">
-          <div className="card">
-            <div className="card-body">
-              <h5>{edit ? "Edit" : "Add"} Address</h5>
+  const startEdit = (a) => {
+    setEdit(a.id);
 
-              <form onSubmit={submit}>
+    setF({
+      type: a.type,
+      addressLine: a.addressLine,
+      city: a.city,
+      state: a.state,
+      pincode: a.pincode,
+    });
+  };
+
+  const cancelEdit = () => {
+    setEdit(null);
+    setF(empty);
+  };
+
+  return (
+    <div className="addresses-page">
+      <div className="container">
+        <header className="addresses-header">
+          <div>
+            <div className="addresses-eyebrow">
+              DELIVERY SETTINGS
+            </div>
+
+            <h1 className="addresses-title">
+              My Addresses
+            </h1>
+
+            <p className="addresses-subtitle">
+              Manage the addresses you use for ShopSphere
+              deliveries.
+            </p>
+          </div>
+
+          <div className="addresses-count">
+            {addresses.length}{" "}
+            {addresses.length === 1 ? "address" : "addresses"}
+          </div>
+        </header>
+
+        <div className="addresses-layout">
+          {/* ADDRESS FORM */}
+          <section className="address-form-card">
+            <div className="address-form-header">
+              <div className="address-form-icon">
+                <i
+                  className={
+                    edit
+                      ? "bi bi-pencil-square"
+                      : "bi bi-plus-lg"
+                  }
+                />
+              </div>
+
+              <div>
+                <div className="address-form-eyebrow">
+                  {edit ? "UPDATE ADDRESS" : "NEW ADDRESS"}
+                </div>
+
+                <h2>
+                  {edit ? "Edit Address" : "Add Address"}
+                </h2>
+              </div>
+            </div>
+
+            <p className="address-form-description">
+              {edit
+                ? "Update the details of your saved delivery address."
+                : "Add a delivery address for faster checkout."}
+            </p>
+
+            <form
+              onSubmit={submit}
+              className="address-form"
+            >
+              <div className="address-field">
+                <label htmlFor="address-type">
+                  Address Type
+                </label>
+
                 <select
-                  className="form-select mb-2"
+                  id="address-type"
+                  className="address-input"
                   value={f.type}
                   onChange={(e) =>
                     setF({
@@ -73,89 +147,244 @@ export default function Addresses() {
                   <option>Office</option>
                   <option>Other</option>
                 </select>
+              </div>
 
-                {Object.keys(f)
-                  .filter((k) => k !== "type")
-                  .map((k) => (
-                    <input
-                      key={k}
-                      className="form-control mb-2"
-                      placeholder={k}
-                      required
-                      value={f[k]}
-                      onChange={(e) =>
-                        setF({
-                          ...f,
-                          [k]: e.target.value,
-                        })
-                      }
-                    />
-                  ))}
+              <div className="address-field">
+                <label htmlFor="address-line">
+                  Address
+                </label>
 
-                <button className="btn btn-primary">
-                  {edit ? "Update" : "Add"}
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-lg-7">
-          <h2>My Addresses</h2>
-
-          {loading && <p>Loading...</p>}
-
-          {addresses.map((a) => (
-            <div className="card mb-2" key={a.id}>
-              <div className="card-body">
-                <h5>
-                  {a.type}
-                  {a.isDefault && (
-                    <span className="badge text-bg-success ms-2">Default</span>
-                  )}
-                </h5>
-
-                <p className="mb-2">
-                  {a.addressLine}
-                  <br />
-                  {a.city}, {a.state} - {a.pincode}
-                </p>
-
-                <button
-                  className="btn btn-sm btn-outline-primary me-2"
-                  onClick={() => {
-                    setEdit(a.id);
-
+                <input
+                  id="address-line"
+                  className="address-input"
+                  placeholder="123 Demo Street"
+                  required
+                  value={f.addressLine}
+                  onChange={(e) =>
                     setF({
-                      type: a.type,
-                      addressLine: a.addressLine,
-                      city: a.city,
-                      state: a.state,
-                      pincode: a.pincode,
-                    });
-                  }}
+                      ...f,
+                      addressLine: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div className="address-form-row">
+                <div className="address-field">
+                  <label htmlFor="address-city">
+                    City
+                  </label>
+
+                  <input
+                    id="address-city"
+                    className="address-input"
+                    placeholder="Bengaluru"
+                    required
+                    value={f.city}
+                    onChange={(e) =>
+                      setF({
+                        ...f,
+                        city: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="address-field">
+                  <label htmlFor="address-state">
+                    State
+                  </label>
+
+                  <input
+                    id="address-state"
+                    className="address-input"
+                    placeholder="Karnataka"
+                    required
+                    value={f.state}
+                    onChange={(e) =>
+                      setF({
+                        ...f,
+                        state: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="address-field">
+                <label htmlFor="address-pincode">
+                  Pincode
+                </label>
+
+                <input
+                  id="address-pincode"
+                  className="address-input"
+                  placeholder="560001"
+                  required
+                  value={f.pincode}
+                  onChange={(e) =>
+                    setF({
+                      ...f,
+                      pincode: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div className="address-form-actions">
+                <button
+                  type="submit"
+                  className="address-save-button"
                 >
-                  Edit
+                  <i
+                    className={
+                      edit
+                        ? "bi bi-check-lg"
+                        : "bi bi-plus-lg"
+                    }
+                  />
+
+                  {edit ? "Update Address" : "Add Address"}
                 </button>
 
-                {!a.isDefault && (
+                {edit && (
                   <button
-                    className="btn btn-sm btn-outline-success me-2"
-                    onClick={() => dispatch(setDefaultAddress(a.id))}
+                    type="button"
+                    className="address-cancel-button"
+                    onClick={cancelEdit}
                   >
-                    Make Default
+                    Cancel
                   </button>
                 )}
-
-                <button
-                  className="btn btn-sm btn-outline-danger"
-                  onClick={() => dispatch(deleteAddress(a.id))}
-                >
-                  Delete
-                </button>
               </div>
+            </form>
+          </section>
+
+          {/* SAVED ADDRESSES */}
+          <section className="saved-addresses">
+            <div className="saved-addresses-header">
+              <div>
+                <div className="saved-addresses-eyebrow">
+                  SAVED LOCATIONS
+                </div>
+
+                <h2>Saved Addresses</h2>
+              </div>
+
+              <span>{addresses.length}</span>
             </div>
-          ))}
+
+            {loading && (
+              <div className="addresses-loading">
+                <span
+                  className="spinner-border spinner-border-sm"
+                  role="status"
+                />
+
+                <span>Loading addresses...</span>
+              </div>
+            )}
+
+            {!loading && addresses.length === 0 && (
+              <div className="addresses-empty">
+                <div className="addresses-empty-icon">
+                  <i className="bi bi-geo-alt" />
+                </div>
+
+                <h3>No saved addresses</h3>
+
+                <p>
+                  Add your first delivery address using the
+                  form.
+                </p>
+              </div>
+            )}
+
+            {!loading && addresses.length > 0 && (
+              <div className="saved-address-list">
+                {addresses.map((a) => (
+                  <article
+                    className="saved-address-card"
+                    key={a.id || a._id}
+                  >
+                    <div className="saved-address-top">
+                      <div className="saved-address-identity">
+                        <div className="saved-address-icon">
+                          <i
+                            className={
+                              a.type === "Office"
+                                ? "bi bi-building"
+                                : a.type === "Other"
+                                  ? "bi bi-geo"
+                                  : "bi bi-house"
+                            }
+                          />
+                        </div>
+
+                        <div>
+                          <div className="saved-address-label">
+                            {a.type}
+                          </div>
+
+                          {a.isDefault && (
+                            <span className="saved-address-default">
+                              <i className="bi bi-check-circle-fill" />
+                              Default
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="saved-address-details">
+                      <p>{a.addressLine}</p>
+
+                      <p>
+                        {a.city}, {a.state} - {a.pincode}
+                      </p>
+                    </div>
+
+                    <div className="saved-address-actions">
+                      <button
+                        type="button"
+                        className="address-action-edit"
+                        onClick={() => startEdit(a)}
+                      >
+                        <i className="bi bi-pencil" />
+                        Edit
+                      </button>
+
+                      {!a.isDefault && (
+                        <button
+                          type="button"
+                          className="address-action-default"
+                          onClick={() =>
+                            dispatch(
+                              setDefaultAddress(a.id),
+                            )
+                          }
+                        >
+                          <i className="bi bi-check2" />
+                          Make Default
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className="address-action-delete"
+                        onClick={() =>
+                          dispatch(deleteAddress(a.id))
+                        }
+                      >
+                        <i className="bi bi-trash3" />
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </div>
