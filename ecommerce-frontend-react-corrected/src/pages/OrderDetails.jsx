@@ -1,110 +1,284 @@
 import { Link, useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
+
 import OrderTracking from "../components/orders/OrderTracking";
 
 export default function OrderDetails() {
   const { id } = useParams();
 
   const orders = useSelector((state) => state.orders.items);
-
   const addresses = useSelector((state) => state.addresses.items);
-
   const user = useSelector((state) => state.auth.user);
 
-  const o = orders.find((x) => String(x._id || x.id) === String(id));
+  const o = orders.find(
+    (x) => String(x._id || x.id) === String(id),
+  );
 
   const userId = user?._id || user?.id;
 
   if (!o || String(o.userId) !== String(userId)) {
     return (
-      <div className="container py-5">
-        <div className="alert alert-danger">Order not found.</div>
+      <div className="order-details-page">
+        <div className="container">
+          <div className="order-details-not-found">
+            <div className="order-details-not-found-icon">
+              <i className="bi bi-box-seam" />
+            </div>
+
+            <div className="order-details-eyebrow">
+              ORDER
+            </div>
+
+            <h1>Order not found</h1>
+
+            <p>
+              We couldn't find this order in your account.
+            </p>
+
+            <Link
+              to="/orders"
+              className="order-details-primary-button"
+            >
+              <i className="bi bi-arrow-left" />
+              Back to Orders
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
+  const orderId = o._id || o.id;
+
   const a = addresses.find(
-    (x) => String(x._id || x.id) === String(o.addressId),
+    (x) =>
+      String(x._id || x.id) === String(o.addressId),
   );
 
   return (
-    <div className="container py-4">
-      <Link to="/orders">← Orders</Link>
+    <div className="order-details-page">
+      <div className="container">
+        <header className="order-details-header">
+          <Link
+            to="/orders"
+            className="order-details-back"
+          >
+            <i className="bi bi-arrow-left" />
+            Orders
+          </Link>
 
-      <div className="row g-4 mt-1">
-        {/* ORDER DETAILS */}
-        <div className="col-lg-7">
-          <div className="card">
-            <div className="card-body">
-              <h3>Order #{o._id || o.id}</h3>
+          <div className="order-details-eyebrow">
+            ORDER DETAILS
+          </div>
+
+          <div className="order-details-title-row">
+            <div>
+              <h1>Order #{orderId}</h1>
 
               <p>
-                <strong>Status:</strong>{" "}
-                <span className="badge text-bg-primary">{o.status}</span>
+                Review your order, payment, delivery details,
+                and tracking status.
               </p>
+            </div>
 
-              <p>
-                <strong>Payment:</strong> {o.paymentStatus}
-              </p>
+            <span className="order-details-status">
+              <span className="order-details-status-dot" />
+              {o.status}
+            </span>
+          </div>
+        </header>
 
-              {/* ORDER ITEMS */}
-              <div className="mt-4">
-                <h5>Items</h5>
+        <div className="order-details-layout">
+          {/* MAIN ORDER CONTENT */}
+          <main className="order-details-main">
+            <section className="order-details-card">
+              <div className="order-details-card-header">
+                <div className="order-details-card-heading">
+                  <div className="order-details-card-icon">
+                    <i className="bi bi-receipt" />
+                  </div>
 
+                  <div>
+                    <div className="order-details-card-eyebrow">
+                      PURCHASE
+                    </div>
+
+                    <h2>Order Items</h2>
+                  </div>
+                </div>
+
+                <span className="order-details-item-count">
+                  {(o.items || []).length}{" "}
+                  {(o.items || []).length === 1
+                    ? "item"
+                    : "items"}
+                </span>
+              </div>
+
+              <div className="order-items-list">
                 {(o.items || []).map((item) => (
                   <div
-                    className="border rounded p-3 mb-2"
+                    className="order-detail-item"
                     key={item.id || item._id}
                   >
-                    <div className="d-flex justify-content-between">
-                      <div>
-                        <strong>{item.name}</strong>
-
-                        <div className="text-muted">Qty: {item.quantity}</div>
-
-                        <div className="small text-muted">
-                          Vendor Status: {item.vendorStatus}
-                        </div>
+                    <div className="order-detail-item-main">
+                      <div className="order-detail-item-icon">
+                        <i className="bi bi-box" />
                       </div>
 
-                      <strong>
-                        ₹
-                        {(
-                          Number(item.unitPrice || 0) *
-                          Number(item.quantity || 0)
-                        ).toLocaleString("en-IN")}
-                      </strong>
+                      <div className="order-detail-item-info">
+                        <h3>{item.name}</h3>
+
+                        <div className="order-detail-item-meta">
+                          <span>
+                            Qty: {item.quantity}
+                          </span>
+
+                          <span className="order-detail-item-separator">
+                            ·
+                          </span>
+
+                          <span>
+                            ₹
+                            {Number(
+                              item.unitPrice || 0,
+                            ).toLocaleString("en-IN")}{" "}
+                            each
+                          </span>
+                        </div>
+
+                        <div className="order-detail-vendor-status">
+                          Vendor Status:{" "}
+                          <strong>
+                            {item.vendorStatus}
+                          </strong>
+                        </div>
+                      </div>
                     </div>
+
+                    <strong className="order-detail-item-total">
+                      ₹
+                      {(
+                        Number(item.unitPrice || 0) *
+                        Number(item.quantity || 0)
+                      ).toLocaleString("en-IN")}
+                    </strong>
                   </div>
                 ))}
               </div>
 
-              {/* TOTAL */}
-              <div className="d-flex justify-content-between fs-5 mt-4">
-                <strong>Total</strong>
+              <div className="order-details-total">
+                <span>Total</span>
 
-                <strong>₹{o.totalAmount?.toLocaleString("en-IN")}</strong>
+                <strong>
+                  ₹
+                  {Number(
+                    o.totalAmount || 0,
+                  ).toLocaleString("en-IN")}
+                </strong>
+              </div>
+            </section>
+
+            {/* DELIVERY */}
+            {a && (
+              <section className="order-details-card">
+                <div className="order-details-card-header">
+                  <div className="order-details-card-heading">
+                    <div className="order-details-card-icon">
+                      <i className="bi bi-geo-alt" />
+                    </div>
+
+                    <div>
+                      <div className="order-details-card-eyebrow">
+                        DELIVERY
+                      </div>
+
+                      <h2>Delivery Address</h2>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="order-details-address">
+                  <div className="order-details-address-type">
+                    <i className="bi bi-house" />
+                    {a.type || "Delivery"}
+                  </div>
+
+                  <p>{a.addressLine}</p>
+
+                  <p>
+                    {a.city}, {a.state} - {a.pincode}
+                  </p>
+                </div>
+              </section>
+            )}
+
+            {/* PAYMENT */}
+            <section className="order-details-card">
+              <div className="order-details-card-header">
+                <div className="order-details-card-heading">
+                  <div className="order-details-card-icon">
+                    <i className="bi bi-credit-card" />
+                  </div>
+
+                  <div>
+                    <div className="order-details-card-eyebrow">
+                      PAYMENT
+                    </div>
+
+                    <h2>Payment Status</h2>
+                  </div>
+                </div>
               </div>
 
-              {/* ADDRESS */}
-              {a && (
-                <div className="alert alert-light mt-3">
-                  {a.addressLine}, {a.city}, {a.state} - {a.pincode}
+              <div className="order-payment-status">
+                <div className="order-payment-status-icon">
+                  <i className="bi bi-check2-circle" />
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
 
-        {/* TRACKING */}
-        <div className="col-lg-5">
-          <div className="card">
-            <div className="card-body">
-              <h5>Order Tracking</h5>
+                <div>
+                  <strong>{o.paymentStatus}</strong>
 
-              <OrderTracking order={o} />
-            </div>
-          </div>
+                  <span>
+                    Payment information for this order
+                  </span>
+                </div>
+              </div>
+            </section>
+          </main>
+
+          {/* TRACKING */}
+          <aside className="order-details-sidebar">
+            <section className="order-tracking-card">
+              <div className="order-details-card-header">
+                <div className="order-details-card-heading">
+                  <div className="order-details-card-icon">
+                    <i className="bi bi-truck" />
+                  </div>
+
+                  <div>
+                    <div className="order-details-card-eyebrow">
+                      DELIVERY
+                    </div>
+
+                    <h2>Order Tracking</h2>
+                  </div>
+                </div>
+              </div>
+
+              <div className="order-tracking-content">
+                <OrderTracking order={o} />
+              </div>
+            </section>
+
+            <Link
+              to="/orders"
+              className="order-details-orders-link"
+            >
+              <i className="bi bi-arrow-left" />
+              Back to all orders
+            </Link>
+          </aside>
         </div>
       </div>
     </div>

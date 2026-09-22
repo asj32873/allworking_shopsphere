@@ -7910,3 +7910,698 @@ a:hover {
     padding-left: 0;
   }
 }
+
+/* =========================================================
+   ORDER DETAILS PAGE
+========================================================= */
+
+.order-details-page {
+  min-height: calc(100vh - 72px);
+
+  padding: 26px 0 70px;
+
+  background:
+    radial-gradient(
+      700px 420px at 12% 8%,
+      rgba(99, 102, 241, 0.08),
+      transparent 65%
+    ),
+    linear-gradient(
+      180deg,
+      #f8f9fd 0%,
+      #f6f7fb 58%,
+      #ffffff 100%
+    );
+}
+
+/* ---------------------------------------------------------
+   HEADER
+--------------------------------------------------------- */
+
+.order-details-header {
+  padding: 4px 0 28px;
+}
+
+.order-details-back {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 7px;
+
+  margin-bottom: 24px;
+
+  color: var(--accent) !important;
+
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.order-details-back:hover {
+  text-decoration: underline;
+}
+
+.order-details-eyebrow {
+  margin-bottom: 6px;
+
+  color: var(--accent);
+
+  font-size: 0.65rem;
+  font-weight: 800;
+
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.order-details-title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  gap: 24px;
+}
+
+.order-details-title-row h1 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: clamp(1.9rem, 4vw, 2.7rem);
+  line-height: 1;
+
+  font-weight: 700;
+
+  letter-spacing: -0.045em;
+}
+
+.order-details-title-row p {
+  margin: 9px 0 0;
+
+  color: var(--text-muted);
+
+  font-size: 0.8rem;
+}
+
+.order-details-status {
+  display: inline-flex;
+  align-items: center;
+
+  flex-shrink: 0;
+
+  gap: 7px;
+
+  padding: 8px 12px;
+
+  border: 1px solid #a7f3d0;
+
+  border-radius: 999px;
+
+  background: #ecfdf5;
+
+  color: #047857;
+
+  font-size: 0.65rem;
+  font-weight: 800;
+
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.order-details-status-dot {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #10b981;
+
+  box-shadow:
+    0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+/* ---------------------------------------------------------
+   LAYOUT
+--------------------------------------------------------- */
+
+.order-details-layout {
+  display: grid;
+
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+
+  align-items: start;
+
+  gap: 22px;
+}
+
+.order-details-main {
+  display: flex;
+  flex-direction: column;
+
+  gap: 14px;
+
+  min-width: 0;
+}
+
+.order-details-sidebar {
+  position: sticky;
+  top: 92px;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 12px;
+
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------
+   CARDS
+--------------------------------------------------------- */
+
+.order-details-card,
+.order-tracking-card {
+  padding: 21px;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 18px;
+
+  background: rgba(255, 255, 255, 0.96);
+
+  box-shadow: var(--shadow-xs);
+}
+
+.order-details-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 15px;
+
+  margin-bottom: 18px;
+}
+
+.order-details-card-heading {
+  display: flex;
+  align-items: center;
+
+  gap: 11px;
+}
+
+.order-details-card-icon {
+  display: grid;
+  place-items: center;
+
+  width: 39px;
+  height: 39px;
+
+  border-radius: 11px;
+
+  background: var(--accent-soft);
+
+  color: var(--accent);
+
+  font-size: 0.9rem;
+}
+
+.order-details-card-eyebrow {
+  margin-bottom: 3px;
+
+  color: var(--accent);
+
+  font-size: 0.59rem;
+  font-weight: 800;
+
+  letter-spacing: 0.08em;
+}
+
+.order-details-card-heading h2 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: 1.05rem;
+  font-weight: 700;
+
+  letter-spacing: -0.02em;
+}
+
+.order-details-item-count {
+  color: var(--text-muted);
+
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------
+   ORDER ITEMS
+--------------------------------------------------------- */
+
+.order-items-list {
+  display: flex;
+  flex-direction: column;
+
+  gap: 8px;
+}
+
+.order-detail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 18px;
+
+  padding: 13px;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 13px;
+
+  background: #fafbfc;
+}
+
+.order-detail-item-main {
+  display: flex;
+  align-items: center;
+
+  gap: 11px;
+
+  min-width: 0;
+}
+
+.order-detail-item-icon {
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  width: 38px;
+  height: 38px;
+
+  border-radius: 10px;
+
+  background: #fff;
+
+  color: var(--text-secondary);
+
+  font-size: 0.85rem;
+}
+
+.order-detail-item-info {
+  min-width: 0;
+}
+
+.order-detail-item-info h3 {
+  margin: 0 0 4px;
+
+  overflow: hidden;
+
+  color: var(--text);
+
+  font-size: 0.78rem;
+  font-weight: 700;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-detail-item-meta {
+  display: flex;
+  align-items: center;
+
+  gap: 6px;
+
+  color: var(--text-muted);
+
+  font-size: 0.65rem;
+}
+
+.order-detail-item-separator {
+  color: #cbd5e1;
+}
+
+.order-detail-vendor-status {
+  margin-top: 5px;
+
+  color: var(--text-muted);
+
+  font-size: 0.61rem;
+}
+
+.order-detail-vendor-status strong {
+  color: var(--text-secondary);
+}
+
+.order-detail-item-total {
+  flex-shrink: 0;
+
+  color: var(--text);
+
+  font-family: "IBM Plex Mono", monospace;
+
+  font-size: 0.78rem;
+}
+
+/* ---------------------------------------------------------
+   TOTAL
+--------------------------------------------------------- */
+
+.order-details-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-top: 16px;
+  padding-top: 17px;
+
+  border-top: 1px solid var(--border-light);
+
+  color: var(--text-secondary);
+
+  font-size: 0.82rem;
+}
+
+.order-details-total strong {
+  color: var(--text);
+
+  font-family: "IBM Plex Mono", monospace;
+
+  font-size: 1.15rem;
+
+  letter-spacing: -0.03em;
+}
+
+/* ---------------------------------------------------------
+   ADDRESS
+--------------------------------------------------------- */
+
+.order-details-address {
+  padding: 14px;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 13px;
+
+  background: #fafbfc;
+}
+
+.order-details-address-type {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 6px;
+
+  margin-bottom: 10px;
+
+  color: var(--accent);
+
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.order-details-address p {
+  margin: 0;
+
+  color: var(--text-secondary);
+
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.order-details-address p + p {
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------
+   PAYMENT
+--------------------------------------------------------- */
+
+.order-payment-status {
+  display: flex;
+  align-items: center;
+
+  gap: 11px;
+
+  padding: 13px;
+
+  border: 1px solid #a7f3d0;
+
+  border-radius: 13px;
+
+  background: #f0fdf4;
+}
+
+.order-payment-status-icon {
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  width: 37px;
+  height: 37px;
+
+  border-radius: 10px;
+
+  background: #dcfce7;
+
+  color: #16a34a;
+
+  font-size: 1rem;
+}
+
+.order-payment-status > div:last-child {
+  display: flex;
+  flex-direction: column;
+
+  gap: 3px;
+}
+
+.order-payment-status strong {
+  color: #166534;
+
+  font-size: 0.76rem;
+}
+
+.order-payment-status span {
+  color: #4b7c5c;
+
+  font-size: 0.63rem;
+}
+
+/* ---------------------------------------------------------
+   TRACKING
+--------------------------------------------------------- */
+
+.order-tracking-card {
+  overflow: hidden;
+}
+
+.order-tracking-content {
+  padding-top: 2px;
+}
+
+/*
+ * Keeps the existing OrderTracking component's
+ * functionality intact while giving it space inside
+ * the redesigned card.
+ */
+.order-tracking-content .card {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* ---------------------------------------------------------
+   BACK TO ORDERS
+--------------------------------------------------------- */
+
+.order-details-orders-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 7px;
+
+  min-height: 42px;
+
+  border: 1px solid var(--border);
+
+  border-radius: 11px;
+
+  background: rgba(255, 255, 255, 0.8);
+
+  color: var(--text-secondary) !important;
+
+  font-size: 0.72rem;
+  font-weight: 700;
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.order-details-orders-link:hover {
+  border-color: #c7d2fe;
+
+  background: var(--accent-soft);
+
+  color: var(--accent) !important;
+}
+
+/* ---------------------------------------------------------
+   NOT FOUND
+--------------------------------------------------------- */
+
+.order-details-not-found {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+
+  max-width: 500px;
+
+  margin: 100px auto 0;
+
+  padding: 50px 30px;
+
+  text-align: center;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 22px;
+
+  background: rgba(255, 255, 255, 0.95);
+
+  box-shadow: var(--shadow-sm);
+}
+
+.order-details-not-found-icon {
+  display: grid;
+  place-items: center;
+
+  width: 68px;
+  height: 68px;
+
+  margin-bottom: 18px;
+
+  border-radius: 19px;
+
+  background: var(--accent-soft);
+
+  color: var(--accent);
+
+  font-size: 1.5rem;
+}
+
+.order-details-not-found h1 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: 1.7rem;
+
+  letter-spacing: -0.035em;
+}
+
+.order-details-not-found p {
+  margin: 8px 0 20px;
+
+  color: var(--text-muted);
+
+  font-size: 0.78rem;
+}
+
+.order-details-primary-button {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 7px;
+
+  min-height: 42px;
+
+  padding: 9px 15px;
+
+  border-radius: 10px;
+
+  background: var(--accent);
+
+  color: #fff !important;
+
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------
+   RESPONSIVE
+--------------------------------------------------------- */
+
+@media (max-width: 991.98px) {
+  .order-details-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .order-details-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .order-details-page {
+    padding-top: 18px;
+  }
+
+  .order-details-title-row {
+    align-items: flex-start;
+
+    flex-direction: column;
+
+    gap: 14px;
+  }
+
+  .order-details-card,
+  .order-tracking-card {
+    padding: 17px;
+  }
+
+  .order-detail-item {
+    align-items: flex-start;
+
+    flex-direction: column;
+  }
+
+  .order-detail-item-total {
+    align-self: flex-end;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .order-details-title-row h1 {
+    font-size: 1.85rem;
+  }
+
+  .order-details-title-row p {
+    font-size: 0.73rem;
+  }
+
+  .order-details-header {
+    padding-bottom: 22px;
+  }
+
+  .order-detail-item-main {
+    width: 100%;
+  }
+
+  .order-detail-item-info h3 {
+    max-width: 210px;
+  }
+
+  .order-details-not-found {
+    margin-top: 60px;
+
+    padding: 40px 22px;
+  }
+}
