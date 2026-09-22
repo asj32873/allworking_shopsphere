@@ -11320,3 +11320,251 @@ a:hover {
   }
 }
 
+/* =========================================================
+   VENDOR PROFILE
+   ========================================================= */
+
+.vendor-profile-page {
+  padding: 8px 0 40px;
+}
+
+.vendor-profile-header {
+  margin-bottom: 28px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.vendor-profile-eyebrow {
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.vendor-profile-title {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.vendor-profile-subtitle {
+  max-width: 620px;
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.vendor-profile-status {
+  flex-shrink: 0;
+  padding: 9px 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.06);
+  color: #15803d;
+  font-size: 0.74rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vendor-profile-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+.vendor-profile-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.75fr) minmax(0, 1.7fr);
+  gap: 18px;
+}
+
+.vendor-profile-store-card,
+.vendor-profile-details-card {
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-xs);
+}
+
+.vendor-profile-store-card {
+  padding: 28px;
+}
+
+.vendor-profile-store-icon {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 23px;
+}
+
+.vendor-profile-store-eyebrow,
+.vendor-profile-card-eyebrow {
+  margin-bottom: 5px;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.vendor-profile-store-name {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+}
+
+.vendor-profile-store-description {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.vendor-profile-store-divider {
+  height: 1px;
+  margin: 25px 0 20px;
+  background: var(--border-light);
+}
+
+.vendor-profile-store-status {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.vendor-profile-store-status-label {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.vendor-profile-store-status-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #15803d;
+  font-size: 0.8rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.vendor-profile-details-card {
+  overflow: hidden;
+}
+
+.vendor-profile-card-header {
+  padding: 22px 24px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.vendor-profile-card-icon {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 17px;
+}
+
+.vendor-profile-card-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.vendor-profile-details {
+  padding: 8px 24px;
+}
+
+.vendor-profile-detail {
+  min-height: 78px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.vendor-profile-detail:last-child {
+  border-bottom: none;
+}
+
+.vendor-profile-detail-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: #f7f7fa;
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+.vendor-profile-detail-label {
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.vendor-profile-detail-value {
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+@media (max-width: 800px) {
+  .vendor-profile-header {
+    flex-direction: column;
+  }
+
+  .vendor-profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .vendor-profile-store-card {
+    padding: 22px;
+  }
+}
+
+@media (max-width: 520px) {
+  .vendor-profile-card-header,
+  .vendor-profile-details {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .vendor-profile-detail {
+    min-height: 70px;
+  }
+}
