@@ -1,11 +1,13 @@
 import RoleSidebar from "./RoleSidebar";
+
 export default function PortalLayout({ type, children }) {
   return (
-    <div className="container-fluid">
-      <div className="row">
-        <RoleSidebar type={type} />
-        <main className="col-md-9 col-lg-10 portal-content">{children}</main>
-      </div>
+    <div className={`portal-layout portal-layout-${type}`}>
+      <RoleSidebar type={type} />
+
+      <main className="portal-content">
+        <div className="portal-content-inner">{children}</div>
+      </main>
     </div>
   );
 }
