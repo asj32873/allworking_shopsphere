@@ -8605,3 +8605,255 @@ a:hover {
     padding: 40px 22px;
   }
 }
+
+/* =========================================================
+   ORDER TRACKING TIMELINE
+========================================================= */
+
+.order-timeline {
+  position: relative;
+
+  padding: 3px 2px 4px;
+}
+
+.order-timeline-item {
+  position: relative;
+
+  display: flex;
+
+  gap: 13px;
+
+  min-height: 76px;
+
+  padding-bottom: 22px;
+}
+
+.order-timeline-item:last-child {
+  min-height: auto;
+
+  padding-bottom: 0;
+}
+
+/* ---------------------------------------------------------
+   CONNECTING LINE
+--------------------------------------------------------- */
+
+.order-timeline-line {
+  position: absolute;
+
+  top: 29px;
+  left: 14px;
+
+  width: 1px;
+
+  height: calc(100% - 18px);
+
+  background: #dbe1ef;
+}
+
+/* ---------------------------------------------------------
+   MARKER
+--------------------------------------------------------- */
+
+.order-timeline-marker {
+  position: relative;
+  z-index: 2;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  width: 29px;
+  height: 29px;
+
+  border: 1px solid #c7d2fe;
+
+  border-radius: 50%;
+
+  background: #eef2ff;
+
+  color: var(--accent);
+
+  font-size: 0.65rem;
+
+  box-shadow:
+    0 0 0 4px #fff;
+}
+
+.order-timeline-item-current .order-timeline-marker {
+  border-color: #818cf8;
+
+  background: var(--accent);
+
+  color: #fff;
+
+  box-shadow:
+    0 0 0 4px #eef2ff,
+    0 5px 15px rgba(99, 102, 241, 0.2);
+}
+
+/* ---------------------------------------------------------
+   CONTENT
+--------------------------------------------------------- */
+
+.order-timeline-content {
+  flex: 1;
+
+  min-width: 0;
+
+  padding-top: 2px;
+}
+
+.order-timeline-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 8px;
+}
+
+.order-timeline-status {
+  color: var(--text);
+
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.order-timeline-item:not(
+    .order-timeline-item-current
+  )
+  .order-timeline-status {
+  color: var(--text-secondary);
+}
+
+.order-timeline-current {
+  display: inline-flex;
+  align-items: center;
+
+  flex-shrink: 0;
+
+  padding: 3px 7px;
+
+  border: 1px solid #a7f3d0;
+
+  border-radius: 999px;
+
+  background: #ecfdf5;
+
+  color: #047857;
+
+  font-size: 0.55rem;
+  font-weight: 800;
+
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.order-timeline-date {
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
+
+  margin-top: 5px;
+
+  color: var(--text-muted);
+
+  font-size: 0.62rem;
+}
+
+.order-timeline-date i {
+  font-size: 0.58rem;
+}
+
+.order-timeline-remarks {
+  margin-top: 7px;
+
+  padding: 8px 10px;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 8px;
+
+  background: #fafbfc;
+
+  color: var(--text-secondary);
+
+  font-size: 0.65rem;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------
+   EMPTY STATE
+--------------------------------------------------------- */
+
+.order-timeline-empty {
+  display: flex;
+  align-items: flex-start;
+
+  gap: 11px;
+
+  padding: 14px;
+
+  border: 1px dashed #cbd5e1;
+
+  border-radius: 12px;
+
+  background: #f8fafc;
+}
+
+.order-timeline-empty-icon {
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  width: 34px;
+  height: 34px;
+
+  border-radius: 9px;
+
+  background: var(--accent-soft);
+
+  color: var(--accent);
+
+  font-size: 0.8rem;
+}
+
+.order-timeline-empty strong {
+  display: block;
+
+  color: var(--text-secondary);
+
+  font-size: 0.72rem;
+}
+
+.order-timeline-empty p {
+  margin: 4px 0 0;
+
+  color: var(--text-muted);
+
+  font-size: 0.63rem;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------
+   MOBILE
+--------------------------------------------------------- */
+
+@media (max-width: 575.98px) {
+  .order-timeline-top {
+    align-items: flex-start;
+
+    flex-direction: column;
+
+    gap: 5px;
+  }
+
+  .order-timeline-current {
+    align-self: flex-start;
+  }
+}
+
+
