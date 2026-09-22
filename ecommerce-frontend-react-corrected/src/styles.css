@@ -8856,4 +8856,858 @@ a:hover {
   }
 }
 
+/* =========================================================
+   MY REVIEWS PAGE
+========================================================= */
 
+.reviews-page {
+  min-height: calc(100vh - 72px);
+
+  padding: 30px 0 70px;
+
+  background:
+    radial-gradient(
+      700px 420px at 12% 8%,
+      rgba(99, 102, 241, 0.08),
+      transparent 65%
+    ),
+    linear-gradient(
+      180deg,
+      #f8f9fd 0%,
+      #f6f7fb 58%,
+      #ffffff 100%
+    );
+}
+
+/* ---------------------------------------------------------
+   HEADER
+--------------------------------------------------------- */
+
+.reviews-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  gap: 24px;
+
+  padding: 20px 0 30px;
+}
+
+.reviews-eyebrow {
+  margin-bottom: 7px;
+
+  color: var(--accent);
+
+  font-size: 0.68rem;
+  font-weight: 800;
+
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.reviews-title {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: clamp(2.1rem, 4vw, 3rem);
+  line-height: 1;
+
+  font-weight: 700;
+
+  letter-spacing: -0.045em;
+}
+
+.reviews-subtitle {
+  margin: 10px 0 0;
+
+  color: var(--text-muted);
+
+  font-size: 0.88rem;
+}
+
+.reviews-count {
+  display: inline-flex;
+  align-items: center;
+
+  min-height: 36px;
+
+  padding: 7px 13px;
+
+  border: 1px solid var(--border);
+
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.75);
+
+  color: var(--text-secondary);
+
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------
+   LIST
+--------------------------------------------------------- */
+
+.reviews-list {
+  max-width: 900px;
+}
+
+.reviews-list-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  margin-bottom: 12px;
+}
+
+.reviews-list-eyebrow {
+  margin-bottom: 4px;
+
+  color: var(--accent);
+
+  font-size: 0.62rem;
+  font-weight: 800;
+
+  letter-spacing: 0.09em;
+}
+
+.reviews-list-header h2 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: 1.35rem;
+  font-weight: 700;
+
+  letter-spacing: -0.025em;
+}
+
+.reviews-list-header > span {
+  color: var(--text-muted);
+
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------
+   REVIEW CARD
+--------------------------------------------------------- */
+
+.my-review-card {
+  padding: 19px 20px;
+
+  margin-bottom: 12px;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 17px;
+
+  background: rgba(255, 255, 255, 0.95);
+
+  box-shadow: var(--shadow-xs);
+
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+
+.my-review-card:hover {
+  transform: translateY(-2px);
+
+  border-color: #d9def0;
+
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------------------------------------------------------
+   PRODUCT
+--------------------------------------------------------- */
+
+.my-review-product {
+  display: flex;
+  align-items: center;
+
+  gap: 13px;
+}
+
+.my-review-product-image {
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  width: 58px;
+  height: 58px;
+
+  overflow: hidden;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 13px;
+
+  background: #f8fafc;
+
+  color: var(--text-muted);
+
+  font-size: 1rem;
+}
+
+.my-review-product-image img {
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+}
+
+.my-review-product-info {
+  min-width: 0;
+}
+
+.my-review-label {
+  margin-bottom: 4px;
+
+  color: var(--accent);
+
+  font-size: 0.59rem;
+  font-weight: 800;
+
+  letter-spacing: 0.08em;
+}
+
+.my-review-product-name {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 6px;
+
+  max-width: 100%;
+
+  color: var(--text) !important;
+
+  font-size: 0.9rem;
+  font-weight: 700;
+
+  letter-spacing: -0.01em;
+}
+
+.my-review-product-name:hover {
+  color: var(--accent) !important;
+}
+
+.my-review-product-name i {
+  color: var(--accent);
+
+  font-size: 0.65rem;
+}
+
+.my-review-brand {
+  display: block;
+
+  margin-top: 3px;
+
+  color: var(--text-muted);
+
+  font-size: 0.65rem;
+}
+
+/* ---------------------------------------------------------
+   DIVIDER
+--------------------------------------------------------- */
+
+.my-review-divider {
+  height: 1px;
+
+  margin: 16px 0;
+
+  background: var(--border-light);
+}
+
+/* ---------------------------------------------------------
+   REVIEW CONTENT
+--------------------------------------------------------- */
+
+.my-review-rating {
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+
+  margin-bottom: 9px;
+}
+
+.my-review-stars {
+  color: #f59e0b;
+
+  font-size: 0.86rem;
+
+  letter-spacing: 1px;
+}
+
+.my-review-rating > span {
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.my-review-text {
+  margin: 0;
+
+  color: var(--text-secondary);
+
+  font-size: 0.78rem;
+  line-height: 1.65;
+
+  white-space: pre-wrap;
+}
+
+.my-review-date {
+  display: flex;
+  align-items: center;
+
+  gap: 5px;
+
+  margin-top: 11px;
+
+  color: var(--text-muted);
+
+  font-size: 0.61rem;
+}
+
+.my-review-date i {
+  font-size: 0.58rem;
+}
+
+/* ---------------------------------------------------------
+   EMPTY STATE
+--------------------------------------------------------- */
+
+.reviews-empty {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+
+  max-width: 520px;
+
+  margin: 70px auto 0;
+
+  padding: 50px 30px;
+
+  text-align: center;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 22px;
+
+  background: rgba(255, 255, 255, 0.92);
+
+  box-shadow: var(--shadow-sm);
+}
+
+.reviews-empty-icon {
+  display: grid;
+  place-items: center;
+
+  width: 72px;
+  height: 72px;
+
+  margin-bottom: 19px;
+
+  border-radius: 20px;
+
+  background: #fff7ed;
+
+  color: #f59e0b;
+
+  font-size: 1.7rem;
+}
+
+.reviews-empty-eyebrow {
+  margin-bottom: 6px;
+
+  color: var(--accent);
+
+  font-size: 0.65rem;
+  font-weight: 800;
+
+  letter-spacing: 0.1em;
+}
+
+.reviews-empty h2 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: 1.7rem;
+  font-weight: 700;
+
+  letter-spacing: -0.035em;
+}
+
+.reviews-empty p {
+  max-width: 340px;
+
+  margin: 9px auto 21px;
+
+  color: var(--text-muted);
+
+  font-size: 0.77rem;
+  line-height: 1.6;
+}
+
+.reviews-primary-button {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 8px;
+
+  min-height: 43px;
+
+  padding: 9px 17px;
+
+  border-radius: 10px;
+
+  background: var(--accent);
+
+  color: #fff !important;
+
+  font-size: 0.74rem;
+  font-weight: 700;
+
+  box-shadow:
+    0 9px 24px rgba(99, 102, 241, 0.2);
+
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.reviews-primary-button:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 13px 28px rgba(99, 102, 241, 0.25);
+}
+
+/* ---------------------------------------------------------
+   RESPONSIVE
+--------------------------------------------------------- */
+
+@media (max-width: 767.98px) {
+  .reviews-page {
+    padding-top: 18px;
+  }
+
+  .reviews-header {
+    align-items: flex-start;
+
+    flex-direction: column;
+
+    gap: 14px;
+
+    padding-bottom: 22px;
+  }
+
+  .my-review-card {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .reviews-title {
+    font-size: 2rem;
+  }
+
+  .reviews-subtitle {
+    font-size: 0.78rem;
+  }
+
+  .reviews-empty {
+    margin-top: 40px;
+
+    padding: 40px 22px;
+  }
+
+  .my-review-product-name {
+    font-size: 0.82rem;
+  }
+}
+
+/* =========================================================
+   PAYMENT SUCCESS
+========================================================= */
+
+.payment-result-page {
+  min-height: calc(100vh - 72px);
+
+  display: flex;
+  align-items: center;
+
+  padding: 60px 0 80px;
+
+  background:
+    radial-gradient(
+      550px 420px at 50% 20%,
+      rgba(99, 102, 241, 0.09),
+      transparent 68%
+    ),
+    linear-gradient(
+      180deg,
+      #f8f9fd 0%,
+      #f6f7fb 65%,
+      #ffffff 100%
+    );
+}
+
+.payment-success-card {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+
+  max-width: 570px;
+
+  margin: 0 auto;
+
+  padding: 55px 40px;
+
+  text-align: center;
+
+  border: 1px solid var(--border-light);
+
+  border-radius: 24px;
+
+  background: rgba(255, 255, 255, 0.96);
+
+  box-shadow:
+    0 24px 65px rgba(15, 23, 42, 0.09);
+}
+
+/* ---------------------------------------------------------
+   SUCCESS ICON
+--------------------------------------------------------- */
+
+.payment-success-icon {
+  display: grid;
+  place-items: center;
+
+  width: 76px;
+  height: 76px;
+
+  margin-bottom: 22px;
+
+  border: 1px solid #a7f3d0;
+
+  border-radius: 50%;
+
+  background: #ecfdf5;
+
+  color: #10b981;
+
+  font-size: 1.8rem;
+
+  box-shadow:
+    0 0 0 9px rgba(16, 185, 129, 0.07);
+}
+
+/* ---------------------------------------------------------
+   TEXT
+--------------------------------------------------------- */
+
+.payment-success-eyebrow {
+  margin-bottom: 7px;
+
+  color: #059669;
+
+  font-size: 0.65rem;
+  font-weight: 800;
+
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.payment-success-card h1 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Space Grotesk", "Inter", sans-serif;
+
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  line-height: 1;
+
+  font-weight: 700;
+
+  letter-spacing: -0.045em;
+}
+
+.payment-success-message {
+  max-width: 400px;
+
+  margin: 13px auto 18px;
+
+  color: var(--text-muted);
+
+  font-size: 0.82rem;
+  line-height: 1.65;
+}
+
+/* ---------------------------------------------------------
+   STATUS
+--------------------------------------------------------- */
+
+.payment-success-status {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 7px;
+
+  margin-bottom: 25px;
+
+  padding: 7px 11px;
+
+  border: 1px solid #a7f3d0;
+
+  border-radius: 999px;
+
+  background: #f0fdf4;
+
+  color: #047857;
+
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.payment-success-status-dot {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #10b981;
+
+  box-shadow:
+    0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+/* ---------------------------------------------------------
+   ACTIONS
+--------------------------------------------------------- */
+
+.payment-success-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+
+  width: 100%;
+  max-width: 260px;
+
+  min-height: 45px;
+
+  padding: 10px 18px;
+
+  border-radius: 11px;
+
+  background: var(--accent);
+
+  color: #fff !important;
+
+  font-size: 0.76rem;
+  font-weight: 700;
+
+  box-shadow:
+    0 10px 25px rgba(99, 102, 241, 0.2);
+
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.payment-success-button:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 14px 30px rgba(99, 102, 241, 0.25);
+}
+
+.payment-success-secondary {
+  margin-top: 13px;
+
+  color: var(--text-muted) !important;
+
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.payment-success-secondary:hover {
+  color: var(--accent) !important;
+}
+
+/* ---------------------------------------------------------
+   RESPONSIVE
+--------------------------------------------------------- */
+
+@media (max-width: 575.98px) {
+  .payment-result-page {
+    padding: 40px 0 60px;
+  }
+
+  .payment-success-card {
+    padding: 42px 22px;
+
+    border-radius: 20px;
+  }
+
+  .payment-success-card h1 {
+    font-size: 2rem;
+  }
+
+  .payment-success-message {
+    font-size: 0.76rem;
+  }
+}
+
+
+
+/* =========================================================
+   PAYMENT CANCEL
+   ========================================================= */
+
+.payment-cancel-card {
+  width: min(100%, 620px);
+  margin: 0 auto;
+  padding: 56px 48px;
+  text-align: center;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border-light, #e8e8e8);
+  border-radius: 24px;
+  box-shadow: var(--shadow-sm, 0 10px 30px rgba(0, 0, 0, 0.06));
+}
+
+.payment-cancel-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  font-size: 30px;
+}
+
+.payment-cancel-eyebrow {
+  margin-bottom: 10px;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.payment-cancel-card h1 {
+  margin: 0;
+  color: var(--text, #111827);
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.payment-cancel-message {
+  max-width: 440px;
+  margin: 16px auto 0;
+  color: var(--text-secondary, #6b7280);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.payment-cancel-status {
+  width: fit-content;
+  margin: 24px auto 30px;
+  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border-light, #e8e8e8);
+  border-radius: 999px;
+  background: #fafafa;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.payment-cancel-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d97706;
+}
+
+.payment-cancel-button {
+  min-height: 48px;
+  padding: 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: var(--transition, 0.2s ease);
+}
+
+.payment-cancel-button:hover {
+  color: #ffffff;
+  transform: translateY(-1px);
+  filter: brightness(0.96);
+}
+
+.payment-cancel-secondary {
+  display: block;
+  width: fit-content;
+  margin: 18px auto 0;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.payment-cancel-secondary:hover {
+  color: var(--text, #111827);
+}
+
+@media (max-width: 640px) {
+  .payment-cancel-card {
+    padding: 42px 24px;
+    border-radius: 20px;
+  }
+
+  .payment-cancel-icon {
+    width: 64px;
+    height: 64px;
+    font-size: 26px;
+  }
+
+  .payment-cancel-card h1 {
+    font-size: 2rem;
+  }
+
+  .payment-cancel-button {
+    width: 100%;
+  }
+}

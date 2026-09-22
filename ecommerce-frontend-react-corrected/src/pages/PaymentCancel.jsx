@@ -2,26 +2,34 @@ import { Link } from "react-router-dom";
 
 export default function PaymentCancel() {
   return (
-    <div className="container py-5">
-      <div className="row justify-content-center">
-        <div className="col-md-7">
-          <div className="card shadow-sm text-center">
-            <div className="card-body p-5">
-              <div className="display-4 text-warning mb-3">
-                <i className="bi bi-x-circle-fill" />
-              </div>
-
-              <h2>Payment Cancelled</h2>
-
-              <p className="text-muted">
-                No order was created. Your cart is still available.
-              </p>
-
-              <Link to="/cart" className="btn btn-primary">
-                Return to Cart
-              </Link>
-            </div>
+    <div className="payment-result-page">
+      <div className="container">
+        <div className="payment-cancel-card">
+          <div className="payment-cancel-icon">
+            <i className="bi bi-x-lg" />
           </div>
+
+          <div className="payment-cancel-eyebrow">PAYMENT CANCELLED</div>
+
+          <h1>Payment Cancelled</h1>
+
+          <p className="payment-cancel-message">
+            No order was created. Your cart is still available.
+          </p>
+
+          <div className="payment-cancel-status">
+            <span className="payment-cancel-status-dot" />
+            <span>No payment was completed</span>
+          </div>
+
+          <Link to="/cart" className="payment-cancel-button">
+            Return to Cart
+            <i className="bi bi-arrow-right" />
+          </Link>
+
+          <Link to="/products" className="payment-cancel-secondary">
+            Continue Shopping
+          </Link>
         </div>
       </div>
     </div>
