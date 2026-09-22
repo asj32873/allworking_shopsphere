@@ -14054,3 +14054,200 @@ a:hover {
     gap: 0.15rem;
   }
 }
+
+
+/* =========================================================
+   VENDOR REGISTRATION
+   ========================================================= */
+
+.auth-shell-vendor {
+  max-width: 1080px;
+}
+
+.vendor-form-section {
+  display: grid;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.vendor-form-section:last-of-type {
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+
+.vendor-form-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.vendor-form-section-title i {
+  color: var(--accent);
+}
+
+.auth-textarea-wrap {
+  display: block;
+}
+
+.auth-textarea-wrap > i {
+  top: 0.9rem;
+  transform: none;
+}
+
+.auth-input-wrap textarea {
+  display: block;
+  width: 100%;
+  min-height: 92px;
+  padding: 0.75rem 0.8rem 0.75rem 2.5rem;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  outline: none;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.auth-input-wrap textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.auth-input-wrap textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.vendor-approval-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-top: 2.25rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.vendor-approval-note i {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+/* Vendor application success */
+
+.vendor-success-card {
+  width: min(500px, 100%);
+  padding: 3rem;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface, #fff);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.vendor-success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1.5rem;
+  border-radius: 18px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 1.6rem;
+}
+
+.vendor-success-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.vendor-success-message {
+  margin: 0.75rem auto 0;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.vendor-success-status {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 1.5rem 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-light);
+  border-radius: 11px;
+  background: var(--background, #f8fafc);
+  text-align: left;
+}
+
+.vendor-success-status-dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #d97706;
+}
+
+.vendor-success-status div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.vendor-success-status-label {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.vendor-success-status strong {
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.vendor-success-card .auth-primary-button {
+  margin-top: 0;
+}
+
+/* Responsive */
+
+@media (max-width: 800px) {
+  .auth-shell-vendor {
+    max-width: 540px;
+  }
+
+  .vendor-approval-note {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .vendor-success-card {
+    padding: 2rem 1.5rem;
+    border-radius: 16px;
+  }
+
+  .vendor-success-title {
+    font-size: 1.6rem;
+  }
+}
