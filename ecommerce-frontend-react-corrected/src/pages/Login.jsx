@@ -61,82 +61,172 @@ export default function Login() {
   };
 
   return (
-    <div className="container py-5">
-      <div className="row justify-content-center">
-        <div className="col-md-6 col-lg-4">
-          <div className="card shadow-sm">
-            <div className="card-body p-4">
-              <h2 className="mb-4">Login</h2>
+    <div className="auth-page">
+      <div className="auth-shell">
+        <div className="auth-brand-panel">
+          <div className="auth-brand-mark">
+            <i className="bi bi-bag-heart-fill" />
+          </div>
 
-              {error && <div className="alert alert-danger">{error}</div>}
+          <div className="auth-brand-eyebrow">WELCOME BACK</div>
 
-              <form onSubmit={submit}>
-                <label>Email</label>
+          <h1 className="auth-brand-title">
+            Your marketplace,
+            <br />
+            all in one place.
+          </h1>
+
+          <p className="auth-brand-description">
+            Sign in to manage your shopping, orders, reviews, and account.
+          </p>
+
+          <div className="auth-brand-points">
+            <div className="auth-brand-point">
+              <span className="auth-brand-point-icon">
+                <i className="bi bi-shield-check" />
+              </span>
+              <span>Secure account access</span>
+            </div>
+
+            <div className="auth-brand-point">
+              <span className="auth-brand-point-icon">
+                <i className="bi bi-box-seam" />
+              </span>
+              <span>Track your orders</span>
+            </div>
+
+            <div className="auth-brand-point">
+              <span className="auth-brand-point-icon">
+                <i className="bi bi-shop" />
+              </span>
+              <span>Built for shoppers and vendors</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="auth-form-panel">
+          <div className="auth-form-header">
+            <div className="auth-form-eyebrow">ACCOUNT ACCESS</div>
+
+            <h2 className="auth-form-title">Sign in</h2>
+
+            <p className="auth-form-subtitle">
+              Enter your credentials to continue to ShopSphere.
+            </p>
+          </div>
+
+          {error && (
+            <div className="auth-error">
+              <i className="bi bi-exclamation-circle-fill" />
+
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={submit} className="auth-form">
+            <div className="auth-field">
+              <label htmlFor="login-email">Email address</label>
+
+              <div className="auth-input-wrap">
+                <i className="bi bi-envelope" />
 
                 <input
-                  className="form-control mb-3"
+                  id="login-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
                   required
                 />
-
-                <label>Password</label>
-
-                <input
-                  type="password"
-                  className="form-control mb-3"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-
-                <button
-                  type="submit"
-                  className="btn btn-primary w-100"
-                  disabled={busy || auth0Loading}
-                >
-                  {busy ? "Logging in..." : "Login"}
-                </button>
-              </form>
-
-              <div className="d-flex align-items-center my-4">
-                <hr className="flex-grow-1" />
-
-                <span className="px-3 text-muted">OR</span>
-
-                <hr className="flex-grow-1" />
-              </div>
-
-              <button
-                type="button"
-                className="btn btn-outline-dark w-100"
-                onClick={loginWithAuth0}
-                disabled={auth0Loading || busy}
-              >
-                {auth0Loading ? "Loading..." : "Continue with Google"}
-              </button>
-
-              <hr />
-
-              <small>
-                Seed accounts:
-                <br />
-                user@example.com / user123
-                <br />
-                vendor@example.com / vendor123
-                <br />
-                admin@example.com / admin123
-              </small>
-
-              <div className="mt-3">
-                <Link to="/register">Create account</Link>
-
-                {" · "}
-
-                <Link to="/vendor/register">Become a vendor</Link>
               </div>
             </div>
+
+            <div className="auth-field">
+              <div className="auth-label-row">
+                <label htmlFor="login-password">Password</label>
+              </div>
+
+              <div className="auth-input-wrap">
+                <i className="bi bi-lock" />
+
+                <input
+                  id="login-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="auth-primary-button"
+              disabled={busy || auth0Loading}
+            >
+              {busy ? (
+                <>
+                  <span className="auth-button-spinner" />
+                  Logging in...
+                </>
+              ) : (
+                <>
+                  Sign in
+                  <i className="bi bi-arrow-right" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="auth-divider">
+            <span>OR</span>
+          </div>
+
+          <button
+            type="button"
+            className="auth-google-button"
+            onClick={loginWithAuth0}
+            disabled={auth0Loading || busy}
+          >
+            <span className="auth-google-icon">G</span>
+
+            <span>
+              {auth0Loading ? "Connecting..." : "Continue with Google"}
+            </span>
+          </button>
+
+          <div className="auth-demo-box">
+            <div className="auth-demo-header">
+              <i className="bi bi-info-circle" />
+              <span>Demo accounts</span>
+            </div>
+
+            <div className="auth-demo-account">
+              <span>User</span>
+              <code>user@example.com / user123</code>
+            </div>
+
+            <div className="auth-demo-account">
+              <span>Vendor</span>
+              <code>vendor@example.com / vendor123</code>
+            </div>
+
+            <div className="auth-demo-account">
+              <span>Admin</span>
+              <code>admin@example.com / admin123</code>
+            </div>
+          </div>
+
+          <div className="auth-footer-links">
+            <span>Don't have an account?</span>
+            <Link to="/register">Create account</Link>
+
+            <span className="auth-footer-separator">·</span>
+
+            <Link to="/vendor/register">Become a vendor</Link>
           </div>
         </div>
       </div>
