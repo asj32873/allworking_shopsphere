@@ -1,105 +1,18 @@
-﻿===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\api\client.js =====
-const API_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:5001/api"
-).replace(/\/$/, "");
-
-let accessTokenGetter = async () => null;
-
-export function configureAccessTokenGetter(getter) {
-  accessTokenGetter = typeof getter === "function" ? getter : async () => null;
-}
-
-async function request(path, options = {}) {
-  const headers = new Headers(options.headers || {});
-
-  if (options.body !== undefined && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-
-  const token = await accessTokenGetter();
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-    credentials: "include",
-    body:
-      options.body !== undefined && typeof options.body !== "string"
-        ? JSON.stringify(options.body)
-        : options.body,
-  });
-
-  let payload = null;
-
-  const contentType = response.headers.get("content-type") || "";
-
-  if (contentType.includes("application/json")) {
-    payload = await response.json();
-  } else {
-    const text = await response.text();
-
-    payload = text ? { message: text } : null;
-  }
-
-  if (!response.ok) {
-    const error = new Error(
-      payload?.message || `Request failed with status ${response.status}`,
-    );
-
-    error.status = response.status;
-
-    error.details = payload?.details;
-
-    throw error;
-  }
-
-  return payload?.data !== undefined ? payload.data : payload;
-}
-
-export const api = {
-  get: (path) => request(path),
-
-  post: (path, body) =>
-    request(path, {
-      method: "POST",
-      body,
-    }),
-
-  put: (path, body) =>
-    request(path, {
-      method: "PUT",
-      body,
-    }),
-
-  patch: (path, body) =>
-    request(path, {
-      method: "PATCH",
-      body,
-    }),
-
-  delete: (path) =>
-    request(path, {
-      method: "DELETE",
-    }),
-};
-
-export { API_URL };
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\App.jsx =====
+﻿===== App.jsx =====
 import { Routes, Route, Navigate } from "react-router-dom";
 
 import Navbar from "./components/common/Navbar";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 
+// Public pages
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import VendorRegister from "./pages/VendorRegister";
 import Products from "./pages/Products";
 import ProductDetails from "./pages/ProductDetails";
+
+// User pages
 import Cart from "./pages/Cart";
 import Orders from "./pages/Orders";
 import OrderDetails from "./pages/OrderDetails";
@@ -123,52 +36,76 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminReviews from "./pages/admin/AdminReviews";
 import AdminIssues from "./pages/admin/AdminIssues";
+
+// Payment pages
 import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentCancel from "./pages/PaymentCancel";
+
 export default function App() {
   return (
     <>
       <Navbar />
 
       <Routes>
-        {/* Public Routes */}
+        {/* =====================================================
+            PUBLIC ROUTES
+        ===================================================== */}
+
         <Route path="/" element={<Home />} />
+
         <Route path="/login" element={<Login />} />
+
         <Route path="/register" element={<Register />} />
+
         <Route path="/vendor/register" element={<VendorRegister />} />
+
+        <Route path="/products" element={<Products />} />
+
+        <Route path="/products/:id" element={<ProductDetails />} />
+
+        {/* Payment callbacks are public */}
         <Route path="/payment/success" element={<PaymentSuccess />} />
 
         <Route path="/payment/cancel" element={<PaymentCancel />} />
 
-        <Route path="/products" element={<Products />} />
-        <Route path="/products/:id" element={<ProductDetails />} />
+        {/* =====================================================
+            USER ROUTES
+        ===================================================== */}
 
-        {/* User Routes */}
         <Route element={<ProtectedRoute roles={["USER"]} />}>
           <Route path="/user/home" element={<Home />} />
 
           <Route path="/cart" element={<Cart />} />
 
           <Route path="/orders" element={<Orders />} />
+
           <Route path="/orders/:id" element={<OrderDetails />} />
 
           <Route path="/profile" element={<Profile />} />
+
           <Route path="/profile/addresses" element={<Addresses />} />
+
           <Route path="/profile/reviews" element={<Reviews />} />
+
           <Route path="/profile/issues" element={<Issues />} />
 
           <Route path="/issues" element={<Issues />} />
         </Route>
 
-        {/* Vendor Routes */}
+        {/* =====================================================
+            VENDOR ROUTES
+        ===================================================== */}
+
         <Route element={<ProtectedRoute roles={["VENDOR"]} />}>
           <Route path="/vendor/dashboard" element={<VendorDashboard />} />
 
           <Route path="/vendor/products" element={<VendorProducts />} />
+
           <Route
             path="/vendor/products/create"
             element={<VendorProductEdit />}
           />
+
           <Route
             path="/vendor/products/:productId/edit"
             element={<VendorProductEdit />}
@@ -181,24 +118,35 @@ export default function App() {
           <Route path="/vendor/profile" element={<VendorProfile />} />
         </Route>
 
-        {/* Admin Routes */}
+        {/* =====================================================
+            ADMIN ROUTES
+        ===================================================== */}
+
         <Route element={<ProtectedRoute roles={["ADMIN"]} />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+
           <Route path="/admin/vendors" element={<AdminVendors />} />
+
           <Route path="/admin/users" element={<AdminUsers />} />
+
           <Route path="/admin/orders" element={<AdminOrders />} />
+
           <Route path="/admin/reviews" element={<AdminReviews />} />
+
           <Route path="/admin/issues" element={<AdminIssues />} />
         </Route>
 
-        {/* Catch-all Route */}
+        {/* =====================================================
+            CATCH-ALL
+        ===================================================== */}
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\auth\Auth0ProviderWithNavigate.jsx =====
+===== Auth0ProviderWithNavigate.jsx =====
 import { Auth0Provider } from "@auth0/auth0-react";
 import { useNavigate } from "react-router-dom";
 
@@ -206,13 +154,13 @@ export default function Auth0ProviderWithNavigate({ children }) {
   const navigate = useNavigate();
 
   const domain = import.meta.env.VITE_AUTH0_DOMAIN;
-
   const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
-
   const audience = import.meta.env.VITE_AUTH0_AUDIENCE;
 
   const onRedirectCallback = (appState) => {
-    navigate(appState?.returnTo || "/user/home", {
+    const returnTo = appState?.returnTo || "/user/home";
+
+    navigate(returnTo, {
       replace: true,
     });
   };
@@ -249,7 +197,7 @@ export default function Auth0ProviderWithNavigate({ children }) {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\common\tilt3d.jsx =====
+===== tilt3d.jsx =====
 import { useRef } from "react";
 
 export default function Tilt3D({ children, className = "", max = 7 }) {
@@ -297,16 +245,39 @@ export default function Tilt3D({ children, className = "", max = 7 }) {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\common\Navbar.jsx =====
+===== Navbar.jsx =====
 import { Link, useNavigate } from "react-router-dom";
-import { useApp } from "../../context/AppContext";
+import { useDispatch, useSelector } from "react-redux";
+
+import { logout } from "../../store/slices/authSlice";
+import { clearCart } from "../../store/slices/cartSlice";
+import { clearOrders } from "../../store/slices/orderSlice";
+import { clearAddresses } from "../../store/slices/addressSlice";
+import { clearIssues } from "../../store/slices/issueSlice";
+import { clearReviews } from "../../store/slices/reviewSlice";
+import { clearUsers } from "../../store/slices/userSlice";
+import { clearVendors } from "../../store/slices/vendorSlice";
 
 export default function Navbar() {
-  const { user, logout, cartItems } = useApp();
+  const dispatch = useDispatch();
+
+  const user = useSelector((state) => state.auth.user);
+
+  const cartItems = useSelector((state) => state.cart.items);
+
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    logout();
+    dispatch(logout());
+
+    dispatch(clearCart());
+    dispatch(clearOrders());
+    dispatch(clearAddresses());
+    dispatch(clearIssues());
+    dispatch(clearReviews());
+    dispatch(clearUsers());
+    dispatch(clearVendors());
+
     navigate("/");
   };
 
@@ -411,7 +382,7 @@ export default function Navbar() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\common\PortalLayout.jsx =====
+===== PortalLayout.jsx =====
 import RoleSidebar from "./RoleSidebar";
 export default function PortalLayout({ type, children }) {
   return (
@@ -424,13 +395,14 @@ export default function PortalLayout({ type, children }) {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\common\ProtectedRoute.jsx =====
+===== ProtectedRoute.jsx =====
 import { Navigate, Outlet } from "react-router-dom";
-
-import { useApp } from "../../context/AppContext";
+import { useSelector } from "react-redux";
 
 export default function ProtectedRoute({ roles }) {
-  const { user, loading } = useApp();
+  const user = useSelector((state) => state.auth.user);
+
+  const loading = useSelector((state) => state.auth.loading);
 
   if (loading) {
     return (
@@ -451,7 +423,7 @@ export default function ProtectedRoute({ roles }) {
   return <Outlet />;
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\common\RoleSidebar.jsx =====
+===== RoleSidebar.jsx =====
 import { NavLink } from "react-router-dom";
 export default function RoleSidebar({ type }) {
   const vendor = [
@@ -490,7 +462,7 @@ export default function RoleSidebar({ type }) {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\orders\OrderTracking.jsx =====
+===== OrderTracking.jsx =====
 const labels = {
   PLACED: "Order Placed",
   CONFIRMED: "Confirmed",
@@ -501,68 +473,146 @@ const labels = {
   CANCELLED: "Cancelled",
   RETURNED: "Returned",
 };
-export default function OrderTracking({ item }) {
+
+export default function OrderTracking({ order }) {
+  const events = (order?.items || [])
+    .flatMap((item) => item.tracking || [])
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
   return (
     <div className="timeline">
-      {(item?.tracking || []).map((e, i) => (
+      {events.map((e, i) => (
         <div className="timeline-item active" key={i}>
-          <div className="fw-semibold">{labels[e.status] || e.status}</div>
-          <div className="small text-muted">{e.date}</div>
-          <div className="small">{e.remarks}</div>
+          <div className="fw-semibold">
+            {labels[e.status] || e.status}
+          </div>
+
+          <div className="small text-muted">
+            {e.date
+              ? new Date(e.date).toLocaleString("en-IN")
+              : ""}
+          </div>
+
+          {e.remarks && (
+            <div className="small">
+              {e.remarks}
+            </div>
+          )}
         </div>
       ))}
+
+      {!events.length && (
+        <div className="text-muted small mt-3">
+          No tracking updates yet.
+        </div>
+      )}
     </div>
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\products\ProductCard.jsx =====
+
+// const labels = {
+//   PLACED: "Order Placed",
+//   CONFIRMED: "Confirmed",
+//   PACKED: "Packed",
+//   DISPATCHED: "Dispatched",
+//   OUT_FOR_DELIVERY: "Out for Delivery",
+//   DELIVERED: "Delivered",
+//   CANCELLED: "Cancelled",
+//   RETURNED: "Returned",
+// };
+// export default function OrderTracking({ item }) {
+//   return (
+//     <div className="timeline">
+//       {(item?.tracking || []).map((e, i) => (
+//         <div className="timeline-item active" key={i}>
+//           <div className="fw-semibold">{labels[e.status] || e.status}</div>
+//           <div className="small text-muted">{e.date}</div>
+//           <div className="small">{e.remarks}</div>
+//         </div>
+//       ))}
+//     </div>
+//   );
+// }
+
+===== ProductCard.jsx =====
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import { useApp } from "../../context/AppContext";
+
+import { useDispatch, useSelector } from "react-redux";
+
+import { addToCart } from "../../store/slices/cartSlice";
+
 import Tilt3D from "../../common/tilt3d";
 
 export default function ProductCard({ product }) {
-  const { addToCart, user } = useApp();
+  const dispatch = useDispatch();
+
+  const user = useSelector((state) => state.auth.user);
+
   const [error, setError] = useState("");
+
   const add = async () => {
     try {
       setError("");
-      await addToCart(product);
+
+      await dispatch(
+        addToCart({
+          product,
+          quantity: 1,
+        }),
+      ).unwrap();
     } catch (e) {
       setError(e.message);
     }
   };
+
   return (
     <Tilt3D max={7}>
       <div className="card h-100 card-hover">
-        <img
-          src={product.image}
-          className="card-img-top product-img"
-          alt={product.name}
-        />
+        {product.image ? (
+          <img
+            src={product.image}
+            className="card-img-top product-img"
+            alt={product.name}
+          />
+        ) : (
+          <div className="card-img-top product-img d-flex align-items-center justify-content-center bg-light text-muted">
+            No image available
+          </div>
+        )}
+
         <div className="card-body d-flex flex-column">
           <small className="text-muted">
             {product.brand} Â· {product.category}
           </small>
+
           <h5 className="mt-1">{product.name}</h5>
+
           <p className="small text-muted flex-grow-1">{product.description}</p>
+
           <div className="d-flex justify-content-between align-items-center">
             <strong className="price fs-5">
               â‚¹{product.price.toLocaleString("en-IN")}
             </strong>
+
             <div className="text-end">
               <span className="badge text-bg-warning">
                 â˜… {Number(product.rating || 0).toFixed(1)}
               </span>
+
               <div className="small text-muted">
                 {product.reviewCount || 0} reviews
               </div>
             </div>
           </div>
+
           <small className={product.stock ? "text-success" : "text-danger"}>
             {product.stock ? `In stock (${product.stock})` : "Out of stock"}
           </small>
+
           {error && <small className="text-danger mt-1">{error}</small>}
+
           <div className="d-flex gap-2 mt-2">
             <Link
               className="btn btn-outline-primary flex-grow-1"
@@ -570,6 +620,7 @@ export default function ProductCard({ product }) {
             >
               View
             </Link>
+
             {user?.role === "USER" && (
               <button
                 className="btn btn-primary"
@@ -586,7 +637,7 @@ export default function ProductCard({ product }) {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\products\ProductQA.jsx =====
+===== ProductQA.jsx =====
 import { useState } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
@@ -709,28 +760,26 @@ export default function ProductQA({ productId }) {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\components\products\ReviewForm.jsx =====
+===== ReviewForm.jsx =====
 import { useState } from "react";
-import { useApp } from "../../context/AppContext";
+import { useDispatch } from "react-redux";
+
+import {
+  addReview,
+  updateReview,
+  deleteReview,
+} from "../../store/slices/reviewSlice";
 
 export default function ReviewForm({
   productId,
   existingReview = null,
   onDone,
 }) {
-  const {
-    addReview,
-    updateReview,
-    deleteReview,
-  } = useApp();
+  const dispatch = useDispatch();
 
-  const [rating, setRating] = useState(
-    existingReview?.rating || 5
-  );
+  const [rating, setRating] = useState(existingReview?.rating || 5);
 
-  const [review, setReview] = useState(
-    existingReview?.review || ""
-  );
+  const [review, setReview] = useState(existingReview?.review || "");
 
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -751,28 +800,35 @@ export default function ReviewForm({
 
     try {
       if (editing) {
-        await updateReview(
-          existingReview.id,
-          {
-            rating,
-            review: review.trim(),
-          }
-        );
+        await dispatch(
+          updateReview({
+            id: existingReview.id,
+            data: {
+              rating,
+              review: review.trim(),
+            },
+          }),
+        ).unwrap();
 
         setMsg("Review updated successfully.");
       } else {
-        await addReview(
-          productId,
-          rating,
-          review.trim()
-        );
+        await dispatch(
+          addReview({
+            productId,
+            rating,
+            review: review.trim(),
+          }),
+        ).unwrap();
 
         setReview("");
         setRating(5);
+
         setMsg("Review submitted successfully.");
       }
 
-      if (onDone) onDone();
+      if (onDone) {
+        onDone();
+      }
     } catch (error) {
       setMsg(error.message);
     } finally {
@@ -787,9 +843,13 @@ export default function ReviewForm({
     setMsg("");
 
     try {
-      await deleteReview(existingReview.id);
+      await dispatch(deleteReview(existingReview.id)).unwrap();
+
       setMsg("Review deleted.");
-      if (onDone) onDone();
+
+      if (onDone) {
+        onDone();
+      }
     } catch (error) {
       setMsg(error.message);
     } finally {
@@ -800,27 +860,17 @@ export default function ReviewForm({
   return (
     <div className="card mt-3">
       <div className="card-body">
-        <h5>
-          {editing ? "Edit Your Review" : "Write a Review"}
-        </h5>
+        <h5>{editing ? "Edit Your Review" : "Write a Review"}</h5>
 
-        {msg && (
-          <div className="alert alert-info py-2">
-            {msg}
-          </div>
-        )}
+        {msg && <div className="alert alert-info py-2">{msg}</div>}
 
         <form onSubmit={submit}>
-          <label className="form-label">
-            Rating
-          </label>
+          <label className="form-label">Rating</label>
 
           <select
             className="form-select mb-2"
             value={rating}
-            onChange={(e) =>
-              setRating(Number(e.target.value))
-            }
+            onChange={(e) => setRating(Number(e.target.value))}
           >
             {[5, 4, 3, 2, 1].map((x) => (
               <option key={x} value={x}>
@@ -829,36 +879,23 @@ export default function ReviewForm({
             ))}
           </select>
 
-          <label className="form-label">
-            Review
-          </label>
+          <label className="form-label">Review</label>
 
           <textarea
             className="form-control mb-2"
             rows="4"
             maxLength={2000}
             value={review}
-            onChange={(e) =>
-              setReview(e.target.value)
-            }
+            onChange={(e) => setReview(e.target.value)}
             placeholder="Share your experience..."
             required
           />
 
-          <div className="small text-muted mb-2">
-            {review.length}/2000
-          </div>
+          <div className="small text-muted mb-2">{review.length}/2000</div>
 
           <div className="d-flex gap-2">
-            <button
-              className="btn btn-primary"
-              disabled={busy}
-            >
-              {busy
-                ? "Saving..."
-                : editing
-                ? "Update Review"
-                : "Submit Review"}
+            <button className="btn btn-primary" disabled={busy}>
+              {busy ? "Saving..." : editing ? "Update Review" : "Submit Review"}
             </button>
 
             {editing && (
@@ -878,7 +915,7 @@ export default function ReviewForm({
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\context\AppContext.jsx =====
+===== AppContext.jsx =====
 import React, {
   createContext,
   useCallback,
@@ -971,15 +1008,17 @@ export function AppProvider({ children }) {
   } = useAuth0();
 
   /*
-   * This token is only for legacy ShopSphere
-   * email/password accounts.
+   * This is ALWAYS the ShopSphere JWT.
    *
-   * Auth0 accounts use getAccessTokenSilently().
+   * Both:
+   * - email/password login
+   * - Auth0 / Google login
+   *
+   * eventually receive a ShopSphere JWT.
    */
   const [token, setToken] = useState(() =>
     localStorage.getItem("shopsphere_token"),
   );
-
   const [user, setUser] = useState(null);
 
   const [products, setProducts] = useState([]);
@@ -1009,29 +1048,9 @@ export function AppProvider({ children }) {
    */
   useEffect(() => {
     configureAccessTokenGetter(async () => {
-      /*
-       * Legacy local JWT first.
-       */
-      if (token) {
-        return token;
-      }
-
-      /*
-       * Auth0 access token.
-       */
-      if (!isAuthenticated) {
-        return null;
-      }
-
-      return getAccessTokenSilently({
-        authorizationParams: {
-          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-          scope: "openid profile email",
-        },
-      });
+      return token || null;
     });
-  }, [token, isAuthenticated, getAccessTokenSilently]);
-
+  }, [token]);
   /*
    * ---------------------------------------------------------
    * PRODUCTS
@@ -1057,17 +1076,40 @@ export function AppProvider({ children }) {
       return;
     }
 
-    const data = await api.get("/cart");
+    try {
+      console.log("LOADING CART...");
 
-    const items = (data.items || []).map((i) => ({
-      ...i,
-      id: i.id || i._id,
-      productId: i.productId?._id || i.productId,
-      product: normalizeProduct(i.product || {}),
-    }));
+      const data = await api.get("/cart");
 
-    setCartItems(items);
-    setCartTotal(data.total || 0);
+      console.log("CART API RESPONSE:", data);
+
+      const cartData = Array.isArray(data)
+        ? data
+        : data?.data || data?.items || [];
+
+      const items = cartData.map((i) => ({
+        ...i,
+        id: i.id || i._id,
+        productId: i.productId?._id || i.productId,
+        product: normalizeProduct(i.product || {}),
+      }));
+
+      console.log("NORMALIZED CART ITEMS:", items);
+
+      setCartItems(items);
+
+      const total = items.reduce(
+        (sum, item) => sum + Number(item.subtotal || 0),
+        0,
+      );
+
+      setCartTotal(total);
+    } catch (error) {
+      console.error("FAILED TO LOAD CART:", error);
+
+      setCartItems([]);
+      setCartTotal(0);
+    }
   }, [user]);
 
   /*
@@ -1075,9 +1117,100 @@ export function AppProvider({ children }) {
    * AUTHENTICATED SHOPSPHERE USER
    * ---------------------------------------------------------
    */
+  const exchangeAuth0Token = useCallback(async () => {
+    try {
+      /*
+       * Get Auth0 Access Token.
+       *
+       * This token is ONLY used to exchange identity
+       * with the ShopSphere Auth Service.
+       */
+
+      const auth0Token = await getAccessTokenSilently({
+        authorizationParams: {
+          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+
+          scope: "openid profile email",
+        },
+      });
+
+      if (!auth0Token) {
+        throw new Error("Unable to obtain Auth0 access token.");
+      }
+
+      /*
+       * Exchange Auth0 Access Token for
+       * ShopSphere JWT.
+       */
+
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_URL || "http://localhost:5001/api"
+        }/auth/auth0/login`,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            token: auth0Token,
+          }),
+        },
+      );
+
+      let result;
+
+      try {
+        result = await response.json();
+      } catch {
+        throw new Error(
+          "ShopSphere Auth Service returned an invalid response.",
+        );
+      }
+
+      if (!response.ok || !result?.success) {
+        throw new Error(
+          result?.message || "Unable to authenticate with ShopSphere.",
+        );
+      }
+
+      const shopsphereToken = result?.data?.token;
+
+      const shopsphereUser = normalizeUser(result?.data?.user);
+
+      if (!shopsphereToken) {
+        throw new Error(
+          "ShopSphere Auth Service did not return an authentication token.",
+        );
+      }
+
+      /*
+       * Store ONLY the ShopSphere JWT.
+       */
+
+      localStorage.setItem("shopsphere_token", shopsphereToken);
+
+      setToken(shopsphereToken);
+
+      setUser(shopsphereUser);
+
+      return shopsphereUser;
+    } catch (error) {
+      console.error("Auth0 token exchange failed:", error);
+
+      throw error;
+    }
+  }, [getAccessTokenSilently]);
+
   const loadAuthenticatedUser = useCallback(async () => {
-    if (!isAuthenticated && !token) {
+    /*
+     * We only use ShopSphere JWT for API authentication.
+     */
+    if (!token) {
       setUser(null);
+
       return null;
     }
 
@@ -1102,7 +1235,7 @@ export function AppProvider({ children }) {
 
       return null;
     }
-  }, [isAuthenticated, token]);
+  }, [token]);
 
   /*
    * ---------------------------------------------------------
@@ -1115,19 +1248,61 @@ export function AppProvider({ children }) {
     }
 
     if (user.role === "USER") {
-      const [addressData, orderData, issueData] = await Promise.all([
-        api.get("/addresses"),
-        api.get("/orders"),
-        api.get("/issues"),
-      ]);
+      const [addressResult, orderResult, issueResult] =
+        await Promise.allSettled([
+          api.get("/addresses"),
+          api.get("/orders"),
+          api.get("/issues"),
+        ]);
 
-      setAddresses((addressData || []).map(normalizeAddress));
+      /*
+       * ADDRESSES
+       */
+      if (addressResult.status === "fulfilled") {
+        const addressData = addressResult.value;
 
-      setOrders((orderData || []).map(normalizeOrder));
+        const addressList = Array.isArray(addressData)
+          ? addressData
+          : addressData?.data || addressData?.items || [];
 
-      setIssues((issueData || []).map(normalizeIssue));
+        console.log("ADDRESS API RESPONSE:", addressData);
+        console.log("ADDRESS LIST:", addressList);
 
-      await Promise.all([loadCart(), loadReviews()]);
+        setAddresses(addressList.map(normalizeAddress));
+      } else {
+        console.error("FAILED TO LOAD ADDRESSES:", addressResult.reason);
+      }
+
+      /*
+       * ORDERS
+       */
+      if (orderResult.status === "fulfilled") {
+        const orderData = orderResult.value;
+
+        setOrders(
+          (Array.isArray(orderData) ? orderData : []).map(normalizeOrder),
+        );
+      } else {
+        console.error("FAILED TO LOAD ORDERS:", orderResult.reason);
+      }
+
+      /*
+       * ISSUES
+       */
+      if (issueResult.status === "fulfilled") {
+        const issueData = issueResult.value;
+
+        setIssues(
+          (Array.isArray(issueData) ? issueData : []).map(normalizeIssue),
+        );
+      } else {
+        console.error("FAILED TO LOAD ISSUES:", issueResult.reason);
+      }
+
+      /*
+       * Load these independently too
+       */
+      await Promise.allSettled([loadCart(), loadReviews()]);
     }
 
     if (user.role === "VENDOR") {
@@ -1180,10 +1355,30 @@ export function AppProvider({ children }) {
       try {
         await loadProducts();
 
-        const me = await loadAuthenticatedUser();
+        let authenticatedUser = null;
 
-        if (active && me) {
-          setUser(me);
+        /*
+         * STEP 1:
+         * Try existing ShopSphere JWT first.
+         */
+
+        if (token) {
+          authenticatedUser = await loadAuthenticatedUser();
+        }
+
+        /*
+         * STEP 2:
+         * If no valid ShopSphere user exists,
+         * but Auth0 is authenticated,
+         * exchange the Auth0 token.
+         */
+
+        if (!authenticatedUser && isAuthenticated) {
+          authenticatedUser = await exchangeAuth0Token();
+        }
+
+        if (active && authenticatedUser) {
+          setUser(authenticatedUser);
         }
       } catch (error) {
         console.error("ShopSphere authentication bootstrap failed:", error);
@@ -1201,14 +1396,24 @@ export function AppProvider({ children }) {
     return () => {
       active = false;
     };
-  }, [authLoading, loadProducts, loadAuthenticatedUser]);
-
+  }, [
+    authLoading,
+    isAuthenticated,
+    token,
+    loadProducts,
+    loadAuthenticatedUser,
+    exchangeAuth0Token,
+  ]);
   useEffect(() => {
     if (!loading && user) {
       loadUserData().catch(console.error);
     }
   }, [loading, user, loadUserData]);
-
+  useEffect(() => {
+    if (!loading && user?.role === "USER") {
+      loadCart().catch(console.error);
+    }
+  }, [loading, user, loadCart]);
   /*
    * ---------------------------------------------------------
    * LEGACY EMAIL/PASSWORD LOGIN
@@ -1720,6 +1925,7 @@ export function AppProvider({ children }) {
       cartItems,
       cartTotal,
 
+      loadCart,
       addToCart,
       removeFromCart,
       updateCartQty,
@@ -1743,6 +1949,8 @@ export function AppProvider({ children }) {
       approveVendor,
       rejectVendor,
       deleteVendor,
+
+      updateUserStatus,
 
       addresses,
       addAddress,
@@ -1770,6 +1978,7 @@ export function AppProvider({ children }) {
       products,
       issues,
       vendors,
+      updateUserStatus,
       addresses,
       reviews,
     ],
@@ -1780,23 +1989,11 @@ export function AppProvider({ children }) {
 
 export const useApp = () => useContext(C);
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\data\dummyData.js =====
-export const USERS=[{id:1,name:"Demo User",email:"user@example.com",phone:"9876543210",password:"user123",role:"USER",status:"ACTIVE"},{id:2,name:"Sony Store Owner",email:"vendor@example.com",phone:"9876543211",password:"vendor123",role:"VENDOR",status:"ACTIVE"},{id:3,name:"Admin",email:"admin@example.com",phone:"9876543212",password:"admin123",role:"ADMIN",status:"ACTIVE"},{id:4,name:"Pending Vendor",email:"pending@example.com",phone:"vendor123",password:"vendor123",role:"VENDOR",status:"ACTIVE"}];
-export const VENDORS=[{id:20,userId:2,storeName:"Sony Electronics Store",email:"vendor@example.com",phone:"9876543211",storeAddress:"Indiranagar, Bengaluru",status:"VERIFIED",createdAt:"2026-07-01",verifiedAt:"2026-07-03"},{id:21,userId:4,storeName:"Tech World",email:"pending@example.com",phone:"9876543213",storeAddress:"Whitefield, Bengaluru",status:"APPLIED",createdAt:"2026-08-10",verifiedAt:null}];
-export const ADDRESSES=[{id:1,userId:1,type:"Home",addressLine:"123 Main Street",city:"Bengaluru",state:"Karnataka",pincode:"560037",isDefault:true},{id:2,userId:1,type:"Office",addressLine:"Tech Park Road",city:"Bengaluru",state:"Karnataka",pincode:"560066",isDefault:false}];
-const img="https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800";
-export const PRODUCTS=[{id:101,vendorId:2,name:"Sony WH-1000XM5",brand:"Sony",category:"AUDIO",description:"Premium wireless noise cancelling headphones.",price:29999,stock:18,rating:4.8,image:img},{id:102,vendorId:2,name:"Sony WF-1000XM5",brand:"Sony",category:"AUDIO",description:"True wireless noise cancelling earbuds.",price:24999,stock:24,rating:4.7,image:img},{id:103,vendorId:2,name:"Sony Bravia 55 Inch TV",brand:"Sony",category:"TV",description:"4K smart television with HDR support.",price:64999,stock:7,rating:4.6,image:img},{id:104,vendorId:2,name:"Sony Xperia Smartphone",brand:"Sony",category:"MOBILE",description:"Premium Android smartphone.",price:79999,stock:9,rating:4.5,image:img},{id:105,vendorId:2,name:"Wireless Keyboard",brand:"Sony",category:"ACCESSORIES",description:"Compact wireless keyboard.",price:2499,stock:30,rating:4.2,image:img},{id:106,vendorId:2,name:"Bluetooth Speaker",brand:"Sony",category:"AUDIO",description:"Portable Bluetooth speaker.",price:5999,stock:14,rating:4.4,image:img},{id:107,vendorId:2,name:"Wireless Mouse",brand:"Sony",category:"ACCESSORIES",description:"Ergonomic wireless mouse.",price:1499,stock:35,rating:4.2,image:img},{id:108,vendorId:2,name:"Gaming Controller",brand:"Sony",category:"ACCESSORIES",description:"Wireless gaming controller.",price:6999,stock:20,rating:4.6,image:img},{id:109,vendorId:2,name:"4K Monitor",brand:"Sony",category:"LAPTOP",description:"Sharp 4K productivity monitor.",price:28999,stock:5,rating:4.1,image:img}];
-export const REVIEWS=[{id:1,productId:101,userId:1,rating:5,review:"Excellent headphones.",createdAt:"2026-08-01"},{id:2,productId:101,userId:7,rating:4,review:"Very comfortable.",createdAt:"2026-08-03"}];
-export const ORDERS=[{id:10482,userId:1,addressId:1,status:"IN_PROGRESS",totalAmount:32498,orderedAt:"2026-08-12T10:30:00"},{id:10481,userId:1,addressId:2,status:"DELIVERED",totalAmount:6999,orderedAt:"2026-08-05T11:00:00"}];
-export const ORDER_ITEMS=[{id:501,orderId:10482,productId:101,vendorId:2,name:"Sony WH-1000XM5",quantity:1,unitPrice:29999,vendorStatus:"DISPATCHED"},{id:502,orderId:10482,productId:105,vendorId:2,name:"Wireless Keyboard",quantity:1,unitPrice:2499,vendorStatus:"PACKED"},{id:503,orderId:10481,productId:108,vendorId:2,name:"Gaming Controller",quantity:1,unitPrice:6999,vendorStatus:"DELIVERED"}];
-export const ORDER_STATUS_HISTORY=[{id:1,orderId:10482,orderItemId:501,status:"PLACED",timestamp:"2026-08-12T10:30:00",remarks:"Order placed"},{id:2,orderId:10482,orderItemId:501,status:"CONFIRMED",timestamp:"2026-08-12T11:00:00",remarks:"Vendor confirmed"},{id:3,orderId:10482,orderItemId:501,status:"PACKED",timestamp:"2026-08-12T16:00:00",remarks:"Product packed"},{id:4,orderId:10482,orderItemId:501,status:"DISPATCHED",timestamp:"2026-08-13T09:00:00",remarks:"Product dispatched"},{id:5,orderId:10482,orderItemId:502,status:"PLACED",timestamp:"2026-08-12T10:30:00",remarks:"Order placed"},{id:6,orderId:10482,orderItemId:502,status:"CONFIRMED",timestamp:"2026-08-12T12:00:00",remarks:"Vendor confirmed"},{id:7,orderId:10482,orderItemId:502,status:"PACKED",timestamp:"2026-08-13T08:30:00",remarks:"Product packed"},{id:8,orderId:10481,orderItemId:503,status:"PLACED",timestamp:"2026-08-05T11:00:00",remarks:"Order placed"},{id:9,orderId:10481,orderItemId:503,status:"CONFIRMED",timestamp:"2026-08-05T12:00:00",remarks:"Vendor confirmed"},{id:10,orderId:10481,orderItemId:503,status:"PACKED",timestamp:"2026-08-06T10:00:00",remarks:"Product packed"},{id:11,orderId:10481,orderItemId:503,status:"DISPATCHED",timestamp:"2026-08-06T15:00:00",remarks:"Product dispatched"},{id:12,orderId:10481,orderItemId:503,status:"OUT_FOR_DELIVERY",timestamp:"2026-08-08T09:00:00",remarks:"Out for delivery"},{id:13,orderId:10481,orderItemId:503,status:"DELIVERED",timestamp:"2026-08-08T17:00:00",remarks:"Delivered"}];
-export const CUSTOMER_ISSUES=[{id:1928,userId:1,vendorId:2,orderId:10482,productId:101,subject:"Delivery status query",description:"Please provide an expected delivery date.",status:"IN_PROGRESS",priority:"MEDIUM",response:"The product has been dispatched."},{id:1927,userId:1,vendorId:2,orderId:10481,productId:108,subject:"Warranty question",description:"I had a question about the warranty.",status:"RESOLVED",priority:"LOW",response:"The product has standard warranty coverage."}];
-export const CART_ITEMS=[];
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\main.jsx =====
+===== main.jsx =====
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { Provider } from "react-redux";
 
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
@@ -1805,24 +2002,37 @@ import "bootstrap/dist/js/bootstrap.bundle.min.js";
 import "./styles.css";
 
 import App from "./App";
-import { AppProvider } from "./context/AppContext";
+import { store } from "./store/store";
+import AppBootstrap from "./store/AppBootstrap";
 import Auth0ProviderWithNavigate from "./auth/Auth0ProviderWithNavigate";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <Auth0ProviderWithNavigate>
-        <AppProvider>
-          <App />
-        </AppProvider>
-      </Auth0ProviderWithNavigate>
-    </BrowserRouter>
+    <Provider store={store}>
+      <BrowserRouter>
+        <Auth0ProviderWithNavigate>
+          <AppBootstrap>
+            <App />
+          </AppBootstrap>
+        </Auth0ProviderWithNavigate>
+      </BrowserRouter>
+    </Provider>
   </React.StrictMode>,
 );
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Addresses.jsx =====
-import { useState } from "react";
-import { useApp } from "../context/AppContext";
+===== Addresses.jsx =====
+import { useEffect, useState } from "react";
+
+import { useDispatch, useSelector } from "react-redux";
+
+import {
+  addAddress,
+  deleteAddress,
+  loadAddresses,
+  setDefaultAddress,
+  updateAddress,
+} from "../store/slices/addressSlice";
+
 const empty = {
   type: "Home",
   addressLine: "",
@@ -1830,24 +2040,39 @@ const empty = {
   state: "",
   pincode: "",
 };
+
 export default function Addresses() {
-  const {
-    user,
-    addresses,
-    addAddress,
-    updateAddress,
-    deleteAddress,
-    setDefaultAddress,
-  } = useApp();
-  const mine = addresses.filter((a) => a.userId === user.id);
-  const [f, setF] = useState(empty),
-    [edit, setEdit] = useState(null);
-  const submit = (e) => {
+  const dispatch = useDispatch();
+
+  const addresses = useSelector((state) => state.addresses.items);
+
+  const loading = useSelector((state) => state.addresses.loading);
+
+  const [f, setF] = useState(empty);
+  const [edit, setEdit] = useState(null);
+
+  useEffect(() => {
+    dispatch(loadAddresses());
+  }, [dispatch]);
+
+  const submit = async (e) => {
     e.preventDefault();
-    edit ? updateAddress(edit, f) : addAddress(f);
+
+    if (edit) {
+      await dispatch(
+        updateAddress({
+          id: edit,
+          data: f,
+        }),
+      );
+    } else {
+      await dispatch(addAddress(f));
+    }
+
     setF(empty);
     setEdit(null);
   };
+
   return (
     <div className="container py-4">
       <div className="row g-4">
@@ -1855,16 +2080,23 @@ export default function Addresses() {
           <div className="card">
             <div className="card-body">
               <h5>{edit ? "Edit" : "Add"} Address</h5>
+
               <form onSubmit={submit}>
                 <select
                   className="form-select mb-2"
                   value={f.type}
-                  onChange={(e) => setF({ ...f, type: e.target.value })}
+                  onChange={(e) =>
+                    setF({
+                      ...f,
+                      type: e.target.value,
+                    })
+                  }
                 >
                   <option>Home</option>
                   <option>Office</option>
                   <option>Other</option>
                 </select>
+
                 {Object.keys(f)
                   .filter((k) => k !== "type")
                   .map((k) => (
@@ -1874,9 +2106,15 @@ export default function Addresses() {
                       placeholder={k}
                       required
                       value={f[k]}
-                      onChange={(e) => setF({ ...f, [k]: e.target.value })}
+                      onChange={(e) =>
+                        setF({
+                          ...f,
+                          [k]: e.target.value,
+                        })
+                      }
                     />
                   ))}
+
                 <button className="btn btn-primary">
                   {edit ? "Update" : "Add"}
                 </button>
@@ -1884,24 +2122,33 @@ export default function Addresses() {
             </div>
           </div>
         </div>
+
         <div className="col-lg-7">
           <h2>My Addresses</h2>
-          {mine.map((a) => (
+
+          {loading && <p>Loading...</p>}
+
+          {addresses.map((a) => (
             <div className="card mb-2" key={a.id}>
               <div className="card-body">
-                <div className="d-flex justify-content-between">
-                  <strong>{a.type}</strong>
+                <h5>
+                  {a.type}
                   {a.isDefault && (
-                    <span className="badge text-bg-primary">Default</span>
+                    <span className="badge text-bg-success ms-2">Default</span>
                   )}
-                </div>
-                <p>
-                  {a.addressLine}, {a.city}, {a.state} - {a.pincode}
+                </h5>
+
+                <p className="mb-2">
+                  {a.addressLine}
+                  <br />
+                  {a.city}, {a.state} - {a.pincode}
                 </p>
+
                 <button
                   className="btn btn-sm btn-outline-primary me-2"
                   onClick={() => {
                     setEdit(a.id);
+
                     setF({
                       type: a.type,
                       addressLine: a.addressLine,
@@ -1913,17 +2160,19 @@ export default function Addresses() {
                 >
                   Edit
                 </button>
+
                 {!a.isDefault && (
                   <button
                     className="btn btn-sm btn-outline-success me-2"
-                    onClick={() => setDefaultAddress(a.id)}
+                    onClick={() => dispatch(setDefaultAddress(a.id))}
                   >
                     Make Default
                   </button>
                 )}
+
                 <button
                   className="btn btn-sm btn-outline-danger"
-                  onClick={() => deleteAddress(a.id)}
+                  onClick={() => dispatch(deleteAddress(a.id))}
                 >
                   Delete
                 </button>
@@ -1936,15 +2185,27 @@ export default function Addresses() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminDashboard.jsx =====
+===== AdminDashboard.jsx =====
+import { useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
 export default function AdminDashboard() {
-  const { users, vendors, products, orders, issues } = useApp();
+  const users = useSelector((state) => state.users.items);
+
+  const vendors = useSelector((state) => state.vendors.items);
+
+  const products = useSelector((state) => state.products.items);
+
+  const orders = useSelector((state) => state.orders.items);
+
+  const issues = useSelector((state) => state.issues.items);
+
   return (
     <PortalLayout type="admin">
       <div className="py-4">
         <h2>Admin Dashboard</h2>
+
         <div className="row g-3">
           {[
             ["Users", users.length],
@@ -1965,6 +2226,7 @@ export default function AdminDashboard() {
               <div className="card stat-card">
                 <div className="card-body">
                   <small>{a}</small>
+
                   <div className="fs-2 fw-bold">{b}</div>
                 </div>
               </div>
@@ -1976,59 +2238,88 @@ export default function AdminDashboard() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminIssues.jsx =====
+===== AdminIssues.jsx =====
+import { useDispatch, useSelector } from "react-redux";
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import { updateIssue } from "../../store/slices/issueSlice";
+
 export default function AdminIssues() {
-  const { issues, updateIssue, vendors } = useApp();
+  const dispatch = useDispatch();
+
+  const issues = useSelector((state) => state.issues.items);
+
+  const vendors = useSelector((state) => state.vendors.items);
+
   return (
     <PortalLayout type="admin">
       <div className="py-4">
         <h2>Issue Management</h2>
+
         {issues.map((i) => (
-          <div className="card mb-3" key={i.id}>
+          <div className="card mb-3" key={i._id || i.id}>
             <div className="card-body row align-items-center">
               <div className="col-lg-6">
                 <h5>
-                  #{i.id} â€” {i.subject}
+                  #{i._id || i.id} â€” {i.subject}
                 </h5>
+
                 <p>{i.description}</p>
+
                 <small>
                   Priority: {i.priority} Â· Order: {i.orderId || "N/A"}
                 </small>
               </div>
+
               <div className="col-lg-3">
                 <select
                   className="form-select"
-                  value={i.vendorId || ""}
+                  value={i.assignedTo || ""}
                   onChange={(e) =>
-                    updateIssue(i.id, {
-                      vendorId: e.target.value ? +e.target.value : null,
-                    })
+                    dispatch(
+                      updateIssue({
+                        id: i._id || i.id,
+                        data: {
+                          assignedTo: e.target.value || null,
+                        },
+                      }),
+                    )
                   }
                 >
                   <option value="">Unassigned</option>
+
                   {vendors
                     .filter((v) => v.status === "VERIFIED")
                     .map((v) => (
-                      <option key={v.id} value={v.userId}>
+                      <option key={v._id || v.id} value={v.userId}>
                         {v.storeName}
                       </option>
                     ))}
                 </select>
               </div>
+
               <div className="col-lg-3">
                 <select
                   className="form-select"
                   value={i.status}
                   onChange={(e) =>
-                    updateIssue(i.id, { status: e.target.value })
+                    dispatch(
+                      updateIssue({
+                        id: i._id || i.id,
+                        data: {
+                          status: e.target.value,
+                        },
+                      }),
+                    )
                   }
                 >
-                  <option>OPEN</option>
-                  <option>IN_PROGRESS</option>
-                  <option>RESOLVED</option>
-                  <option>CLOSED</option>
+                  <option value="OPEN">OPEN</option>
+
+                  <option value="IN_PROGRESS">IN_PROGRESS</option>
+
+                  <option value="RESOLVED">RESOLVED</option>
+
+                  <option value="CLOSED">CLOSED</option>
                 </select>
               </div>
             </div>
@@ -2039,9 +2330,12 @@ export default function AdminIssues() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminOrders.jsx =====
+===== AdminOrders.jsx =====
+import { useDispatch, useSelector } from "react-redux";
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import { updateAdminOrderStatus } from "../../store/slices/orderSlice";
+
 const statuses = [
   "PLACED",
   "CONFIRMED",
@@ -2052,19 +2346,25 @@ const statuses = [
   "CANCELLED",
   "RETURNED",
 ];
+
 export default function AdminOrders() {
-  const { orders, updateAdminOrderStatus } = useApp();
+  const dispatch = useDispatch();
+
+  const orders = useSelector((state) => state.orders.items);
+
   return (
     <PortalLayout type="admin">
       <div className="py-4">
         <h2>Order Management</h2>
+
         {orders.map((o) => (
           <div className="card mb-3" key={o.id}>
             <div className="card-header">
               <strong>Order #{o.id}</strong>
             </div>
+
             <div className="card-body">
-              {o.items.map((i) => (
+              {(o.items || []).map((i) => (
                 <div
                   className="border rounded p-2 mb-2 row align-items-center"
                   key={i.id}
@@ -2072,17 +2372,25 @@ export default function AdminOrders() {
                   <div className="col-md-5">
                     {i.name} Ã— {i.quantity}
                   </div>
+
                   <div className="col-md-3">{i.vendorStatus}</div>
+
                   <div className="col-md-4">
                     <select
                       className="form-select"
                       value={i.vendorStatus}
                       onChange={(e) =>
-                        updateAdminOrderStatus(o.id, i.id, e.target.value)
+                        dispatch(
+                          updateAdminOrderStatus({
+                            orderId: o.id,
+                            itemId: i.id,
+                            status: e.target.value,
+                          }),
+                        )
                       }
                     >
-                      {statuses.map((s) => (
-                        <option key={s}>{s}</option>
+                      {statuses.map((status) => (
+                        <option key={status}>{status}</option>
                       ))}
                     </select>
                   </div>
@@ -2096,79 +2404,114 @@ export default function AdminOrders() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminReviews.jsx =====
+===== AdminReviews.jsx =====
+import { useDispatch, useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import { deleteReview } from "../../store/slices/reviewSlice";
+
 export default function AdminReviews() {
-  const { reviews, products, deleteReview } = useApp();
+  const dispatch = useDispatch();
+
+  const reviews = useSelector((state) => state.reviews.items);
+
+  const products = useSelector((state) => state.products.items);
+
   return (
     <PortalLayout type="admin">
       <div className="py-4">
         <h2>Review Moderation</h2>
-        {reviews.map((r) => (
-          <div className="card mb-2" key={r.id}>
-            <div className="card-body">
-              <h5>{products.find((p) => p.id === r.productId)?.name}</h5>
-              <div className="text-warning">{"â˜…".repeat(r.rating)}</div>
-              <p>{r.review}</p>
-              <button
-                className="btn btn-sm btn-outline-danger"
-                onClick={() => deleteReview(r.id)}
-              >
-                Delete
-              </button>
+
+        {reviews.map((r) => {
+          const product = products.find(
+            (p) => String(p.id) === String(r.productId),
+          );
+
+          return (
+            <div className="card mb-2" key={r.id}>
+              <div className="card-body">
+                <h5>{product?.name || "Unknown Product"}</h5>
+
+                <div className="text-warning">{"â˜…".repeat(r.rating)}</div>
+
+                <p>{r.review}</p>
+
+                <button
+                  className="btn btn-sm btn-outline-danger"
+                  onClick={() => dispatch(deleteReview(r.id))}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </PortalLayout>
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminUsers.jsx =====
-import { useApp } from "../../context/AppContext";
+===== AdminUsers.jsx =====
+import { useDispatch, useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
+
+import { updateUserStatus } from "../../store/slices/userSlice";
+
 export default function AdminUsers() {
-  const { users, updateUserStatus } = useApp();
+  const dispatch = useDispatch();
+
+  const users = useSelector((state) => state.users.items);
+
+  const currentUser = useSelector((state) => state.auth.user);
+
   return (
     <PortalLayout type="admin">
       <div className="py-4">
         <h2>User Management</h2>
+
         <div className="card">
           <div className="card-body table-responsive">
             <table className="table">
               <thead>
                 <tr>
-                  <th>ID</th>
                   <th>Name</th>
                   <th>Email</th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th />
+                  <th>Action</th>
                 </tr>
               </thead>
+
               <tbody>
                 {users.map((u) => (
                   <tr key={u.id}>
-                    <td>{u.id}</td>
                     <td>{u.name}</td>
                     <td>{u.email}</td>
                     <td>{u.role}</td>
                     <td>{u.status}</td>
+
                     <td>
-                      {u.role !== "ADMIN" && (
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() =>
-                            updateUserStatus(
-                              u.id,
-                              u.status === "ACTIVE" ? "DISABLED" : "ACTIVE",
-                            )
-                          }
-                        >
-                          {u.status === "ACTIVE" ? "Disable" : "Enable"}
-                        </button>
-                      )}
+                      {u.role !== "ADMIN" &&
+                        String(u.id) !== String(currentUser?.id) && (
+                          <button
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() =>
+                              dispatch(
+                                updateUserStatus({
+                                  id: u.id,
+                                  status:
+                                    u.status === "ACTIVE"
+                                      ? "DISABLED"
+                                      : "ACTIVE",
+                                }),
+                              )
+                            }
+                          >
+                            {u.status === "ACTIVE" ? "Disable" : "Enable"}
+                          </button>
+                        )}
                     </td>
                   </tr>
                 ))}
@@ -2181,15 +2524,27 @@ export default function AdminUsers() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\admin\AdminVendors.jsx =====
+===== AdminVendors.jsx =====
+import { useDispatch, useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import {
+  approveVendor,
+  rejectVendor,
+  deleteVendor,
+} from "../../store/slices/vendorSlice";
+
 export default function AdminVendors() {
-  const { vendors, approveVendor, rejectVendor, deleteVendor } = useApp();
+  const dispatch = useDispatch();
+
+  const vendors = useSelector((state) => state.vendors.items);
+
   return (
     <PortalLayout type="admin">
       <div className="py-4">
         <h2>Vendor Management</h2>
+
         <div className="card">
           <div className="card-body table-responsive">
             <table className="table">
@@ -2201,33 +2556,37 @@ export default function AdminVendors() {
                   <th>Actions</th>
                 </tr>
               </thead>
+
               <tbody>
                 {vendors.map((v) => (
                   <tr key={v.id}>
                     <td>{v.storeName}</td>
                     <td>{v.email}</td>
                     <td>{v.status}</td>
+
                     <td>
                       {v.status === "APPLIED" && (
                         <>
                           <button
                             className="btn btn-sm btn-success me-2"
-                            onClick={() => approveVendor(v.id)}
+                            onClick={() => dispatch(approveVendor(v.id))}
                           >
                             Approve
                           </button>
+
                           <button
                             className="btn btn-sm btn-outline-danger"
-                            onClick={() => rejectVendor(v.id)}
+                            onClick={() => dispatch(rejectVendor(v.id))}
                           >
                             Reject
                           </button>
                         </>
                       )}
+
                       {v.status === "VERIFIED" && (
                         <button
                           className="btn btn-sm btn-danger"
-                          onClick={() => deleteVendor(v.id)}
+                          onClick={() => dispatch(deleteVendor(v.id))}
                         >
                           Delete
                         </button>
@@ -2244,140 +2603,218 @@ export default function AdminVendors() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Cart.jsx =====
-import { useState } from "react";
+===== Cart.jsx =====
+import { useEffect, useState } from "react";
+
 import { Link, useNavigate } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+
+import { useDispatch, useSelector } from "react-redux";
+
+import {
+  loadCart,
+  removeFromCart,
+  updateCartQty,
+} from "../store/slices/cartSlice";
+
+import { loadAddresses } from "../store/slices/addressSlice";
+
+import { createCheckoutSession } from "../store/slices/orderSlice";
+
 export default function Cart() {
-  const {
-    cartItems,
-    cartTotal,
-    updateCartQty,
-    removeFromCart,
-    addresses,
-    createCheckoutSession,
-    user,
-  } = useApp();
-  const [paymentLoading, setPaymentLoading] = useState(false);
-  const [paymentError, setPaymentError] = useState("");
+  const dispatch = useDispatch();
   const nav = useNavigate();
-  const mine = addresses.filter((a) => a.userId === user.id);
-  const [address, setAddress] = useState(
-    mine.find((a) => a.isDefault)?.id || mine[0]?.id || "",
-  );
-  if (!cartItems.length)
+
+  const cartItems = useSelector((state) => state.cart.items);
+
+  const cartTotal = useSelector((state) => state.cart.total);
+
+  const addresses = useSelector((state) => state.addresses.items);
+
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
+  const [paymentError, setPaymentError] = useState("");
+
+  const [address, setAddress] = useState("");
+
+  useEffect(() => {
+    dispatch(loadCart());
+    dispatch(loadAddresses());
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (!addresses.length) {
+      setAddress("");
+      return;
+    }
+
+    const defaultAddress = addresses.find((a) => a.isDefault);
+
+    setAddress(String(defaultAddress?.id || addresses[0]?.id || ""));
+  }, [addresses]);
+
+  if (!cartItems.length) {
     return (
       <div className="container py-5 text-center">
         <h2>Cart is empty</h2>
+
         <Link to="/products" className="btn btn-primary">
           Browse Products
         </Link>
       </div>
     );
+  }
+
   const handleCheckout = async () => {
-    if (!address) return;
+    if (!address) {
+      nav("/profile/addresses");
+      return;
+    }
+
+    setPaymentLoading(true);
+    setPaymentError("");
 
     try {
-      setPaymentLoading(true);
-      setPaymentError("");
+      const data = await dispatch(createCheckoutSession(address)).unwrap();
 
-      const data = await createCheckoutSession(address);
-
-      if (!data?.url) {
-        throw new Error("Stripe Checkout URL was not returned.");
+      if (data?.url) {
+        window.location.href = data.url;
+        return;
       }
 
-      window.location.href = data.url;
+      setPaymentError("Unable to start payment.");
     } catch (error) {
-      console.error("Stripe checkout error:", error);
-
-      setPaymentError(error.message || "Unable to start payment.");
+      setPaymentError(error || "Payment failed.");
     } finally {
       setPaymentLoading(false);
     }
   };
+
   return (
     <div className="container py-4">
-      <h2>Cart</h2>
+      <h2>Shopping Cart</h2>
+
       <div className="row g-4">
         <div className="col-lg-8">
-          {cartItems.map((i) => (
-            <div className="card mb-3" key={i.productId}>
-              <div className="card-body d-flex gap-3 align-items-center">
-                <img
-                  src={i.product.image}
-                  alt={i.product.name}
-                  style={{ width: 80, height: 70, objectFit: "cover" }}
-                />
-                <div className="flex-grow-1">
-                  <strong>{i.product.name}</strong>
-                  <div>â‚¹{i.product.price.toLocaleString("en-IN")}</div>
+          {cartItems.map((item) => {
+            const product = item.product || item;
+
+            const quantity = item.quantity || 1;
+
+            return (
+              <div className="card mb-3" key={item.id}>
+                <div className="card-body d-flex gap-3 align-items-center">
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    style={{
+                      width: 90,
+                      height: 90,
+                      objectFit: "cover",
+                    }}
+                  />
+
+                  <div className="flex-grow-1">
+                    <h5>{product.name}</h5>
+
+                    <div>â‚¹{Number(product.price).toLocaleString("en-IN")}</div>
+
+                    <div className="mt-2 d-flex gap-2 align-items-center">
+                      <button
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() =>
+                          dispatch(
+                            updateCartQty({
+                              productId: item.productId || product.id,
+                              quantity: quantity - 1,
+                            }),
+                          )
+                        }
+                      >
+                        -
+                      </button>
+
+                      <span>{quantity}</span>
+
+                      <button
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() =>
+                          dispatch(
+                            updateCartQty({
+                              productId: item.productId || product.id,
+                              quantity: quantity + 1,
+                            }),
+                          )
+                        }
+                      >
+                        +
+                      </button>
+
+                      <button
+                        className="btn btn-sm btn-outline-danger ms-2"
+                        onClick={() =>
+                          dispatch(removeFromCart(item.productId || product.id))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <strong>
+                    â‚¹
+                    {Number(
+                      item.subtotal || product.price * quantity,
+                    ).toLocaleString("en-IN")}
+                  </strong>
                 </div>
-                <input
-                  type="number"
-                  min="1"
-                  max={i.product.stock}
-                  className="form-control"
-                  style={{ width: 90 }}
-                  value={i.quantity}
-                  onChange={(e) => updateCartQty(i.productId, +e.target.value)}
-                />
-                <strong>â‚¹{i.subtotal.toLocaleString("en-IN")}</strong>
-                <button
-                  className="btn btn-outline-danger"
-                  onClick={() => removeFromCart(i.productId)}
-                >
-                  Delete
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+
         <div className="col-lg-4">
           <div className="card">
             <div className="card-body">
-              <h5>Price Summary</h5>
-              <div className="d-flex justify-content-between">
-                <span>Total</span>
-                <strong>â‚¹{cartTotal.toLocaleString("en-IN")}</strong>
-              </div>
-              <label className="form-label mt-3">Delivery address</label>
+              <h4>Order Summary</h4>
+
+              <h3>â‚¹{Number(cartTotal).toLocaleString("en-IN")}</h3>
+
+              {paymentError && (
+                <div className="alert alert-danger">{paymentError}</div>
+              )}
+
+              <label className="form-label mt-3">Delivery Address</label>
+
               <select
                 className="form-select mb-3"
                 value={address}
-                onChange={(e) => setAddress(+e.target.value)}
+                onChange={(e) => setAddress(e.target.value)}
               >
-                {mine.map((a) => (
+                <option value="">Select Address</option>
+
+                {addresses.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.type}: {a.addressLine}, {a.city}
                   </option>
                 ))}
               </select>
-              {paymentError && (
-                <div className="alert alert-danger">{paymentError}</div>
+
+              {!addresses.length && (
+                <Link
+                  to="/profile/addresses"
+                  className="btn btn-outline-primary w-100 mb-2"
+                >
+                  Add Address
+                </Link>
               )}
 
               <button
                 className="btn btn-success w-100"
-                disabled={!address || paymentLoading}
+                disabled={paymentLoading || !address}
                 onClick={handleCheckout}
               >
-                {paymentLoading ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" />
-                    Redirecting to Stripe...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-credit-card me-2" />
-                    Pay with Stripe
-                  </>
-                )}
+                {paymentLoading ? "Starting Payment..." : "Checkout"}
               </button>
-
-              <div className="small text-muted mt-2 text-center">
-                Development mode â€” no real money will be charged.
-              </div>
             </div>
           </div>
         </div>
@@ -2386,12 +2823,15 @@ export default function Cart() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Home.jsx =====
+===== Home.jsx =====
 import { Link } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+import { useSelector } from "react-redux";
+
 import ProductCard from "../components/products/ProductCard";
+
 export default function Home() {
-  const { products } = useApp();
+  const products = useSelector((state) => state.products.items);
+
   return (
     <>
       <section className="hero py-5">
@@ -2399,19 +2839,24 @@ export default function Home() {
           <h1 className="display-5 fw-bold">
             Everything you need, from trusted vendors.
           </h1>
+
           <p className="lead">
             A complete multi-vendor e-commerce frontend built with React.
           </p>
+
           <Link to="/products" className="btn btn-light btn-lg">
             Shop Products
           </Link>
         </div>
       </section>
+
       <section className="container py-5">
         <div className="d-flex justify-content-between">
           <h2>Popular Products</h2>
+
           <Link to="/products">View all</Link>
         </div>
+
         <div className="row g-4 product-grid">
           {products.slice(0, 4).map((p) => (
             <div className="col-sm-6 col-lg-3" key={p.id}>
@@ -2424,31 +2869,60 @@ export default function Home() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Issues.jsx =====
+===== Issues.jsx =====
 import { useState } from "react";
-import { useApp } from "../context/AppContext";
+
+import { useDispatch, useSelector } from "react-redux";
+
+import { addIssue } from "../store/slices/issueSlice";
+
 export default function Issues() {
-  const { user, issues, orders, addIssue } = useApp();
-  const [s, setS] = useState(""),
-    [d, setD] = useState(""),
-    [o, setO] = useState(""),
-    [p, setP] = useState("MEDIUM");
-  const submit = (e) => {
+  const dispatch = useDispatch();
+
+  const user = useSelector((state) => state.auth.user);
+
+  const issues = useSelector((state) => state.issues.items);
+
+  const orders = useSelector((state) => state.orders.items);
+
+  const [s, setS] = useState("");
+  const [d, setD] = useState("");
+  const [o, setO] = useState("");
+  const [p, setP] = useState("MEDIUM");
+
+  const submit = async (e) => {
     e.preventDefault();
+
     if (!s || !d) return;
-    addIssue({
-      subject: s,
-      description: d,
-      orderId: o ? +o : null,
-      priority: p,
-    });
-    setS("");
-    setD("");
-    setO("");
+
+    try {
+      await dispatch(
+        addIssue({
+          subject: s,
+          description: d,
+          orderId: o || undefined,
+          priority: p,
+        }),
+      ).unwrap();
+
+      setS("");
+      setD("");
+      setO("");
+    } catch (error) {
+      alert(error || "Failed to submit issue.");
+    }
   };
+
+  const userId = user?._id || user?.id;
+
+  const myOrders = orders.filter((x) => String(x.userId) === String(userId));
+
+  const myIssues = issues.filter((i) => String(i.userId) === String(userId));
+
   return (
     <div className="container py-4">
       <h2>Customer Issues</h2>
+
       <div className="row g-4">
         <div className="col-lg-5">
           <div className="card">
@@ -2460,26 +2934,28 @@ export default function Issues() {
                   value={s}
                   onChange={(e) => setS(e.target.value)}
                 />
+
                 <textarea
                   className="form-control mb-2"
                   placeholder="Description"
                   value={d}
                   onChange={(e) => setD(e.target.value)}
                 />
+
                 <select
                   className="form-select mb-2"
                   value={o}
                   onChange={(e) => setO(e.target.value)}
                 >
                   <option value="">No specific order</option>
-                  {orders
-                    .filter((x) => x.userId === user.id)
-                    .map((x) => (
-                      <option key={x.id} value={x.id}>
-                        #{x.id}
-                      </option>
-                    ))}
+
+                  {myOrders.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      #{x.id}
+                    </option>
+                  ))}
                 </select>
+
                 <select
                   className="form-select mb-2"
                   value={p}
@@ -2490,240 +2966,30 @@ export default function Issues() {
                   <option>HIGH</option>
                   <option>URGENT</option>
                 </select>
+
                 <button className="btn btn-primary">Submit Issue</button>
               </form>
             </div>
           </div>
         </div>
+
         <div className="col-lg-7">
-          {issues
-            .filter((i) => i.userId === user.id)
-            .map((i) => (
-              <div className="card mb-2" key={i.id}>
-                <div className="card-body">
-                  <div className="d-flex justify-content-between">
-                    <h5>
-                      #{i.id} â€” {i.subject}
-                    </h5>
-                    <span className="badge text-bg-secondary">{i.status}</span>
-                  </div>
-                  <p>{i.description}</p>
-                  {i.response && (
-                    <div className="alert alert-light">{i.response}</div>
-                  )}
-                </div>
-              </div>
-            ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Login.jsx =====
-import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-
-import { useApp } from "../context/AppContext";
-
-export default function Login() {
-  const { login, loginWithAuth0 } = useApp();
-
-  const nav = useNavigate();
-
-  const location = useLocation();
-
-  const [email, setEmail] = useState("");
-
-  const [password, setPassword] = useState("");
-
-  const [error, setError] = useState("");
-
-  const [busy, setBusy] = useState(false);
-
-  const returnTo = location.state?.returnTo || "/user/home";
-
-  const submit = async (e) => {
-    e.preventDefault();
-
-    setError("");
-    setBusy(true);
-
-    try {
-      const result = await login(email, password);
-
-      if (!result.ok) {
-        setError(result.message);
-
-        return;
-      }
-
-      nav(
-        result.user.role === "USER"
-          ? "/user/home"
-          : result.user.role === "VENDOR"
-            ? "/vendor/dashboard"
-            : "/admin/dashboard",
-        {
-          replace: true,
-        },
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const continueWithAuth0 = async () => {
-    setError("");
-
-    try {
-      await loginWithAuth0(returnTo);
-    } catch (err) {
-      console.error(err);
-
-      setError(err.message || "Unable to start Auth0 login.");
-    }
-  };
-
-  return (
-    <div className="container py-5">
-      <div className="row justify-content-center">
-        <div className="col-md-6 col-lg-5">
-          <div className="card shadow-sm">
-            <div className="card-body p-4">
-              <h2 className="mb-3">Login</h2>
-
-              {error && <div className="alert alert-danger">{error}</div>}
-
-              <button
-                type="button"
-                className="btn btn-dark w-100 mb-3"
-                onClick={continueWithAuth0}
-              >
-                <i className="bi bi-google me-2" />
-                Continue with Google / Auth0
-              </button>
-
-              <div className="text-center text-muted small mb-3">OR</div>
-
-              <form onSubmit={submit}>
-                <label className="form-label">Email</label>
-
-                <input
-                  type="email"
-                  className="form-control mb-3"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
-                  required
-                />
-
-                <label className="form-label">Password</label>
-
-                <input
-                  type="password"
-                  className="form-control mb-3"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
-
-                <button className="btn btn-primary w-100" disabled={busy}>
-                  {busy ? "Signing in..." : "Login with Email & Password"}
-                </button>
-              </form>
-
-              <div className="mt-3 text-center">
-                <Link to="/register">Create account</Link>
-
-                {" Â· "}
-
-                <Link to="/vendor/register">Become a vendor</Link>
-              </div>
-
-              <p className="small text-muted mt-3 mb-0">
-                The Auth0 button opens Auth0 Universal Login. Google and any
-                other identity providers enabled in your Auth0 tenant will be
-                available there.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\OrderDetails.jsx =====
-import { Link, useParams } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-import OrderTracking from "../components/orders/OrderTracking";
-
-export default function OrderDetails() {
-  const { id } = useParams();
-  const { orders, addresses, user } = useApp();
-
-  const o = orders.find((x) => x.id === id);
-
-  if (!o || o.userId !== user.id) {
-    return (
-      <div className="container py-5">
-        <div className="alert alert-danger">Order not found.</div>
-      </div>
-    );
-  }
-
-  const a = addresses.find((x) => x.id === o.addressId);
-
-  return (
-    <div className="container py-4">
-      <Link to="/orders">â† Orders</Link>
-
-      <div className="row g-4 mt-1">
-        <div className="col-lg-7">
-          <div className="card">
-            <div className="card-body">
-              <h3>Order #{o.id}</h3>
-
-              {o.items.map((i) => (
-                <div className="border-bottom py-3" key={i.id}>
-                  <div className="d-flex justify-content-between">
-                    <span>
-                      {i.name} Ã— {i.quantity}
-                    </span>
-
-                    <strong>
-                      â‚¹{(i.unitPrice * i.quantity).toLocaleString("en-IN")}
-                    </strong>
-                  </div>
-
-                  <small>
-                    Vendor status: <strong>{i.vendorStatus}</strong>
-                  </small>
-                </div>
-              ))}
-
-              <div className="d-flex justify-content-between fs-5 mt-3">
-                <strong>Total</strong>
-                <strong>â‚¹{o.totalAmount.toLocaleString("en-IN")}</strong>
-              </div>
-
-              {a && (
-                <div className="alert alert-light mt-3">
-                  {a.addressLine}, {a.city}, {a.state} - {a.pincode}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="col-lg-5">
-          {o.items.map((i) => (
-            <div className="card mb-3" key={i.id}>
+          {myIssues.map((i) => (
+            <div className="card mb-2" key={i.id}>
               <div className="card-body">
-                <h5>{i.name}</h5>
-                <OrderTracking item={i} />
+                <div className="d-flex justify-content-between">
+                  <h5>
+                    #{i.id} â€” {i.subject}
+                  </h5>
+
+                  <span className="badge text-bg-secondary">{i.status}</span>
+                </div>
+
+                <p>{i.description}</p>
+
+                {i.response && (
+                  <div className="alert alert-light">{i.response}</div>
+                )}
               </div>
             </div>
           ))}
@@ -2733,51 +2999,323 @@ export default function OrderDetails() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Orders.jsx =====
-import { Link } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-export default function Orders() {
-  const { orders, user } = useApp(),
-    mine = orders.filter((o) => o.userId === user.id);
+===== Login.jsx =====
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useDispatch } from "react-redux";
+import { useAuth0 } from "@auth0/auth0-react";
+
+import { login } from "../store/slices/authSlice";
+
+export default function Login() {
+  const dispatch = useDispatch();
+  const nav = useNavigate();
+
+  const { loginWithRedirect, isLoading: auth0Loading } = useAuth0();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+
+    setError("");
+    setBusy(true);
+
+    try {
+      const result = await dispatch(login({ email, password })).unwrap();
+
+      nav(
+        result.user.role === "USER"
+          ? "/user/home"
+          : result.user.role === "VENDOR"
+            ? "/vendor/dashboard"
+            : "/admin/dashboard",
+      );
+    } catch (error) {
+      setError(error || "Invalid email or password.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loginWithAuth0 = async () => {
+    try {
+      setError("");
+
+      await loginWithRedirect({
+        appState: {
+          returnTo: "/user/home",
+        },
+        authorizationParams: {
+          audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+          scope: "openid profile email",
+        },
+      });
+    } catch (error) {
+      console.error("Auth0 login failed:", error);
+
+      setError(error?.message || "Unable to start Auth0 login.");
+    }
+  };
+
   return (
-    <div className="container py-4">
-      <h2>My Orders</h2>
-      {mine.map((o) => (
-        <div className="card mb-3" key={o.id}>
-          <div className="card-body">
-            <div className="d-flex justify-content-between">
-              <strong>Order #{o.id}</strong>
-              <span className="badge text-bg-primary">{o.status}</span>
-            </div>
-            {o.items.map((i) => (
-              <div
-                className="border-bottom py-2 d-flex justify-content-between"
-                key={i.id}
-              >
-                <span>
-                  {i.name} Ã— {i.quantity}
-                </span>
-                <span>{i.vendorStatus}</span>
+    <div className="container py-5">
+      <div className="row justify-content-center">
+        <div className="col-md-6 col-lg-4">
+          <div className="card shadow-sm">
+            <div className="card-body p-4">
+              <h2 className="mb-4">Login</h2>
+
+              {error && <div className="alert alert-danger">{error}</div>}
+
+              <form onSubmit={submit}>
+                <label>Email</label>
+
+                <input
+                  className="form-control mb-3"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+
+                <label>Password</label>
+
+                <input
+                  type="password"
+                  className="form-control mb-3"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+
+                <button
+                  type="submit"
+                  className="btn btn-primary w-100"
+                  disabled={busy || auth0Loading}
+                >
+                  {busy ? "Logging in..." : "Login"}
+                </button>
+              </form>
+
+              <div className="d-flex align-items-center my-4">
+                <hr className="flex-grow-1" />
+
+                <span className="px-3 text-muted">OR</span>
+
+                <hr className="flex-grow-1" />
               </div>
-            ))}
-            <div className="d-flex justify-content-between mt-3">
-              <strong>Total</strong>
-              <strong>â‚¹{o.totalAmount.toLocaleString("en-IN")}</strong>
+
+              <button
+                type="button"
+                className="btn btn-outline-dark w-100"
+                onClick={loginWithAuth0}
+                disabled={auth0Loading || busy}
+              >
+                {auth0Loading ? "Loading..." : "Continue with Google"}
+              </button>
+
+              <hr />
+
+              <small>
+                Seed accounts:
+                <br />
+                user@example.com / user123
+                <br />
+                vendor@example.com / vendor123
+                <br />
+                admin@example.com / admin123
+              </small>
+
+              <div className="mt-3">
+                <Link to="/register">Create account</Link>
+
+                {" Â· "}
+
+                <Link to="/vendor/register">Become a vendor</Link>
+              </div>
             </div>
-            <Link
-              to={`/orders/${o.id}`}
-              className="btn btn-outline-primary mt-3"
-            >
-              Track Order
-            </Link>
           </div>
         </div>
-      ))}
+      </div>
     </div>
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\PaymentCancel.jsx =====
+===== OrderDetails.jsx =====
+import { Link, useParams } from "react-router-dom";
+import { useSelector } from "react-redux";
+import OrderTracking from "../components/orders/OrderTracking";
+
+export default function OrderDetails() {
+  const { id } = useParams();
+
+  const orders = useSelector((state) => state.orders.items);
+
+  const addresses = useSelector((state) => state.addresses.items);
+
+  const user = useSelector((state) => state.auth.user);
+
+  const o = orders.find((x) => String(x._id || x.id) === String(id));
+
+  const userId = user?._id || user?.id;
+
+  if (!o || String(o.userId) !== String(userId)) {
+    return (
+      <div className="container py-5">
+        <div className="alert alert-danger">Order not found.</div>
+      </div>
+    );
+  }
+
+  const a = addresses.find(
+    (x) => String(x._id || x.id) === String(o.addressId),
+  );
+
+  return (
+    <div className="container py-4">
+      <Link to="/orders">â† Orders</Link>
+
+      <div className="row g-4 mt-1">
+        {/* ORDER DETAILS */}
+        <div className="col-lg-7">
+          <div className="card">
+            <div className="card-body">
+              <h3>Order #{o._id || o.id}</h3>
+
+              <p>
+                <strong>Status:</strong>{" "}
+                <span className="badge text-bg-primary">{o.status}</span>
+              </p>
+
+              <p>
+                <strong>Payment:</strong> {o.paymentStatus}
+              </p>
+
+              {/* ORDER ITEMS */}
+              <div className="mt-4">
+                <h5>Items</h5>
+
+                {(o.items || []).map((item) => (
+                  <div
+                    className="border rounded p-3 mb-2"
+                    key={item.id || item._id}
+                  >
+                    <div className="d-flex justify-content-between">
+                      <div>
+                        <strong>{item.name}</strong>
+
+                        <div className="text-muted">Qty: {item.quantity}</div>
+
+                        <div className="small text-muted">
+                          Vendor Status: {item.vendorStatus}
+                        </div>
+                      </div>
+
+                      <strong>
+                        â‚¹
+                        {(
+                          Number(item.unitPrice || 0) *
+                          Number(item.quantity || 0)
+                        ).toLocaleString("en-IN")}
+                      </strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* TOTAL */}
+              <div className="d-flex justify-content-between fs-5 mt-4">
+                <strong>Total</strong>
+
+                <strong>â‚¹{o.totalAmount?.toLocaleString("en-IN")}</strong>
+              </div>
+
+              {/* ADDRESS */}
+              {a && (
+                <div className="alert alert-light mt-3">
+                  {a.addressLine}, {a.city}, {a.state} - {a.pincode}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* TRACKING */}
+        <div className="col-lg-5">
+          <div className="card">
+            <div className="card-body">
+              <h5>Order Tracking</h5>
+
+              <OrderTracking order={o} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+===== Orders.jsx =====
+import { Link } from "react-router-dom";
+import { useSelector } from "react-redux";
+
+export default function Orders() {
+  const orders = useSelector((state) => state.orders.items);
+
+  const user = useSelector((state) => state.auth.user);
+
+  const userId = user?._id || user?.id;
+
+  const mine = orders.filter((o) => String(o.userId) === String(userId));
+
+  return (
+    <div className="container py-4">
+      <h2>My Orders</h2>
+
+      {mine.length === 0 && (
+        <div className="alert alert-info">No orders found.</div>
+      )}
+
+      {mine.map((o) => {
+        const orderId = o._id || o.id;
+
+        return (
+          <div className="card mb-3" key={orderId}>
+            <div className="card-body">
+              <div className="d-flex justify-content-between">
+                <strong>Order #{orderId}</strong>
+
+                <span className="badge text-bg-primary">{o.status}</span>
+              </div>
+
+              <div className="d-flex justify-content-between mt-3">
+                <strong>Total</strong>
+
+                <strong>
+                  â‚¹{Number(o.totalAmount || 0).toLocaleString("en-IN")}
+                </strong>
+              </div>
+
+              <Link
+                to={`/orders/${orderId}`}
+                className="btn btn-outline-primary mt-3"
+              >
+                Track Order
+              </Link>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+===== PaymentCancel.jsx =====
 import { Link } from "react-router-dom";
 
 export default function PaymentCancel() {
@@ -2808,7 +3346,7 @@ export default function PaymentCancel() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\PaymentSuccess.jsx =====
+===== PaymentSuccess.jsx =====
 import { Link } from "react-router-dom";
 
 export default function PaymentSuccess() {
@@ -2839,10 +3377,12 @@ export default function PaymentSuccess() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\ProductDetails.jsx =====
+===== ProductDetails.jsx =====
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+import { useDispatch, useSelector } from "react-redux";
+
+import { addToCart } from "../store/slices/cartSlice";
 import ProductQA from "../components/products/ProductQA";
 import ReviewForm from "../components/products/ReviewForm";
 
@@ -2850,9 +3390,17 @@ export default function ProductDetails() {
   const { id } = useParams();
   const nav = useNavigate();
 
-  const { products, reviews, orders, addToCart, user } = useApp();
+  const dispatch = useDispatch();
 
-  const p = products.find((x) => String(x.id) === String(id));
+  const products = useSelector((state) => state.products.items);
+
+  const reviews = useSelector((state) => state.reviews.items);
+
+  const orders = useSelector((state) => state.orders.items);
+
+  const user = useSelector((state) => state.auth.user);
+
+  const p = products.find((x) => String(x.id || x._id) === String(id));
 
   const vendor = p?.vendor;
   const [qty, setQty] = useState(1);
@@ -2865,19 +3413,30 @@ export default function ProductDetails() {
     );
   }
 
-  const mine = reviews.filter((r) => r.productId === p.id);
+  const productId = p.id || p._id;
+  const userId = user?.id || user?._id;
 
-  const purchased = orders.some(
-    (o) =>
-      String(o.userId) === String(user.id) &&
+  const mine = reviews.filter((r) => String(r.productId) === String(productId));
+
+  const purchased = orders.some((o) => {
+    const orderUserId = o.userId?.id || o.userId?._id || o.userId;
+    const items = o.items || [];
+
+    return (
+      String(orderUserId) === String(userId) &&
       o.status === "DELIVERED" &&
-      o.items.some((i) => String(i.productId) === String(p.id)),
-  );
+      items.some(
+        (i) =>
+          String(i.productId?.id || i.productId?._id || i.productId) ===
+          String(productId),
+      )
+    );
+  });
 
   const myReview = reviews.find(
     (r) =>
-      String(r.productId) === String(p.id) &&
-      String(r.userId) === String(user.id),
+      String(r.productId) === String(productId) &&
+      String(r.userId) === String(userId),
   );
 
   const canReview = user?.role === "USER" && purchased;
@@ -2887,7 +3446,6 @@ export default function ProductDetails() {
       <Link to="/products">â† Back</Link>
 
       <div className="row g-5 mt-1">
-        {/* Product Image */}
         <div className="col-lg-6">
           <img
             src={p.image}
@@ -2896,7 +3454,6 @@ export default function ProductDetails() {
           />
         </div>
 
-        {/* Product Details */}
         <div className="col-lg-6">
           <small className="text-muted">
             {p.brand} Â· {p.category}
@@ -2922,7 +3479,6 @@ export default function ProductDetails() {
             <strong>Stock:</strong> {p.stock || "Out of stock"}
           </p>
 
-          {/* Cart / Buy Actions */}
           {user?.role === "USER" && (
             <div className="d-flex gap-2">
               <input
@@ -2940,7 +3496,14 @@ export default function ProductDetails() {
               <button
                 className="btn btn-primary"
                 disabled={!p.stock}
-                onClick={() => addToCart(p, qty)}
+                onClick={() =>
+                  dispatch(
+                    addToCart({
+                      productId: p.id || p._id,
+                      quantity: qty,
+                    }),
+                  )
+                }
               >
                 Add to Cart
               </button>
@@ -2958,7 +3521,6 @@ export default function ProductDetails() {
             </div>
           )}
 
-          {/* Vendor */}
           <div className="card mt-3">
             <div className="card-body">
               <h5>Sold By</h5>
@@ -2966,51 +3528,67 @@ export default function ProductDetails() {
             </div>
           </div>
 
-          <ProductQA productId={p.id} />
+          <ProductQA productId={productId} />
         </div>
       </div>
 
-      {/* Reviews */}
       <section className="mt-5">
         <h3>Reviews</h3>
 
+        {mine.length === 0 && <p className="text-muted">No reviews yet.</p>}
+
         {mine.map((r) => (
-          <div className="card mb-2" key={r.id}>
+          <div className="card mb-2" key={r.id || r._id}>
             <div className="card-body">
               <div className="text-warning">{"â˜…".repeat(r.rating)}</div>
 
               <p>{r.review}</p>
 
-              <small>{r.createdAt}</small>
+              <small>{new Date(r.createdAt).toLocaleString()}</small>
             </div>
           </div>
         ))}
 
-        {canReview && !myReview && <ReviewForm productId={p.id} />}
+        {canReview && !myReview && <ReviewForm productId={productId} />}
 
-        {myReview && <ReviewForm productId={p.id} existingReview={myReview} />}
+        {myReview && (
+          <ReviewForm productId={productId} existingReview={myReview} />
+        )}
+
+        {user?.role === "USER" && !purchased && (
+          <div className="alert alert-info mt-3">
+            You can review this product after purchasing it and receiving a
+            delivered order.
+          </div>
+        )}
       </section>
     </div>
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Products.jsx =====
+===== Products.jsx =====
 import { useMemo, useState } from "react";
+import { useSelector } from "react-redux";
+
 import ProductCard from "../components/products/ProductCard";
-import { useApp } from "../context/AppContext";
+
 export default function Products() {
-  const { products } = useApp();
-  const [q, setQ] = useState(""),
-    [brand, setBrand] = useState(""),
-    [cat, setCat] = useState(""),
-    [min, setMin] = useState(""),
-    [max, setMax] = useState(""),
-    [rating, setRating] = useState(""),
-    [stock, setStock] = useState(""),
-    [sort, setSort] = useState(""),
-    [page, setPage] = useState(1);
-  const brands = [...new Set(products.map((p) => p.brand))],
-    cats = [...new Set(products.map((p) => p.category))];
+  const products = useSelector((state) => state.products.items);
+
+  const [q, setQ] = useState("");
+  const [brand, setBrand] = useState("");
+  const [cat, setCat] = useState("");
+  const [min, setMin] = useState("");
+  const [max, setMax] = useState("");
+  const [rating, setRating] = useState("");
+  const [stock, setStock] = useState("");
+  const [sort, setSort] = useState("");
+  const [page, setPage] = useState(1);
+
+  const brands = [...new Set(products.map((p) => p.brand))];
+
+  const cats = [...new Set(products.map((p) => p.category))];
+
   const filtered = useMemo(() => {
     let r = products.filter(
       (p) =>
@@ -3024,51 +3602,75 @@ export default function Products() {
         (!rating || p.rating >= +rating) &&
         (!stock || (stock === "in" ? p.stock > 0 : p.stock === 0)),
     );
-    if (sort === "low") r.sort((a, b) => a.price - b.price);
-    if (sort === "high") r.sort((a, b) => b.price - a.price);
-    if (sort === "rating") r.sort((a, b) => b.rating - a.rating);
+
+    if (sort === "low") {
+      r.sort((a, b) => a.price - b.price);
+    }
+
+    if (sort === "high") {
+      r.sort((a, b) => b.price - a.price);
+    }
+
+    if (sort === "rating") {
+      r.sort((a, b) => b.rating - a.rating);
+    }
+
     return r;
   }, [products, q, brand, cat, min, max, rating, stock, sort]);
-  const size = 9,
-    total = Math.max(1, Math.ceil(filtered.length / size)),
-    items = filtered.slice((page - 1) * size, page * size);
-  const change = (fn, v) => {
-    fn(v);
+
+  const size = 9;
+
+  const total = Math.max(1, Math.ceil(filtered.length / size));
+
+  const items = filtered.slice((page - 1) * size, page * size);
+
+  const change = (fn, value) => {
+    fn(value);
     setPage(1);
   };
+
   return (
     <div className="container py-4">
+      {/* KEEP THE REST OF YOUR EXISTING JSX EXACTLY THE SAME */}
+      {/* Only use products from Redux as shown above */}
+
       <div className="row g-4 product-grid">
         <div className="col-lg-3">
           <div className="card">
             <div className="card-body">
               <h5>Filters</h5>
+
               <input
                 className="form-control mt-3"
                 placeholder="Search"
                 value={q}
                 onChange={(e) => change(setQ, e.target.value)}
               />
+
               <select
                 className="form-select mt-3"
                 value={brand}
                 onChange={(e) => change(setBrand, e.target.value)}
               >
                 <option value="">All brands</option>
+
                 {brands.map((x) => (
                   <option key={x}>{x}</option>
                 ))}
               </select>
+
               <select
                 className="form-select mt-3"
                 value={cat}
                 onChange={(e) => change(setCat, e.target.value)}
               >
                 <option value="">All categories</option>
+
                 {cats.map((x) => (
                   <option key={x}>{x}</option>
                 ))}
               </select>
+
               <div className="row g-2">
                 <div className="col">
                   <input
@@ -3079,6 +3681,7 @@ export default function Products() {
                     onChange={(e) => change(setMin, e.target.value)}
                   />
                 </div>
+
                 <div className="col">
                   <input
                     type="number"
@@ -3089,6 +3692,7 @@ export default function Products() {
                   />
                 </div>
               </div>
+
               <select
                 className="form-select mt-3"
                 value={rating}
@@ -3098,6 +3702,7 @@ export default function Products() {
                 <option value="4">4+</option>
                 <option value="4.5">4.5+</option>
               </select>
+
               <select
                 className="form-select mt-3"
                 value={stock}
@@ -3107,6 +3712,7 @@ export default function Products() {
                 <option value="in">In Stock</option>
                 <option value="out">Out of Stock</option>
               </select>
+
               <select
                 className="form-select mt-3"
                 value={sort}
@@ -3120,11 +3726,13 @@ export default function Products() {
             </div>
           </div>
         </div>
+
         <div className="col-lg-9">
           <div className="d-flex justify-content-between">
             <h2>Products</h2>
             <span>{filtered.length} results</span>
           </div>
+
           <div className="row g-4">
             {items.map((p) => (
               <div className="col-md-6 col-xl-4" key={p.id}>
@@ -3132,11 +3740,13 @@ export default function Products() {
               </div>
             ))}
           </div>
+
           {!items.length && (
             <div className="alert alert-info mt-3">
               No products match your filters.
             </div>
           )}
+
           {total > 1 && (
             <nav className="mt-4">
               <ul className="pagination">
@@ -3159,75 +3769,97 @@ export default function Products() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Profile.jsx =====
+===== Profile.jsx =====
 import { Link } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+import { useSelector } from "react-redux";
+
 export default function Profile() {
-  const { user, addresses, orders, reviews, issues } = useApp();
+  const user = useSelector((state) => state.auth.user);
+
+  const addresses = useSelector((state) => state.addresses.items);
+
+  const orders = useSelector((state) => state.orders.items);
+
+  const reviews = useSelector((state) => state.reviews.items);
+
+  const issues = useSelector((state) => state.issues.items);
+
+  const mineAddresses = addresses.filter(
+    (a) => !a.userId || String(a.userId) === String(user?.id),
+  );
+
+  const mineOrders = orders.filter(
+    (o) => !o.userId || String(o.userId) === String(user?.id),
+  );
+
+  const mineReviews = reviews.filter(
+    (r) => String(r.userId) === String(user?.id),
+  );
+
+  const mineIssues = issues.filter(
+    (i) => !i.userId || String(i.userId) === String(user?.id),
+  );
+
   return (
     <div className="container py-4">
-      <h2>Profile</h2>
       <div className="row g-4">
         <div className="col-lg-4">
           <div className="card">
             <div className="card-body">
-              <h5>Personal Information</h5>
+              <h3>{user?.name}</h3>
+
+              <p>{user?.email}</p>
+
               <p>
-                Name: <strong>{user.name}</strong>
-              </p>
-              <p>
-                Email: <strong>{user.email}</strong>
-              </p>
-              <p>
-                Role: <strong>{user.role}</strong>
+                <span className="badge text-bg-primary">{user?.role}</span>
               </p>
             </div>
           </div>
         </div>
+
         <div className="col-lg-8">
           <div className="card mb-3">
             <div className="card-body">
               <div className="d-flex justify-content-between">
                 <h5>Addresses</h5>
+
                 <Link to="/profile/addresses">Manage</Link>
               </div>
-              {addresses
-                .filter((a) => a.userId === user.id)
-                .map((a) => (
-                  <div className="border p-2 mb-2" key={a.id}>
-                    {a.type}: {a.addressLine}, {a.city} - {a.pincode}
-                  </div>
-                ))}
+
+              {mineAddresses.map((a) => (
+                <div className="border p-2 mb-2" key={a.id}>
+                  {a.type}: {a.addressLine}, {a.city} - {a.pincode}
+                </div>
+              ))}
             </div>
           </div>
+
           <div className="card">
             <div className="card-body">
               <div className="row text-center">
                 <div className="col">
-                  <b className="fs-3">
-                    {orders.filter((o) => o.userId === user.id).length}
-                  </b>
+                  <b className="fs-3">{mineOrders.length}</b>
                   <div>Orders</div>
                 </div>
+
                 <div className="col">
-                  <b className="fs-3">
-                    {reviews.filter((r) => r.userId === user.id).length}
-                  </b>
+                  <b className="fs-3">{mineReviews.length}</b>
                   <div>Reviews</div>
                 </div>
+
                 <div className="col">
-                  <b className="fs-3">
-                    {issues.filter((i) => i.userId === user.id).length}
-                  </b>
+                  <b className="fs-3">{mineIssues.length}</b>
                   <div>Issues</div>
                 </div>
               </div>
             </div>
           </div>
+
           <div className="mt-3 d-flex gap-2">
             <Link className="btn btn-outline-primary" to="/profile/reviews">
               My Reviews
             </Link>
+
             <Link className="btn btn-outline-primary" to="/profile/issues">
               My Issues
             </Link>
@@ -3238,13 +3870,15 @@ export default function Profile() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Register.jsx =====
+===== Register.jsx =====
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+import { useDispatch } from "react-redux";
+
+import { registerUser } from "../store/slices/authSlice";
 
 export default function Register() {
-  const { registerUser } = useApp();
+  const dispatch = useDispatch();
   const nav = useNavigate();
 
   const [f, setF] = useState({
@@ -3255,57 +3889,103 @@ export default function Register() {
   });
 
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const s = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
+
     setErr("");
-    const r = await registerUser(f);
+    setBusy(true);
 
-    if (!r.ok) {
-      return setErr(r.message);
+    try {
+      await dispatch(registerUser(f)).unwrap();
+
+      nav("/login");
+    } catch (error) {
+      setErr(error || "Registration failed.");
+    } finally {
+      setBusy(false);
     }
-
-    nav("/login");
   };
 
   return (
     <div className="container py-5">
-      <div className="col-md-6 mx-auto card">
+      <div className="col-md-7 mx-auto card">
         <div className="card-body">
           <h2>Create Account</h2>
 
           {err && <div className="alert alert-danger">{err}</div>}
 
-          <form onSubmit={s}>
-            {Object.keys(f).map((k) => (
-              <div className="mb-3" key={k}>
-                <label className="form-label">{k}</label>
+          <form onSubmit={submit}>
+            <div className="mb-3">
+              <label className="form-label">Name</label>
 
-                <input
-                  className="form-control"
-                  name={k}
-                  type={
-                    k === "password"
-                      ? "password"
-                      : k === "email"
-                        ? "email"
-                        : k === "phone"
-                          ? "tel"
-                          : "text"
-                  }
-                  required
-                  value={f[k]}
-                  onChange={(e) =>
-                    setF({
-                      ...f,
-                      [e.target.name]: e.target.value,
-                    })
-                  }
-                />
-              </div>
-            ))}
+              <input
+                className="form-control"
+                value={f.name}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    name: e.target.value,
+                  })
+                }
+                required
+              />
+            </div>
 
-            <button className="btn btn-primary w-100">Create Account</button>
+            <div className="mb-3">
+              <label className="form-label">Email</label>
+
+              <input
+                type="email"
+                className="form-control"
+                value={f.email}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    email: e.target.value,
+                  })
+                }
+                required
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label">Phone</label>
+
+              <input
+                className="form-control"
+                value={f.phone}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    phone: e.target.value,
+                  })
+                }
+                required
+              />
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label">Password</label>
+
+              <input
+                type="password"
+                className="form-control"
+                value={f.password}
+                onChange={(e) =>
+                  setF({
+                    ...f,
+                    password: e.target.value,
+                  })
+                }
+                required
+              />
+            </div>
+
+            <button className="btn btn-primary" disabled={busy}>
+              {busy ? "Creating..." : "Create Account"}
+            </button>
           </form>
         </div>
       </div>
@@ -3313,11 +3993,15 @@ export default function Register() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\Reviews.jsx =====
+===== Reviews.jsx =====
 import { Link } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+import { useSelector } from "react-redux";
 export default function Reviews() {
-  const { user, reviews, products } = useApp();
+  const user = useSelector((state) => state.auth.user);
+
+  const reviews = useSelector((state) => state.reviews.items);
+
+  const products = useSelector((state) => state.products.items);
   return (
     <div className="container py-4">
       <h2>My Reviews</h2>
@@ -3342,39 +4026,61 @@ export default function Reviews() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorDashboard.jsx =====
+===== VendorDashboard.jsx =====
+import { useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
 export default function VendorDashboard() {
-  const { products, orders, issues, user } = useApp();
-  const ps = products.filter((p) => p.vendorId === user.id),
-    os = orders.filter((o) => o.items.some((i) => i.vendorId === user.id)),
-    is = issues.filter((i) => i.vendorId === user.id),
-    sales = os.reduce(
-      (s, o) =>
-        s +
-        o.items
-          .filter((i) => i.vendorId === user.id)
-          .reduce((a, i) => a + i.quantity * i.unitPrice, 0),
-      0,
-    );
+  const products = useSelector((state) => state.products.items);
+
+  const orders = useSelector((state) => state.orders.items);
+
+  const issues = useSelector((state) => state.issues.items);
+
+  const user = useSelector((state) => state.auth.user);
+
+  const ps = products.filter((p) => String(p.vendorId) === String(user?.id));
+
+  const os = orders.filter((o) =>
+    (o.items || []).some((i) => String(i.vendorId) === String(user?.id)),
+  );
+
+  const vendorIssues = issues.filter(
+    (i) => String(i.vendorId) === String(user?.id),
+  );
+
+  const sales = os.reduce(
+    (total, order) =>
+      total +
+      (order.items || [])
+        .filter((item) => String(item.vendorId) === String(user?.id))
+        .reduce((sum, item) => sum + item.quantity * item.unitPrice, 0),
+    0,
+  );
+
   return (
     <PortalLayout type="vendor">
       <div className="py-4">
         <h2>Vendor Dashboard</h2>
+
         <div className="row g-3">
           {[
             ["Products", ps.length],
             ["Orders", os.length],
             ["Low Stock", ps.filter((p) => p.stock < 10).length],
-            ["Open Issues", is.filter((i) => i.status !== "RESOLVED").length],
+            [
+              "Open Issues",
+              vendorIssues.filter((i) => i.status !== "RESOLVED").length,
+            ],
             ["Sales", `â‚¹${sales.toLocaleString("en-IN")}`],
-          ].map(([a, b]) => (
-            <div className="col-sm-6 col-xl-3" key={a}>
+          ].map(([label, value]) => (
+            <div className="col-sm-6 col-xl-3" key={label}>
               <div className="card stat-card">
                 <div className="card-body">
-                  <small>{a}</small>
-                  <div className="fs-2 fw-bold">{b}</div>
+                  <small>{label}</small>
+
+                  <div className="fs-2 fw-bold">{value}</div>
                 </div>
               </div>
             </div>
@@ -3385,22 +4091,35 @@ export default function VendorDashboard() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorIssues.jsx =====
+===== VendorIssues.jsx =====
+import { useDispatch, useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import { updateIssue } from "../../store/slices/issueSlice";
+
 export default function VendorIssues() {
-  const { issues, user, orders, updateIssue } = useApp();
+  const dispatch = useDispatch();
+
+  const issues = useSelector((state) => state.issues.items);
+
+  const orders = useSelector((state) => state.orders.items);
+
+  const user = useSelector((state) => state.auth.user);
+
   const mine = issues.filter(
     (i) =>
-      i.vendorId === user.id ||
+      String(i.vendorId) === String(user?.id) ||
       orders
-        .find((o) => o.id === i.orderId)
-        ?.items.some((x) => x.vendorId === user.id),
+        .find((o) => String(o.id) === String(i.orderId))
+        ?.items?.some((x) => String(x.vendorId) === String(user?.id)),
   );
+
   return (
     <PortalLayout type="vendor">
       <div className="py-4">
         <h2>Customer Issues</h2>
+
         {mine.map((i) => (
           <div className="card mb-3" key={i.id}>
             <div className="card-body">
@@ -3408,22 +4127,40 @@ export default function VendorIssues() {
                 <h5>
                   #{i.id} â€” {i.subject}
                 </h5>
+
                 <span className="badge text-bg-secondary">{i.status}</span>
               </div>
+
               <p>{i.description}</p>
+
               <button
                 className="btn btn-outline-primary btn-sm me-2"
-                onClick={() => updateIssue(i.id, { status: "IN_PROGRESS" })}
+                onClick={() =>
+                  dispatch(
+                    updateIssue({
+                      id: i.id,
+                      data: {
+                        status: "IN_PROGRESS",
+                      },
+                    }),
+                  )
+                }
               >
                 In Progress
               </button>
+
               <button
                 className="btn btn-success btn-sm"
                 onClick={() =>
-                  updateIssue(i.id, {
-                    status: "RESOLVED",
-                    response: "Resolved by vendor.",
-                  })
+                  dispatch(
+                    updateIssue({
+                      id: i.id,
+                      data: {
+                        status: "RESOLVED",
+                        response: "Resolved by vendor.",
+                      },
+                    }),
+                  )
                 }
               >
                 Resolve
@@ -3436,9 +4173,13 @@ export default function VendorIssues() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorOrders.jsx =====
+===== VendorOrders.jsx =====
+import { useDispatch, useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import { updateVendorOrderStatus } from "../../store/slices/orderSlice";
+
 const next = {
   PLACED: ["CONFIRMED"],
   CONFIRMED: ["PACKED"],
@@ -3447,51 +4188,73 @@ const next = {
   OUT_FOR_DELIVERY: ["DELIVERED"],
   DELIVERED: [],
 };
+
 export default function VendorOrders() {
-  const { orders, user, updateVendorOrderStatus } = useApp();
+  const dispatch = useDispatch();
+
+  const orders = useSelector((state) => state.orders.items);
+
+  const user = useSelector((state) => state.auth.user);
+
   const mine = orders
-    .map((o) => ({
-      ...o,
-      items: o.items.filter((i) => i.vendorId === user.id),
+    .map((order) => ({
+      ...order,
+      items: (order.items || []).filter(
+        (item) => String(item.vendorId) === String(user?.id),
+      ),
     }))
-    .filter((o) => o.items.length);
+    .filter((order) => order.items.length);
+
   return (
     <PortalLayout type="vendor">
       <div className="py-4">
         <h2>Vendor Orders</h2>
+
         <p className="text-muted">
           Status changes affect only your products in a multi-vendor order.
         </p>
+
         {mine.map((o) => (
           <div className="card mb-3" key={o.id}>
             <div className="card-header">
               <strong>Order #{o.id}</strong>
             </div>
+
             <div className="card-body">
               {o.items.map((i) => (
                 <div className="border rounded p-3 mb-2" key={i.id}>
                   <div className="row align-items-center">
                     <div className="col-lg-5">
                       <strong>{i.name}</strong>
+
                       <div>Qty: {i.quantity}</div>
                     </div>
+
                     <div className="col-lg-3">
                       <span className="badge text-bg-primary">
                         {i.vendorStatus}
                       </span>
                     </div>
+
                     <div className="col-lg-4">
                       <select
                         className="form-select"
                         value={i.vendorStatus}
                         onChange={(e) =>
-                          updateVendorOrderStatus(o.id, i.id, e.target.value)
+                          dispatch(
+                            updateVendorOrderStatus({
+                              orderId: o.id,
+                              itemId: i.id,
+                              status: e.target.value,
+                            }),
+                          )
                         }
                         disabled={!next[i.vendorStatus]?.length}
                       >
                         <option>{i.vendorStatus}</option>
-                        {next[i.vendorStatus]?.map((s) => (
-                          <option key={s}>{s}</option>
+
+                        {next[i.vendorStatus]?.map((status) => (
+                          <option key={status}>{status}</option>
                         ))}
                       </select>
                     </div>
@@ -3506,11 +4269,16 @@ export default function VendorOrders() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorProductEdit.jsx =====
+===== VendorProductEdit.jsx =====
 import { useEffect, useState } from "react";
+
 import { useNavigate, useParams } from "react-router-dom";
+
+import { useDispatch, useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import { addProduct, updateProduct } from "../../store/slices/productSlice";
 
 const empty = {
   name: "",
@@ -3524,19 +4292,18 @@ const empty = {
 
 export default function VendorProductEdit() {
   const { productId } = useParams();
-  const nav = useNavigate();
 
-  const {
-    products,
-    user,
-    addProduct,
-    updateProduct,
-  } = useApp();
+  const nav = useNavigate();
+  const dispatch = useDispatch();
+
+  const products = useSelector((state) => state.products.items);
+
+  const user = useSelector((state) => state.auth.user);
 
   const existing = products.find(
     (p) =>
       String(p.id) === String(productId) &&
-      String(p.vendorId) === String(user.id)
+      String(p.vendorId) === String(user?.id),
   );
 
   const [f, setF] = useState(empty);
@@ -3566,15 +4333,21 @@ export default function VendorProductEdit() {
 
     try {
       if (existing) {
-        await updateProduct(existing.id, data);
+        await dispatch(
+          updateProduct({
+            id: existing.id,
+            data,
+          }),
+        ).unwrap();
       } else {
-        await addProduct(data);
+        await dispatch(addProduct(data)).unwrap();
       }
 
       nav("/vendor/products");
     } catch (error) {
       console.error("Product save error:", error);
-      alert(error.message || "Failed to save product.");
+
+      alert(error?.message || "Failed to save product.");
     }
   };
 
@@ -3583,21 +4356,14 @@ export default function VendorProductEdit() {
       <div className="py-4">
         <h2>{existing ? "Edit Product" : "Create Product"}</h2>
 
-        <form
-          className="card card-body row g-3"
-          onSubmit={submit}
-        >
+        <form className="card card-body row g-3" onSubmit={submit}>
           {["name", "brand", "price", "stock", "image"].map((key) => (
             <div className="col-md-6" key={key}>
               <input
                 className="form-control"
                 name={key}
                 placeholder={key}
-                type={
-                  key === "price" || key === "stock"
-                    ? "number"
-                    : "text"
-                }
+                type={key === "price" || key === "stock" ? "number" : "text"}
                 required={key !== "image"}
                 value={f[key]}
                 onChange={(e) =>
@@ -3665,22 +4431,38 @@ export default function VendorProductEdit() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorProducts.jsx =====
+===== VendorProducts.jsx =====
 import { Link } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
+import { deleteProduct } from "../../store/slices/productSlice";
+
 export default function VendorProducts() {
-  const { products, user, deleteProduct } = useApp();
-  const mine = products.filter((p) => p.vendorId === user.id);
+  const dispatch = useDispatch();
+
+  const products = useSelector((state) => state.products.items);
+
+  const user = useSelector((state) => state.auth.user);
+
+  const mine = products.filter(
+    (p) =>
+      String(p.vendorId) === String(user?.id) ||
+      String(p.vendor?.userId) === String(user?.id),
+  );
+
   return (
     <PortalLayout type="vendor">
       <div className="py-4">
         <div className="d-flex justify-content-between">
           <h2>Product Management</h2>
+
           <Link className="btn btn-primary" to="/vendor/products/create">
             Add Product
           </Link>
         </div>
+
         <div className="card mt-3">
           <div className="card-body table-responsive">
             <table className="table">
@@ -3692,12 +4474,16 @@ export default function VendorProducts() {
                   <th>Actions</th>
                 </tr>
               </thead>
+
               <tbody>
                 {mine.map((p) => (
                   <tr key={p.id}>
                     <td>{p.name}</td>
+
                     <td>â‚¹{p.price.toLocaleString("en-IN")}</td>
+
                     <td>{p.stock}</td>
+
                     <td>
                       <Link
                         className="btn btn-sm btn-outline-primary me-2"
@@ -3705,9 +4491,10 @@ export default function VendorProducts() {
                       >
                         Edit
                       </Link>
+
                       <button
                         className="btn btn-sm btn-outline-danger"
-                        onClick={() => deleteProduct(p.id)}
+                        onClick={() => dispatch(deleteProduct(p.id))}
                       >
                         Delete
                       </button>
@@ -3723,27 +4510,37 @@ export default function VendorProducts() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\vendor\VendorProfile.jsx =====
+===== VendorProfile.jsx =====
+import { useSelector } from "react-redux";
+
 import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
+
 export default function VendorProfile() {
-  const { user, vendors } = useApp(),
-    v = vendors.find((x) => x.userId === user.id);
+  const user = useSelector((state) => state.auth.user);
+
+  const vendors = useSelector((state) => state.vendors.items);
+
+  const v = vendors.find((x) => String(x.userId) === String(user?.id));
+
   return (
     <PortalLayout type="vendor">
       <div className="py-4">
         <h2>Vendor Profile</h2>
+
         <div className="card">
           <div className="card-body">
             <p>
               <strong>Store:</strong> {v?.storeName}
             </p>
+
             <p>
-              <strong>Account:</strong> {user.email}
+              <strong>Account:</strong> {user?.email}
             </p>
+
             <p>
               <strong>Address:</strong> {v?.storeAddress}
             </p>
+
             <p>
               <strong>Status:</strong>{" "}
               <span className="badge text-bg-success">{v?.status}</span>
@@ -3755,2036 +4552,15 @@ export default function VendorProfile() {
   );
 }
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pages\VendorRegister.jsx =====
+===== VendorRegister.jsx =====
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-export default function VendorRegister() {
-  const { registerVendor } = useApp(),
-    nav = useNavigate();
-  const [f, setF] = useState({
-      ownerName: "",
-      storeName: "",
-      email: "",
-      phone: "",
-      storeAddress: "",
-      password: "",
-    }),
-    [err, setErr] = useState(""),
-    [ok, setOk] = useState(false);
-  const s = (e) => {
-    e.preventDefault();
-    const r = registerVendor(f);
-    if (!r.ok) return setErr(r.message);
-    setOk(true);
-  };
-  if (ok)
-    return (
-      <div className="container py-5">
-        <div className="alert alert-success">
-          <h4>Application submitted</h4>
-          <p>Status: APPLIED. Admin approval is required.</p>
-          <button className="btn btn-primary" onClick={() => nav("/login")}>
-            Go to Login
-          </button>
-        </div>
-      </div>
-    );
-  return (
-    <div className="container py-5">
-      <div className="col-md-7 mx-auto card">
-        <div className="card-body">
-          <h2>Vendor Registration</h2>
-          {err && <div className="alert alert-danger">{err}</div>}
-          <form onSubmit={s}>
-            {Object.keys(f).map((k) => (
-              <div className="mb-3" key={k}>
-                <label className="form-label">{k}</label>
-                {k === "storeAddress" ? (
-                  <textarea
-                    className="form-control"
-                    name={k}
-                    required
-                    value={f[k]}
-                    onChange={(e) => setF({ ...f, [k]: e.target.value })}
-                  />
-                ) : (
-                  <input
-                    className="form-control"
-                    name={k}
-                    type={k === "password" ? "password" : "text"}
-                    required
-                    value={f[k]}
-                    onChange={(e) => setF({ ...f, [k]: e.target.value })}
-                  />
-                )}
-              </div>
-            ))}
-            <button className="btn btn-primary w-100">
-              Submit Application
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { useDispatch } from "react-redux";
 
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Addresses.jsx =====
-import { useState } from "react";
-import { useApp } from "../context/AppContext";
-
-const empty = {
-  type: "Home",
-  addressLine: "",
-  city: "",
-  state: "",
-  pincode: "",
-};
-
-export default function Addresses() {
-  const {
-    user,
-    addresses,
-    addAddress,
-    updateAddress,
-    deleteAddress,
-    setDefaultAddress,
-  } = useApp();
-
-  const mine = addresses.filter(
-    (a) => String(a.userId) === String(user.id)
-  );
-
-  const [f, setF] = useState(empty);
-  const [edit, setEdit] = useState(null);
-  const [error, setError] = useState("");
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError("");
-
-    try {
-      if (edit) await updateAddress(edit, f);
-      else await addAddress(f);
-
-      setF(empty);
-      setEdit(null);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  return (
-    <div className="container py-4">
-      <div className="row g-4">
-        <div className="col-lg-5">
-          <div className="card">
-            <div className="card-body">
-              <h5>{edit ? "Edit" : "Add"} Address</h5>
-
-              {error && (
-                <div className="alert alert-danger">{error}</div>
-              )}
-
-              <form onSubmit={submit}>
-                <select
-                  className="form-select mb-2"
-                  value={f.type}
-                  onChange={(e) =>
-                    setF({ ...f, type: e.target.value })
-                  }
-                >
-                  <option>Home</option>
-                  <option>Office</option>
-                  <option>Other</option>
-                </select>
-
-                {["addressLine", "city", "state", "pincode"].map((k) => (
-                  <input
-                    key={k}
-                    className="form-control mb-2"
-                    placeholder={k}
-                    required
-                    value={f[k]}
-                    onChange={(e) =>
-                      setF({ ...f, [k]: e.target.value })
-                    }
-                  />
-                ))}
-
-                <button className="btn btn-primary">
-                  {edit ? "Update" : "Add"}
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-lg-7">
-          <h2>My Addresses</h2>
-
-          {mine.map((a) => (
-            <div className="card mb-2" key={a.id}>
-              <div className="card-body">
-                <div className="d-flex justify-content-between">
-                  <strong>{a.type}</strong>
-                  {a.isDefault && (
-                    <span className="badge text-bg-primary">
-                      Default
-                    </span>
-                  )}
-                </div>
-
-                <p>
-                  {a.addressLine}, {a.city}, {a.state} - {a.pincode}
-                </p>
-
-                <button
-                  className="btn btn-sm btn-outline-primary me-2"
-                  onClick={() => {
-                    setEdit(a.id);
-                    setF({
-                      type: a.type,
-                      addressLine: a.addressLine,
-                      city: a.city,
-                      state: a.state,
-                      pincode: a.pincode,
-                    });
-                  }}
-                >
-                  Edit
-                </button>
-
-                {!a.isDefault && (
-                  <button
-                    className="btn btn-sm btn-outline-success me-2"
-                    onClick={() => setDefaultAddress(a.id)}
-                  >
-                    Make Default
-                  </button>
-                )}
-
-                <button
-                  className="btn btn-sm btn-outline-danger"
-                  onClick={() => deleteAddress(a.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminDashboard.jsx =====
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-export default function AdminDashboard() {
-  const { users, vendors, products, orders, issues } = useApp();
-
-  return (
-    <PortalLayout type="admin">
-      <div className="py-4">
-        <h2>Admin Dashboard</h2>
-
-        <div className="row g-3">
-          {[
-            ["Users", users.length],
-            ["Vendors", vendors.length],
-            [
-              "Pending Vendors",
-              vendors.filter((v) => v.status === "APPLIED").length,
-            ],
-            ["Products", products.length],
-            [
-              "Open Issues",
-              issues.filter(
-                (i) => !["RESOLVED", "CLOSED"].includes(i.status)
-              ).length,
-            ],
-            ["Orders", orders.length],
-          ].map(([a, b]) => (
-            <div className="col-sm-6 col-xl-4" key={a}>
-              <div className="card stat-card">
-                <div className="card-body">
-                  <small>{a}</small>
-                  <div className="fs-2 fw-bold">{b}</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminIssues.jsx =====
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-export default function AdminIssues() {
-  const { issues, updateIssue, vendors } = useApp();
-
-  return (
-    <PortalLayout type="admin">
-      <div className="py-4">
-        <h2>Issue Management</h2>
-
-        {issues.map((i) => (
-          <div className="card mb-3" key={i.id}>
-            <div className="card-body row align-items-center">
-              <div className="col-lg-6">
-                <h5>
-                  #{String(i.id).slice(-6)} â€” {i.subject}
-                </h5>
-                <p>{i.description}</p>
-                <small>
-                  Priority: {i.priority} Â· Order: {i.orderId || "N/A"}
-                </small>
-              </div>
-
-              <div className="col-lg-3">
-                <select
-                  className="form-select"
-                  value={i.assignedTo || ""}
-                  onChange={(e) =>
-                    updateIssue(i.id, {
-                      assignedTo: e.target.value || null,
-                    })
-                  }
-                >
-                  <option value="">Unassigned</option>
-                  {vendors
-                    .filter((v) => v.status === "VERIFIED")
-                    .map((v) => (
-                      <option key={v.id} value={v.userId}>
-                        {v.storeName}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="col-lg-3">
-                <select
-                  className="form-select"
-                  value={i.status}
-                  onChange={(e) =>
-                    updateIssue(i.id, { status: e.target.value })
-                  }
-                >
-                  <option>OPEN</option>
-                  <option>IN_PROGRESS</option>
-                  <option>RESOLVED</option>
-                  <option>CLOSED</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminOrders.jsx =====
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-const statuses = [
-  "PLACED",
-  "CONFIRMED",
-  "PACKED",
-  "DISPATCHED",
-  "OUT_FOR_DELIVERY",
-  "DELIVERED",
-  "CANCELLED",
-  "RETURNED",
-];
-
-export default function AdminOrders() {
-  const { orders, updateAdminOrderStatus } = useApp();
-
-  return (
-    <PortalLayout type="admin">
-      <div className="py-4">
-        <h2>Order Management</h2>
-
-        {orders.map((o) => (
-          <div className="card mb-3" key={o.id}>
-            <div className="card-header">
-              <strong>Order #{o.id}</strong>
-            </div>
-
-            <div className="card-body">
-              {o.items.map((i) => (
-                <div
-                  className="border rounded p-2 mb-2 row align-items-center"
-                  key={i.id}
-                >
-                  <div className="col-md-5">
-                    {i.name} Ã— {i.quantity}
-                  </div>
-
-                  <div className="col-md-3">
-                    {i.vendorStatus}
-                  </div>
-
-                  <div className="col-md-4">
-                    <select
-                      className="form-select"
-                      value={i.vendorStatus}
-                      onChange={(e) =>
-                        updateAdminOrderStatus(
-                          o.id,
-                          i.id,
-                          e.target.value
-                        )
-                      }
-                    >
-                      {statuses.map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminReviews.jsx =====
-import { useEffect, useMemo } from "react";
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-export default function AdminReviews() {
-  const {
-    reviews,
-    products,
-    loadProductReviews,
-    deleteReview,
-  } = useApp();
-
-  useEffect(() => {
-    Promise.all(
-      products.map((p) => loadProductReviews(p.id).catch(() => []))
-    );
-  }, [products, loadProductReviews]);
-
-  const allReviews = useMemo(
-    () =>
-      reviews.filter((r) =>
-        products.some(
-          (p) => String(p.id) === String(r.productId)
-        )
-      ),
-    [reviews, products]
-  );
-
-  return (
-    <PortalLayout type="admin">
-      <div className="py-4">
-        <h2>Review Moderation</h2>
-
-        {allReviews.map((r) => (
-          <div className="card mb-2" key={r.id}>
-            <div className="card-body">
-              <h5>
-                {
-                  products.find(
-                    (p) => String(p.id) === String(r.productId)
-                  )?.name
-                }
-              </h5>
-
-              <div className="text-warning">
-                {"â˜…".repeat(Number(r.rating))}
-              </div>
-
-              <p>{r.review}</p>
-
-              <button
-                className="btn btn-sm btn-outline-danger"
-                onClick={() => deleteReview(r.id)}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminUsers.jsx =====
-import { useApp } from "../../context/AppContext";
-import PortalLayout from "../../components/common/PortalLayout";
-
-export default function AdminUsers() {
-  const { users, updateUserStatus, user } = useApp();
-
-  return (
-    <PortalLayout type="admin">
-      <div className="py-4">
-        <h2>User Management</h2>
-
-        <div className="card">
-          <div className="card-body table-responsive">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.id}</td>
-                    <td>{u.name}</td>
-                    <td>{u.email}</td>
-                    <td>{u.role}</td>
-                    <td>{u.status}</td>
-                    <td>
-                      {u.role !== "ADMIN" &&
-                        String(u.id) !== String(user.id) && (
-                          <button
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={() =>
-                              updateUserStatus(
-                                u.id,
-                                u.status === "ACTIVE"
-                                  ? "DISABLED"
-                                  : "ACTIVE"
-                              )
-                            }
-                          >
-                            {u.status === "ACTIVE"
-                              ? "Disable"
-                              : "Enable"}
-                          </button>
-                        )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\admin\AdminVendors.jsx =====
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-export default function AdminVendors() {
-  const {
-    vendors,
-    approveVendor,
-    rejectVendor,
-    deleteVendor,
-  } = useApp();
-
-  return (
-    <PortalLayout type="admin">
-      <div className="py-4">
-        <h2>Vendor Management</h2>
-
-        <div className="card">
-          <div className="card-body table-responsive">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Store</th>
-                  <th>Email</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {vendors.map((v) => (
-                  <tr key={v.id}>
-                    <td>{v.storeName}</td>
-                    <td>{v.email}</td>
-                    <td>{v.status}</td>
-                    <td>
-                      {v.status === "APPLIED" && (
-                        <>
-                          <button
-                            className="btn btn-sm btn-success me-2"
-                            onClick={() => approveVendor(v.id)}
-                          >
-                            Approve
-                          </button>
-
-                          <button
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={() => rejectVendor(v.id)}
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-
-                      {v.status === "VERIFIED" && (
-                        <button
-                          className="btn btn-sm btn-danger"
-                          onClick={() => deleteVendor(v.id)}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Cart.jsx =====
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-
-export default function Cart() {
-  const {
-    cartItems,
-    cartTotal,
-    updateCartQty,
-    removeFromCart,
-    addresses,
-    placeOrder,
-    user,
-  } = useApp();
-
-  const nav = useNavigate();
-  const mine = addresses.filter((a) => String(a.userId) === String(user.id));
-  const [address, setAddress] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    setAddress(
-      String(mine.find((a) => a.isDefault)?.id || mine[0]?.id || "")
-    );
-  }, [addresses, user.id]);
-
-  if (!cartItems.length) {
-    return (
-      <div className="container py-5 text-center">
-        <h2>Cart is empty</h2>
-        <Link to="/products" className="btn btn-primary">
-          Browse Products
-        </Link>
-      </div>
-    );
-  }
-
-  const checkout = async () => {
-    if (!address) return;
-    setError("");
-    setBusy(true);
-
-    try {
-      const order = await placeOrder(address);
-      nav(`/orders/${order.id}`);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="container py-4">
-      <h2>Cart</h2>
-
-      {error && <div className="alert alert-danger">{error}</div>}
-
-      <div className="row g-4">
-        <div className="col-lg-8">
-          {cartItems.map((i) => (
-            <div className="card mb-3" key={i.productId}>
-              <div className="card-body d-flex gap-3 align-items-center">
-                <img
-                  src={i.product.image}
-                  alt={i.product.name}
-                  style={{ width: 80, height: 70, objectFit: "cover" }}
-                />
-
-                <div className="flex-grow-1">
-                  <strong>{i.product.name}</strong>
-                  <div>â‚¹{i.product.price.toLocaleString("en-IN")}</div>
-                </div>
-
-                <input
-                  type="number"
-                  min="1"
-                  max={i.product.stock}
-                  className="form-control"
-                  style={{ width: 90 }}
-                  value={i.quantity}
-                  onChange={(e) =>
-                    updateCartQty(i.productId, Number(e.target.value))
-                  }
-                />
-
-                <strong>â‚¹{i.subtotal.toLocaleString("en-IN")}</strong>
-
-                <button
-                  className="btn btn-outline-danger"
-                  onClick={() => removeFromCart(i.productId)}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="col-lg-4">
-          <div className="card">
-            <div className="card-body">
-              <h5>Price Summary</h5>
-
-              <div className="d-flex justify-content-between">
-                <span>Total</span>
-                <strong>â‚¹{cartTotal.toLocaleString("en-IN")}</strong>
-              </div>
-
-              <label className="form-label mt-3">Delivery address</label>
-
-              <select
-                className="form-select mb-3"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-              >
-                <option value="">Select address</option>
-                {mine.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.type}: {a.addressLine}, {a.city}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                className="btn btn-success w-100"
-                disabled={!address || busy}
-                onClick={checkout}
-              >
-                {busy ? "Placing..." : "Place Order"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Issues.jsx =====
-import { useState } from "react";
-import { useApp } from "../context/AppContext";
-
-export default function Issues() {
-  const { user, issues, orders, addIssue } = useApp();
-
-  const [s, setS] = useState("");
-  const [d, setD] = useState("");
-  const [o, setO] = useState("");
-  const [p, setP] = useState("MEDIUM");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const mine = issues.filter(
-    (i) => String(i.userId) === String(user.id)
-  );
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setBusy(true);
-
-    try {
-      await addIssue({
-        subject: s,
-        description: d,
-        orderId: o || null,
-        priority: p,
-      });
-
-      setS("");
-      setD("");
-      setO("");
-      setP("MEDIUM");
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="container py-4">
-      <h2>Customer Issues</h2>
-
-      {error && <div className="alert alert-danger">{error}</div>}
-
-      <div className="row g-4">
-        <div className="col-lg-5">
-          <div className="card">
-            <div className="card-body">
-              <form onSubmit={submit}>
-                <input
-                  className="form-control mb-2"
-                  placeholder="Subject"
-                  value={s}
-                  onChange={(e) => setS(e.target.value)}
-                  required
-                />
-
-                <textarea
-                  className="form-control mb-2"
-                  placeholder="Description"
-                  value={d}
-                  onChange={(e) => setD(e.target.value)}
-                  required
-                />
-
-                <select
-                  className="form-select mb-2"
-                  value={o}
-                  onChange={(e) => setO(e.target.value)}
-                >
-                  <option value="">No specific order</option>
-                  {orders
-                    .filter(
-                      (x) => String(x.userId) === String(user.id)
-                    )
-                    .map((x) => (
-                      <option key={x.id} value={x.id}>
-                        #{x.id}
-                      </option>
-                    ))}
-                </select>
-
-                <select
-                  className="form-select mb-2"
-                  value={p}
-                  onChange={(e) => setP(e.target.value)}
-                >
-                  <option>LOW</option>
-                  <option>MEDIUM</option>
-                  <option>HIGH</option>
-                  <option>URGENT</option>
-                </select>
-
-                <button
-                  className="btn btn-primary"
-                  disabled={busy}
-                >
-                  {busy ? "Submitting..." : "Submit Issue"}
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-lg-7">
-          {mine.map((i) => (
-            <div className="card mb-2" key={i.id}>
-              <div className="card-body">
-                <div className="d-flex justify-content-between">
-                  <h5>
-                    #{String(i.id).slice(-6)} â€” {i.subject}
-                  </h5>
-                  <span className="badge text-bg-secondary">
-                    {i.status}
-                  </span>
-                </div>
-
-                <p>{i.description}</p>
-
-                {i.response && (
-                  <div className="alert alert-light">
-                    {i.response}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Login.jsx =====
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-
-export default function Login() {
-  const { login } = useApp();
-  const nav = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setBusy(true);
-
-    try {
-      const result = await login(email, password);
-      if (!result.ok) {
-        setError(result.message);
-        return;
-      }
-
-      nav(
-        result.user.role === "USER"
-          ? "/user/home"
-          : result.user.role === "VENDOR"
-          ? "/vendor/dashboard"
-          : "/admin/dashboard"
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="container py-5">
-      <div className="row justify-content-center">
-        <div className="col-md-6 col-lg-4">
-          <div className="card shadow-sm">
-            <div className="card-body p-4">
-              <h2>Login</h2>
-
-              {error && <div className="alert alert-danger">{error}</div>}
-
-              <form onSubmit={submit}>
-                <label>Email</label>
-                <input
-                  className="form-control mb-3"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-
-                <label>Password</label>
-                <input
-                  type="password"
-                  className="form-control mb-3"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-
-                <button className="btn btn-primary w-100" disabled={busy}>
-                  {busy ? "Logging in..." : "Login"}
-                </button>
-              </form>
-
-              <hr />
-
-              <small>
-                Seed accounts:
-                <br />
-                user@example.com / user123
-                <br />
-                vendor@example.com / vendor123
-                <br />
-                admin@example.com / admin123
-              </small>
-
-              <div className="mt-3">
-                <Link to="/register">Create account</Link> Â·{" "}
-                <Link to="/vendor/register">Become a vendor</Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\OrderDetails.jsx =====
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-import OrderTracking from "../components/orders/OrderTracking";
-
-export default function OrderDetails() {
-  const { id } = useParams();
-  const { loadOrder, addresses, user } = useApp();
-
-  const [order, setOrder] = useState(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    loadOrder(id)
-      .then(setOrder)
-      .catch((e) => setError(e.message));
-  }, [id, loadOrder]);
-
-  if (error) {
-    return (
-      <div className="container py-5">
-        <div className="alert alert-danger">{error}</div>
-      </div>
-    );
-  }
-
-  if (!order) {
-    return <div className="container py-5">Loading order...</div>;
-  }
-
-  if (
-    user?.role === "USER" &&
-    String(order.userId) !== String(user.id)
-  ) {
-    return (
-      <div className="container py-5">
-        <div className="alert alert-danger">Order not found.</div>
-      </div>
-    );
-  }
-
-  const address = addresses.find(
-    (x) => String(x.id) === String(order.addressId)
-  );
-
-  return (
-    <div className="container py-4">
-      <Link to="/orders">â† Orders</Link>
-
-      <div className="row g-4 mt-1">
-        <div className="col-lg-7">
-          <div className="card">
-            <div className="card-body">
-              <h3>Order #{order.id}</h3>
-
-              {order.items.map((i) => (
-                <div className="border-bottom py-3" key={i.id}>
-                  <div className="d-flex justify-content-between">
-                    <span>
-                      {i.name} Ã— {i.quantity}
-                    </span>
-                    <strong>
-                      â‚¹{(i.unitPrice * i.quantity).toLocaleString("en-IN")}
-                    </strong>
-                  </div>
-
-                  <small>
-                    Vendor status: <strong>{i.vendorStatus}</strong>
-                  </small>
-                </div>
-              ))}
-
-              <div className="d-flex justify-content-between fs-5 mt-3">
-                <strong>Total</strong>
-                <strong>
-                  â‚¹{order.totalAmount.toLocaleString("en-IN")}
-                </strong>
-              </div>
-
-              {address && (
-                <div className="alert alert-light mt-3">
-                  {address.addressLine}, {address.city},{" "}
-                  {address.state} - {address.pincode}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="col-lg-5">
-          {order.items.map((i) => (
-            <div className="card mb-3" key={i.id}>
-              <div className="card-body">
-                <h5>{i.name}</h5>
-                <OrderTracking item={i} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Orders.jsx =====
-import { Link } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-
-export default function Orders() {
-  const { orders, user } = useApp();
-
-  const mine = orders.filter(
-    (o) => String(o.userId) === String(user.id)
-  );
-
-  return (
-    <div className="container py-4">
-      <h2>My Orders</h2>
-
-      {mine.length === 0 && (
-        <div className="alert alert-info">No orders yet.</div>
-      )}
-
-      {mine.map((o) => (
-        <div className="card mb-3" key={o.id}>
-          <div className="card-body">
-            <div className="d-flex justify-content-between">
-              <strong>Order #{o.id}</strong>
-              <span className="badge text-bg-primary">
-                {o.status}
-              </span>
-            </div>
-
-            {o.items.map((i) => (
-              <div
-                className="border-bottom py-2 d-flex justify-content-between"
-                key={i.id}
-              >
-                <span>
-                  {i.name} Ã— {i.quantity}
-                </span>
-                <span>{i.vendorStatus}</span>
-              </div>
-            ))}
-
-            <div className="d-flex justify-content-between mt-3">
-              <strong>Total</strong>
-              <strong>
-                â‚¹{Number(o.totalAmount).toLocaleString("en-IN")}
-              </strong>
-            </div>
-
-            <Link
-              to={`/orders/${o.id}`}
-              className="btn btn-outline-primary mt-3"
-            >
-              Track Order
-            </Link>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\ProductDetails.jsx =====
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-import ProductQA from "../components/products/ProductQA";
-import ReviewForm from "../components/products/ReviewForm";
-
-export default function ProductDetails() {
-  const { id } = useParams();
-  const nav = useNavigate();
-
-  const {
-    products,
-    reviews,
-    orders,
-    addToCart,
-    loadProductReviews,
-    user,
-  } = useApp();
-
-  const p = products.find((x) => String(x.id) === String(id));
-  const [qty, setQty] = useState(1);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (id) loadProductReviews(id).catch(() => {});
-  }, [id, loadProductReviews]);
-
-  if (!p) {
-    return (
-      <div className="container py-5">
-        <div className="alert alert-danger">Product not found.</div>
-      </div>
-    );
-  }
-
-  const mine = reviews.filter(
-    (r) => String(r.productId) === String(p.id)
-  );
-
-  const can =
-    user?.role === "USER" &&
-    orders.some(
-      (o) =>
-        String(o.userId) === String(user.id) &&
-        o.items.some((i) => String(i.productId) === String(p.id))
-    );
-
-  const add = async () => {
-    try {
-      setError("");
-      await addToCart(p, qty);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  const buy = async () => {
-    try {
-      setError("");
-      await addToCart(p, qty);
-      nav("/cart");
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  return (
-    <div className="container py-4">
-      <Link to="/products">â† Back</Link>
-
-      <div className="row g-5 mt-1">
-        <div className="col-lg-6">
-          <img
-            src={p.image}
-            className="img-fluid rounded product-detail-image"
-            alt={p.name}
-          />
-        </div>
-
-        <div className="col-lg-6">
-          <small className="text-muted">
-            {p.brand} Â· {p.category}
-          </small>
-
-          <h1>{p.name}</h1>
-          <span className="badge text-bg-warning">â˜… {p.rating}</span>
-
-          <h3 className="mt-3">
-            â‚¹{p.price.toLocaleString("en-IN")}
-          </h3>
-
-          <p>{p.description}</p>
-
-          <p>
-            <strong>Stock:</strong>{" "}
-            {p.stock ? p.stock : "Out of stock"}
-          </p>
-
-          {error && <div className="alert alert-danger">{error}</div>}
-
-          {user?.role === "USER" && (
-            <div className="d-flex gap-2">
-              <input
-                type="number"
-                min="1"
-                max={p.stock}
-                className="form-control"
-                style={{ width: 90 }}
-                value={qty}
-                onChange={(e) =>
-                  setQty(
-                    Math.max(
-                      1,
-                      Math.min(Number(e.target.value) || 1, p.stock)
-                    )
-                  )
-                }
-              />
-
-              <button
-                className="btn btn-primary"
-                disabled={!p.stock}
-                onClick={add}
-              >
-                Add to Cart
-              </button>
-
-              <button
-                className="btn btn-success"
-                disabled={!p.stock}
-                onClick={buy}
-              >
-                Buy Now
-              </button>
-            </div>
-          )}
-
-          <div className="card mt-3">
-            <div className="card-body">
-              <h5>Sold By</h5>
-              <span>Vendor</span>
-            </div>
-          </div>
-
-          <ProductQA />
-        </div>
-      </div>
-
-      <section className="mt-5">
-        <h3>Reviews</h3>
-
-        {mine.map((r) => (
-          <div className="card mb-2" key={r.id}>
-            <div className="card-body">
-              <div className="text-warning">
-                {"â˜…".repeat(Number(r.rating))}
-              </div>
-              <p>{r.review}</p>
-              <small>
-                {r.userId?.name || "Customer"} Â·{" "}
-                {new Date(r.createdAt).toLocaleDateString()}
-              </small>
-            </div>
-          </div>
-        ))}
-
-        {can && <ReviewForm productId={p.id} />}
-      </section>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Profile.jsx =====
-import { Link } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-
-export default function Profile() {
-  const { user, addresses, orders, reviews, issues } = useApp();
-
-  const mineAddresses = addresses.filter(
-    (a) => String(a.userId) === String(user.id)
-  );
-
-  const mineOrders = orders.filter(
-    (o) => String(o.userId) === String(user.id)
-  );
-
-  const mineReviews = reviews.filter(
-    (r) => String(r.userId) === String(user.id)
-  );
-
-  const mineIssues = issues.filter(
-    (i) => String(i.userId) === String(user.id)
-  );
-
-  return (
-    <div className="container py-4">
-      <h2>Profile</h2>
-
-      <div className="row g-4">
-        <div className="col-lg-4">
-          <div className="card">
-            <div className="card-body">
-              <h5>Personal Information</h5>
-              <p>
-                Name: <strong>{user.name}</strong>
-              </p>
-              <p>
-                Email: <strong>{user.email}</strong>
-              </p>
-              <p>
-                Role: <strong>{user.role}</strong>
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-lg-8">
-          <div className="card mb-3">
-            <div className="card-body">
-              <div className="d-flex justify-content-between">
-                <h5>Addresses</h5>
-                <Link to="/profile/addresses">Manage</Link>
-              </div>
-
-              {mineAddresses.map((a) => (
-                <div className="border p-2 mb-2" key={a.id}>
-                  {a.type}: {a.addressLine}, {a.city} - {a.pincode}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-body">
-              <div className="row text-center">
-                <div className="col">
-                  <b className="fs-3">{mineOrders.length}</b>
-                  <div>Orders</div>
-                </div>
-
-                <div className="col">
-                  <b className="fs-3">{mineReviews.length}</b>
-                  <div>Reviews</div>
-                </div>
-
-                <div className="col">
-                  <b className="fs-3">{mineIssues.length}</b>
-                  <div>Issues</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-3 d-flex gap-2">
-            <Link
-              className="btn btn-outline-primary"
-              to="/profile/reviews"
-            >
-              My Reviews
-            </Link>
-
-            <Link
-              className="btn btn-outline-primary"
-              to="/profile/issues"
-            >
-              My Issues
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Register.jsx =====
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-
-export default function Register() {
-  const { registerUser } = useApp();
-  const nav = useNavigate();
-
-  const [f, setF] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    password: "",
-  });
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setErr("");
-    setBusy(true);
-
-    try {
-      const result = await registerUser(f);
-      if (!result.ok) return setErr(result.message);
-      nav("/login");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="container py-5">
-      <div className="col-md-6 mx-auto card">
-        <div className="card-body">
-          <h2>Create Account</h2>
-          {err && <div className="alert alert-danger">{err}</div>}
-
-          <form onSubmit={submit}>
-            {Object.keys(f).map((k) => (
-              <div className="mb-3" key={k}>
-                <label className="form-label">{k}</label>
-                <input
-                  className="form-control"
-                  type={k === "password" ? "password" : k === "email" ? "email" : "text"}
-                  required={k !== "phone"}
-                  value={f[k]}
-                  onChange={(e) => setF({ ...f, [k]: e.target.value })}
-                />
-              </div>
-            ))}
-
-            <button className="btn btn-primary w-100" disabled={busy}>
-              {busy ? "Creating..." : "Create Account"}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\Reviews.jsx =====
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { useApp } from "../context/AppContext";
-
-export default function Reviews() {
-  const {
-    user,
-    reviews,
-    products,
-    loadProductReviews,
-  } = useApp();
-
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    if (!products.length) return;
-
-    Promise.all(
-      products.map((p) => loadProductReviews(p.id).catch(() => []))
-    ).finally(() => setLoaded(true));
-  }, [products, loadProductReviews]);
-
-  const mine = reviews.filter(
-    (r) => String(r.userId) === String(user.id)
-  );
-
-  return (
-    <div className="container py-4">
-      <h2>My Reviews</h2>
-
-      {!loaded && <p>Loading reviews...</p>}
-
-      {mine.map((r) => {
-        const p = products.find(
-          (x) => String(x.id) === String(r.productId)
-        );
-
-        return (
-          <div className="card mb-2" key={r.id}>
-            <div className="card-body">
-              <Link to={`/products/${r.productId}`}>
-                <h5>{p?.name || "Product"}</h5>
-              </Link>
-
-              <div className="text-warning">
-                {"â˜…".repeat(Number(r.rating))}
-              </div>
-
-              <p>{r.review}</p>
-
-              <small>
-                {r.createdAt
-                  ? new Date(r.createdAt).toLocaleDateString()
-                  : ""}
-              </small>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorDashboard.jsx =====
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-export default function VendorDashboard() {
-  const { products, orders, issues, user } = useApp();
-
-  const ps = products.filter(
-    (p) => String(p.vendorId) === String(user.id)
-  );
-
-  const os = orders.filter((o) =>
-    o.items.some(
-      (i) => String(i.vendorId) === String(user.id)
-    )
-  );
-
-  const is = issues.filter(
-    (i) => String(i.assignedTo) === String(user.id)
-  );
-
-  const sales = os.reduce(
-    (s, o) =>
-      s +
-      o.items
-        .filter(
-          (i) => String(i.vendorId) === String(user.id)
-        )
-        .reduce(
-          (a, i) => a + i.quantity * i.unitPrice,
-          0
-        ),
-    0
-  );
-
-  return (
-    <PortalLayout type="vendor">
-      <div className="py-4">
-        <h2>Vendor Dashboard</h2>
-
-        <div className="row g-3">
-          {[
-            ["Products", ps.length],
-            ["Orders", os.length],
-            ["Low Stock", ps.filter((p) => p.stock < 10).length],
-            [
-              "Open Issues",
-              is.filter(
-                (i) => !["RESOLVED", "CLOSED"].includes(i.status)
-              ).length,
-            ],
-            ["Sales", `â‚¹${sales.toLocaleString("en-IN")}`],
-          ].map(([a, b]) => (
-            <div className="col-sm-6 col-xl-3" key={a}>
-              <div className="card stat-card">
-                <div className="card-body">
-                  <small>{a}</small>
-                  <div className="fs-2 fw-bold">{b}</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorIssues.jsx =====
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-export default function VendorIssues() {
-  const { issues, user, orders, updateIssue } = useApp();
-
-  const mine = issues.filter(
-    (i) =>
-      String(i.assignedTo) === String(user.id) ||
-      orders.some(
-        (o) =>
-          String(o.id) === String(i.orderId) &&
-          o.items.some(
-            (x) => String(x.vendorId) === String(user.id)
-          )
-      )
-  );
-
-  return (
-    <PortalLayout type="vendor">
-      <div className="py-4">
-        <h2>Customer Issues</h2>
-
-        {mine.map((i) => (
-          <div className="card mb-3" key={i.id}>
-            <div className="card-body">
-              <div className="d-flex justify-content-between">
-                <h5>
-                  #{String(i.id).slice(-6)} â€” {i.subject}
-                </h5>
-                <span className="badge text-bg-secondary">
-                  {i.status}
-                </span>
-              </div>
-
-              <p>{i.description}</p>
-
-              <button
-                className="btn btn-outline-primary btn-sm me-2"
-                onClick={() =>
-                  updateIssue(i.id, { status: "IN_PROGRESS" })
-                }
-              >
-                In Progress
-              </button>
-
-              <button
-                className="btn btn-success btn-sm"
-                onClick={() =>
-                  updateIssue(i.id, {
-                    status: "RESOLVED",
-                    response: "Resolved by vendor.",
-                  })
-                }
-              >
-                Resolve
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorOrders.jsx =====
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-const next = {
-  PLACED: ["CONFIRMED"],
-  CONFIRMED: ["PACKED"],
-  PACKED: ["DISPATCHED"],
-  DISPATCHED: ["OUT_FOR_DELIVERY"],
-  OUT_FOR_DELIVERY: ["DELIVERED"],
-  DELIVERED: [],
-};
-
-export default function VendorOrders() {
-  const { orders, user, updateVendorOrderStatus } = useApp();
-
-  const mine = orders
-    .map((o) => ({
-      ...o,
-      items: o.items.filter(
-        (i) => String(i.vendorId) === String(user.id)
-      ),
-    }))
-    .filter((o) => o.items.length);
-
-  return (
-    <PortalLayout type="vendor">
-      <div className="py-4">
-        <h2>Vendor Orders</h2>
-        <p className="text-muted">
-          Status changes affect only your products in a multi-vendor order.
-        </p>
-
-        {mine.map((o) => (
-          <div className="card mb-3" key={o.id}>
-            <div className="card-header">
-              <strong>Order #{o.id}</strong>
-            </div>
-
-            <div className="card-body">
-              {o.items.map((i) => (
-                <div className="border rounded p-3 mb-2" key={i.id}>
-                  <div className="row align-items-center">
-                    <div className="col-lg-5">
-                      <strong>{i.name}</strong>
-                      <div>Qty: {i.quantity}</div>
-                    </div>
-
-                    <div className="col-lg-3">
-                      <span className="badge text-bg-primary">
-                        {i.vendorStatus}
-                      </span>
-                    </div>
-
-                    <div className="col-lg-4">
-                      <select
-                        className="form-select"
-                        value={i.vendorStatus}
-                        onChange={(e) =>
-                          updateVendorOrderStatus(
-                            o.id,
-                            i.id,
-                            e.target.value
-                          )
-                        }
-                        disabled={!next[i.vendorStatus]?.length}
-                      >
-                        <option>{i.vendorStatus}</option>
-                        {next[i.vendorStatus]?.map((s) => (
-                          <option key={s}>{s}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorProductEdit.jsx =====
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-const empty = {
-  name: "",
-  brand: "",
-  category: "ACCESSORIES",
-  price: "",
-  stock: "",
-  description: "",
-  image: "",
-};
-
-export default function VendorProductEdit() {
-  const { productId } = useParams();
-  const nav = useNavigate();
-
-  const {
-    products,
-    user,
-    addProduct,
-    updateProduct,
-  } = useApp();
-
-  const existing = products.find(
-    (p) =>
-      String(p.id) === String(productId) &&
-      String(p.vendorId) === String(user.id)
-  );
-
-  const [f, setF] = useState(empty);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (existing) {
-      setF({
-        name: existing.name,
-        brand: existing.brand,
-        category: existing.category,
-        price: existing.price,
-        stock: existing.stock,
-        description: existing.description,
-        image: existing.image || "",
-      });
-    }
-  }, [existing]);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setError("");
-
-    try {
-      const data = {
-        ...f,
-        price: Number(f.price),
-        stock: Number(f.stock),
-      };
-
-      if (existing) await updateProduct(existing.id, data);
-      else await addProduct(data);
-
-      nav("/vendor/products");
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  return (
-    <PortalLayout type="vendor">
-      <div className="py-4">
-        <h2>{existing ? "Edit" : "Create"} Product</h2>
-
-        {error && <div className="alert alert-danger">{error}</div>}
-
-        <form
-          className="card card-body row g-3"
-          onSubmit={submit}
-        >
-          {["name", "brand", "price", "stock", "image"].map((k) => (
-            <div className="col-md-6" key={k}>
-              <input
-                className="form-control"
-                name={k}
-                placeholder={k}
-                required={k !== "image"}
-                value={f[k]}
-                onChange={(e) =>
-                  setF({ ...f, [k]: e.target.value })
-                }
-              />
-            </div>
-          ))}
-
-          <div className="col-md-6">
-            <select
-              className="form-select"
-              value={f.category}
-              onChange={(e) =>
-                setF({ ...f, category: e.target.value })
-              }
-            >
-              {[
-                "ELECTRONICS",
-                "MOBILE",
-                "LAPTOP",
-                "AUDIO",
-                "TV",
-                "HOME_APPLIANCES",
-                "ACCESSORIES",
-                "OTHER",
-              ].map((x) => (
-                <option key={x}>{x}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="col-12">
-            <textarea
-              className="form-control"
-              rows="4"
-              placeholder="description"
-              required
-              value={f.description}
-              onChange={(e) =>
-                setF({ ...f, description: e.target.value })
-              }
-            />
-          </div>
-
-          <div>
-            <button className="btn btn-primary">Save</button>
-          </div>
-        </form>
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorProducts.jsx =====
-import { Link } from "react-router-dom";
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-export default function VendorProducts() {
-  const { products, user, deleteProduct } = useApp();
-
-  const mine = products.filter(
-    (p) => String(p.vendorId) === String(user.id)
-  );
-
-  return (
-    <PortalLayout type="vendor">
-      <div className="py-4">
-        <div className="d-flex justify-content-between">
-          <h2>Product Management</h2>
-          <Link
-            className="btn btn-primary"
-            to="/vendor/products/create"
-          >
-            Add Product
-          </Link>
-        </div>
-
-        <div className="card mt-3">
-          <div className="card-body table-responsive">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Price</th>
-                  <th>Stock</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {mine.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.name}</td>
-                    <td>
-                      â‚¹{p.price.toLocaleString("en-IN")}
-                    </td>
-                    <td>{p.stock}</td>
-                    <td>
-                      <Link
-                        className="btn btn-sm btn-outline-primary me-2"
-                        to={`/vendor/products/${p.id}/edit`}
-                      >
-                        Edit
-                      </Link>
-
-                      <button
-                        className="btn btn-sm btn-outline-danger"
-                        onClick={() => deleteProduct(p.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\vendor\VendorProfile.jsx =====
-import PortalLayout from "../../components/common/PortalLayout";
-import { useApp } from "../../context/AppContext";
-
-export default function VendorProfile() {
-  const { user, vendors } = useApp();
-
-  const v = vendors.find(
-    (x) => String(x.userId) === String(user.id)
-  );
-
-  return (
-    <PortalLayout type="vendor">
-      <div className="py-4">
-        <h2>Vendor Profile</h2>
-
-        <div className="card">
-          <div className="card-body">
-            <p>
-              <strong>Store:</strong> {v?.storeName}
-            </p>
-            <p>
-              <strong>Account:</strong> {user.email}
-            </p>
-            <p>
-              <strong>Address:</strong> {v?.storeAddress}
-            </p>
-            <p>
-              <strong>Status:</strong>{" "}
-              <span className="badge text-bg-success">
-                {v?.status}
-              </span>
-            </p>
-          </div>
-        </div>
-      </div>
-    </PortalLayout>
-  );
-}
-
-===== C:\Users\Administrator\Documents\My_projects\Frontend-Backend-ShopSphere\ecommerce-frontend-react-corrected\src\pagesnew\VendorRegister.jsx =====
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useApp } from "../context/AppContext";
+import { registerVendor } from "../store/slices/authSlice";
 
 export default function VendorRegister() {
-  const { registerVendor } = useApp();
+  const dispatch = useDispatch();
   const nav = useNavigate();
 
   const [f, setF] = useState({
@@ -5795,21 +4571,20 @@ export default function VendorRegister() {
     storeAddress: "",
     password: "",
   });
+
   const [err, setErr] = useState("");
   const [ok, setOk] = useState(false);
-  const [busy, setBusy] = useState(false);
 
-  const submit = async (e) => {
+  const s = async (e) => {
     e.preventDefault();
+
     setErr("");
-    setBusy(true);
 
     try {
-      const result = await registerVendor(f);
-      if (!result.ok) return setErr(result.message);
+      await dispatch(registerVendor(f)).unwrap();
       setOk(true);
-    } finally {
-      setBusy(false);
+    } catch (error) {
+      setErr(error || "Registration failed.");
     }
   };
 
@@ -5818,7 +4593,9 @@ export default function VendorRegister() {
       <div className="container py-5">
         <div className="alert alert-success">
           <h4>Application submitted</h4>
+
           <p>Status: APPLIED. Admin approval is required.</p>
+
           <button className="btn btn-primary" onClick={() => nav("/login")}>
             Go to Login
           </button>
@@ -5832,38 +4609,223 @@ export default function VendorRegister() {
       <div className="col-md-7 mx-auto card">
         <div className="card-body">
           <h2>Vendor Registration</h2>
+
           {err && <div className="alert alert-danger">{err}</div>}
 
-          <form onSubmit={submit}>
+          <form onSubmit={s}>
             {Object.keys(f).map((k) => (
               <div className="mb-3" key={k}>
                 <label className="form-label">{k}</label>
+
                 {k === "storeAddress" ? (
                   <textarea
                     className="form-control"
-                    required
                     value={f[k]}
-                    onChange={(e) => setF({ ...f, [k]: e.target.value })}
+                    onChange={(e) =>
+                      setF({
+                        ...f,
+                        [k]: e.target.value,
+                      })
+                    }
+                    required
                   />
                 ) : (
                   <input
                     className="form-control"
-                    type={k === "password" ? "password" : k === "email" ? "email" : "text"}
-                    required={k !== "phone"}
+                    type={
+                      k === "password"
+                        ? "password"
+                        : k === "email"
+                          ? "email"
+                          : "text"
+                    }
                     value={f[k]}
-                    onChange={(e) => setF({ ...f, [k]: e.target.value })}
+                    onChange={(e) =>
+                      setF({
+                        ...f,
+                        [k]: e.target.value,
+                      })
+                    }
+                    required
                   />
                 )}
               </div>
             ))}
 
-            <button className="btn btn-primary w-100" disabled={busy}>
-              {busy ? "Submitting..." : "Submit Application"}
-            </button>
+            <button className="btn btn-primary">Submit Application</button>
           </form>
         </div>
       </div>
     </div>
   );
+}
+
+===== AppBootstrap.jsx =====
+import { useEffect } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
+import { useDispatch, useSelector } from "react-redux";
+
+import {
+  exchangeAuth0Token,
+  finishBootstrap,
+  loadAuthenticatedUser,
+} from "./slices/authSlice";
+
+import { loadProducts } from "./slices/productSlice";
+
+import { loadCart } from "./slices/cartSlice";
+
+import {
+  loadUserOrders,
+  loadVendorOrders,
+  loadAdminOrders,
+} from "./slices/orderSlice";
+
+import { loadAddresses } from "./slices/addressSlice";
+
+import { loadIssues } from "./slices/issueSlice";
+
+import { loadVendorProfile, loadAdminVendors } from "./slices/vendorSlice";
+
+import { loadAdminUsers } from "./slices/userSlice";
+
+export default function AppBootstrap({ children }) {
+  const dispatch = useDispatch();
+
+  const token = useSelector((state) => state.auth.token);
+  const user = useSelector((state) => state.auth.user);
+  const initialized = useSelector((state) => state.auth.initialized);
+
+  const {
+    isAuthenticated,
+    isLoading: auth0Loading,
+    getAccessTokenSilently,
+  } = useAuth0();
+
+  /*
+   * -------------------------------------------------------
+   * LOAD PRODUCTS
+   * -------------------------------------------------------
+   */
+  useEffect(() => {
+    dispatch(loadProducts());
+  }, [dispatch]);
+
+  /*
+   * -------------------------------------------------------
+   * AUTHENTICATION BOOTSTRAP
+   *
+   * Priority:
+   *
+   * 1. Existing ShopSphere JWT
+   * 2. Auth0 session
+   * 3. Anonymous user
+   * -------------------------------------------------------
+   */
+  useEffect(() => {
+    if (auth0Loading) {
+      return;
+    }
+
+    if (initialized) {
+      return;
+    }
+
+    let active = true;
+
+    const bootstrapAuth = async () => {
+      try {
+        /*
+         * -------------------------------------------------
+         * EXISTING SHOPSPHERE JWT
+         * -------------------------------------------------
+         */
+        if (token) {
+          try {
+            await dispatch(loadAuthenticatedUser()).unwrap();
+
+            return;
+          } catch {
+            /*
+             * Existing ShopSphere JWT is invalid.
+             *
+             * If Auth0 is also authenticated, we'll
+             * fall through and exchange the Auth0 token.
+             */
+          }
+        }
+
+        /*
+         * -------------------------------------------------
+         * AUTH0 SESSION
+         * -------------------------------------------------
+         */
+        if (isAuthenticated) {
+          const auth0Token = await getAccessTokenSilently({
+            authorizationParams: {
+              audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+              scope: "openid profile email",
+            },
+          });
+
+          await dispatch(exchangeAuth0Token(auth0Token)).unwrap();
+
+          return;
+        }
+      } catch (error) {
+        console.error("Authentication bootstrap failed:", error);
+      } finally {
+        if (active) {
+          dispatch(finishBootstrap());
+        }
+      }
+    };
+
+    bootstrapAuth();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    dispatch,
+    token,
+    initialized,
+    auth0Loading,
+    isAuthenticated,
+    getAccessTokenSilently,
+  ]);
+
+  /*
+   * -------------------------------------------------------
+   * LOAD USER-SPECIFIC DATA
+   * -------------------------------------------------------
+   */
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    if (user.role === "USER") {
+      dispatch(loadCart());
+      dispatch(loadUserOrders());
+      dispatch(loadAddresses());
+      dispatch(loadIssues("/issues"));
+    }
+
+    if (user.role === "VENDOR") {
+      dispatch(loadVendorProfile());
+      dispatch(loadVendorOrders());
+      dispatch(loadIssues("/issues/vendor"));
+    }
+
+    if (user.role === "ADMIN") {
+      dispatch(loadAdminUsers());
+      dispatch(loadAdminVendors());
+      dispatch(loadAdminOrders());
+      dispatch(loadIssues("/issues/admin"));
+    }
+  }, [dispatch, user]);
+
+  return children;
 }
 

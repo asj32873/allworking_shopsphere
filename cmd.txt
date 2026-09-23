@@ -11,10 +11,10 @@ Get-ChildItem -Path $src -Recurse -File -Filter "*.js" |
       } | Set-Content -LiteralPath $out -Encoding UTF8
 
 
-$src = "C:\Users\Administrator\Desktop\Python-practice\shopshere-microservices-\microservices\services\order\src"
+$src = "C:\Users\Administrator\Desktop\Python-practice\shopshere-microservices-\ecommerce-frontend-react-corrected\src"
 $out = Join-Path $src "notes.txt"
 
-Get-ChildItem -Path $src -Recurse -File -Filter "*.js" |
+Get-ChildItem -Path $src -Recurse -File -Filter "*.jsx" |
       Where-Object { $_.FullName -notlike "*\node_modules\*" } |
       Sort-Object FullName |
       ForEach-Object {            

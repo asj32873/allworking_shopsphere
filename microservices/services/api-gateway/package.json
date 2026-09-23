@@ -12,13 +12,16 @@
   },
   "dependencies": {
     "@shopsphere/common": "file:../../packages/common",
+    "cookie-signature": "^1.2.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
     "http-proxy-middleware": "^3.0.5",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "once": "^1.4.0",
+    "qs": "^6.16.0"
   },
   "devDependencies": {
     "jest": "^30.5.1",
