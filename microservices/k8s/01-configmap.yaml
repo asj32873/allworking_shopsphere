@@ -1,0 +1,32 @@
+# Non-secret configuration shared across services.
+# Service URLs use Kubernetes Service DNS names, which match the docker-compose
+# hostnames 1:1 (e.g. auth-service:5002), so application code needs no changes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shopsphere-config
+  namespace: shopsphere
+data:
+  NODE_ENV: "production"
+  FRONTEND_URL: "http://localhost:5173"
+
+  JWT_EXPIRES_IN: "1d"
+
+  REDIS_URL: "redis://redis:6379"
+  REDIS_PRODUCT_TTL: "300"
+  REDIS_REVIEW_TTL: "300"
+
+  GATEWAY_PORT: "5001"
+
+  AUTH_SERVICE_URL: "http://auth-service:5002"
+  USER_SERVICE_URL: "http://user-service:5007"
+  PRODUCT_SERVICE_URL: "http://product-service:5003"
+  CART_SERVICE_URL: "http://cart-service:5004"
+  ORDER_SERVICE_URL: "http://order-service:5005"
+  PAYMENT_SERVICE_URL: "http://payment-service:5006"
+  ADDRESS_SERVICE_URL: "http://address-service:5008"
+  REVIEW_SERVICE_URL: "http://review-service:5009"
+  RAG_SERVICE_URL: "http://rag-service:5010"
+  SUPPORT_SERVICE_URL: "http://support-service:5011"
+  VENDOR_SERVICE_URL: "http://vendor-service:5012"
+  ADMIN_SERVICE_URL: "http://admin-service:5013"

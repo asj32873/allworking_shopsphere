@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-service
+  namespace: shopsphere
+  labels:
+    app: support-service
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: support-service
+  template:
+    metadata:
+      labels:
+        app: support-service
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: support-service
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: support-service
+          image: shopsphere/support-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5011
+          envFrom:
+            - configMapRef:
+                name: shopsphere-config
+            - secretRef:
+                name: shopsphere-secrets
+          env:
+            - name: PORT
+              value: "5011"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5011
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5011
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: support-service
+  namespace: shopsphere
+spec:
+  selector:
+    app: support-service
+  ports:
+    - port: 5011
+      targetPort: 5011
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: support-service-pdb
+  namespace: shopsphere
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: support-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: support-service-hpa
+  namespace: shopsphere
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: support-service
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -1,0 +1,53 @@
+minikube start --driver=docker --cpus=4 --memory=6g
+minikube addons enable ingress
+
+cd microservices
+.\k8s\build-images.ps1
+
+minikube image load shopsphere/api-gateway:latest
+minikube image load shopsphere/auth-service:latest
+minikube image load shopsphere/user-service:latest
+minikube image load shopsphere/product-service:latest
+minikube image load shopsphere/cart-service:latest
+minikube image load shopsphere/order-service:latest
+minikube image load shopsphere/payment-service:latest
+minikube image load shopsphere/address-service:latest
+minikube image load shopsphere/vendor-service:latest
+minikube image load shopsphere/review-service:latest
+minikube image load shopsphere/rag-service:latest
+minikube image load shopsphere/support-service:latest
+minikube image load shopsphere/admin-service:latest
+
+Copy-Item k8s\02-secrets.example.yaml k8s\02-secrets.yaml
+notepad k8s\02-secrets.yaml   # fill in real JWT/Mongo/Stripe/HF/Chroma values
+
+
+kubectl apply -k k8s
+
+# watch pods come up healthy (Ctrl+C to stop watching)
+kubectl get pods -n shopsphere -w
+
+
+kubectl get svc,deploy,hpa,pdb -n shopsphere
+
+# quick internal health check without exposing anything externally
+kubectl run curl-test -n shopsphere --rm -it --image=curlimages/curl --restart=Never -- `
+  curl -s http://auth-service:5002/health
+
+# port-forward the gateway and hit it directly
+kubectl port-forward -n shopsphere svc/api-gateway 5001:5001
+# in a second terminal:
+Invoke-WebRequest http://localhost:5001/health
+Invoke-WebRequest http://localhost:5001/api/health
+
+# Keep the port-forward terminal open while using the React frontend.
+# The frontend default API URL is http://localhost:5001/api.
+# Test the login route through the gateway:
+Invoke-WebRequest http://localhost:5001/api/auth/health
+
+
+
+
+#if pod isnt ready check logs
+kubectl logs -n shopsphere deploy/<service-name> --tail=100
+kubectl describe pod -n shopsphere <pod-name>

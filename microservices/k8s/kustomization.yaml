@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: shopsphere
+resources:
+  - 00-namespace.yaml
+  - 01-configmap.yaml
+  - 02-secrets.yaml
+  - 03-redis.yaml
+  - services/auth-service.yaml
+  - services/user-service.yaml
+  - services/product-service.yaml
+  - services/cart-service.yaml
+  - services/order-service.yaml
+  - services/payment-service.yaml
+  - services/address-service.yaml
+  - services/vendor-service.yaml
+  - services/review-service.yaml
+  - services/rag-service.yaml
+  - services/support-service.yaml
+  - services/admin-service.yaml
+  - services/api-gateway.yaml

@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: address-service
+  namespace: shopsphere
+  labels:
+    app: address-service
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: address-service
+  template:
+    metadata:
+      labels:
+        app: address-service
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: address-service
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: address-service
+          image: shopsphere/address-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5008
+          envFrom:
+            - configMapRef:
+                name: shopsphere-config
+            - secretRef:
+                name: shopsphere-secrets
+          env:
+            - name: PORT
+              value: "5008"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5008
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5008
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: address-service
+  namespace: shopsphere
+spec:
+  selector:
+    app: address-service
+  ports:
+    - port: 5008
+      targetPort: 5008
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: address-service-pdb
+  namespace: shopsphere
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: address-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: address-service-hpa
+  namespace: shopsphere
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: address-service
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

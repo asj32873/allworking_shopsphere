@@ -8,3 +8,4 @@ npm-debug.log*
 coverage/
 .vscode/
 chroma-data/
+k8s/02-secrets.yaml

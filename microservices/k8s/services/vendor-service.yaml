@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vendor-service
+  namespace: shopsphere
+  labels:
+    app: vendor-service
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: vendor-service
+  template:
+    metadata:
+      labels:
+        app: vendor-service
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: vendor-service
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: vendor-service
+          image: shopsphere/vendor-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5012
+          envFrom:
+            - configMapRef:
+                name: shopsphere-config
+            - secretRef:
+                name: shopsphere-secrets
+          env:
+            - name: PORT
+              value: "5012"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5012
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5012
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vendor-service
+  namespace: shopsphere
+spec:
+  selector:
+    app: vendor-service
+  ports:
+    - port: 5012
+      targetPort: 5012
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vendor-service-pdb
+  namespace: shopsphere
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: vendor-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vendor-service-hpa
+  namespace: shopsphere
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vendor-service
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
