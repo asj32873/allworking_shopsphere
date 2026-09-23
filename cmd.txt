@@ -11,10 +11,10 @@ Get-ChildItem -Path $src -Recurse -File -Filter "*.js" |
       } | Set-Content -LiteralPath $out -Encoding UTF8
 
 
-$src = "C:\Users\Administrator\Desktop\Python-practice\shopshere-microservices-\microservices\services\cart"
+$src = "C:\Users\Administrator\Desktop\Python-practice\shopshere-microservices-\ecommerce-frontend-react-corrected\src"
 $out = Join-Path $src "notes.txt"
 
-Get-ChildItem -Path $src -Recurse -File -Filter "*.js" |
+Get-ChildItem -Path $src -Recurse -File -Filter "*.jsx" |
       Where-Object { $_.FullName -notlike "*\node_modules\*" } |
       Sort-Object FullName |
       ForEach-Object {            
@@ -24,7 +24,13 @@ Get-ChildItem -Path $src -Recurse -File -Filter "*.js" |
       } | Set-Content -LiteralPath $out -Encoding UTF8
 
 
-sonarqube
-sonar-scanner `
-"-Dproject.settings=sonar-project.properties" `
-"-Dsonar.token=sqa_e81ce08b70c889ac9e58a64eb484c6459c168cd3"
+
+
+
+
+
+
+
+
+
+

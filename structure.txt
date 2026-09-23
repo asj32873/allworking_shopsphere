@@ -1,0 +1,473 @@
+
+shopshere-microservices/
+│
+├── .gitignore
+│
+├── ecommerce-frontend-react-corrected/
+│   ├── .env
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── index.html
+│   │
+│   └── src/
+│       ├── main.jsx
+│       ├── App.jsx
+│       ├── styles.css
+│       │
+│       ├── api/
+│       │   └── client.js
+│       │
+│       ├── auth/
+│       │   └── Auth0ProviderWithNavigate.jsx
+│       │
+│       ├── common/
+│       │   └── tilt3d.jsx
+│       │
+│       ├── components/
+│       │   ├── common/
+│       │   │   ├── Navbar.jsx
+│       │   │   ├── PortalLayout.jsx
+│       │   │   ├── ProtectedRoute.jsx
+│       │   │   └── RoleSidebar.jsx
+│       │   │
+│       │   ├── orders/
+│       │   │   └── OrderTracking.jsx
+│       │   │
+│       │   └── products/
+│       │       ├── ProductCard.jsx
+│       │       ├── ProductQA.jsx
+│       │       └── ReviewForm.jsx
+│       │
+│       ├── context/
+│       │   └── AppContext.jsx
+│       │
+│       ├── data/
+│       │   └── dummyData.js
+│       │
+│       ├── pages/
+│       │   ├── Home.jsx
+│       │   ├── Login.jsx
+│       │   ├── Register.jsx
+│       │   ├── VendorRegister.jsx
+│       │   ├── Products.jsx
+│       │   ├── ProductDetails.jsx
+│       │   ├── Cart.jsx
+│       │   ├── Addresses.jsx
+│       │   ├── Orders.jsx
+│       │   ├── OrderDetails.jsx
+│       │   ├── Reviews.jsx
+│       │   ├── Issues.jsx
+│       │   ├── Profile.jsx
+│       │   ├── PaymentSuccess.jsx
+│       │   ├── PaymentCancel.jsx
+│       │   │
+│       │   ├── admin/
+│       │   │   ├── AdminDashboard.jsx
+│       │   │   ├── AdminIssues.jsx
+│       │   │   ├── AdminOrders.jsx
+│       │   │   ├── AdminReviews.jsx
+│       │   │   ├── AdminUsers.jsx
+│       │   │   └── AdminVendors.jsx
+│       │   │
+│       │   └── vendor/
+│       │       ├── VendorDashboard.jsx
+│       │       ├── VendorIssues.jsx
+│       │       ├── VendorOrders.jsx
+│       │       ├── VendorProductEdit.jsx
+│       │       ├── VendorProducts.jsx
+│       │       └── VendorProfile.jsx
+│       │
+│       └── store/
+│           ├── AppBootstrap.jsx
+│           ├── store.js
+│           │
+│           ├── slices/
+│           │   ├── addressSlice.js
+│           │   ├── authSlice.js
+│           │   ├── cartSlice.js
+│           │   ├── issueSlice.js
+│           │   ├── orderSlice.js
+│           │   ├── productSlice.js
+│           │   ├── reviewSlice.js
+│           │   ├── userSlice.js
+│           │   └── vendorSlice.js
+│           │
+│           └── utils/
+│               └── normalize.js
+│
+│
+├── microservices/
+│   ├── .env
+│   ├── .gitignore
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── docker-compose.yml
+│   |
+│   ├── packages/
+│   │   └── common/
+│   │       ├── package.json
+│   │       ├── index.js
+│   │       │
+│   │       ├── errors/
+│   │       │   └── AppError.js
+│   │       │
+│   │       └── middleware/
+│   │           ├── error.js
+│   │           ├── internal.js
+│   │           ├── requestId.js
+│   │           └── validate.js
+│   │
+│   └── services/
+│       │
+│       ├── api-gateway/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── jest.config.js
+│       │   ├── sonar-project.properties
+│       │   │
+│       │   ├── src/
+│       │   │   └── server.js
+│       │   │
+│       │   └── tests/
+│       │       └── server.test.js
+│       │
+│       ├── auth/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── jest.config.js
+│       │   ├── sonar-project.properties
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   ├── create-admin.js
+│       │   │   │
+│       │   │   ├── config/
+│       │   │   │   ├── db.js
+│       │   │   │   └── env.js
+│       │   │   │
+│       │   │   ├── controllers/
+│       │   │   │   └── auth.controller.js
+│       │   │   │
+│       │   │   ├── middleware/
+│       │   │   │   └── auth.js
+│       │   │   │
+│       │   │   ├── models/
+│       │   │   │   └── User.js
+│       │   │   │
+│       │   │   ├── routes/
+│       │   │   │   └── index.js
+│       │   │   │
+│       │   │   ├── validators/
+│       │   │   │   └── auth.js
+│       │   │   │
+│       │   │   └── utils/
+│       │   │       ├── apiResponse.js
+│       │   │       ├── AppError.js
+│       │   │       ├── auth0.js
+│       │   │       └── serviceClient.js
+│       │   │
+│       │   └── tests/
+│       │       ├── app.test.js
+│       │       ├── config/
+│       │       ├── controllers/
+│       │       ├── middleware/
+│       │       ├── models/
+│       │       ├── routes/
+│       │       ├── utils/
+│       │       └── validators/
+│       │
+│       ├── user/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   │
+│       │   │   ├── config/
+│       │   │   │   ├── db.js
+│       │   │   │   └── env.js
+│       │   │   │
+│       │   │   ├── controllers/
+│       │   │   │   └── user.controller.js
+│       │   │   │
+│       │   │   ├── middleware/
+│       │   │   │   └── auth.js
+│       │   │   │
+│       │   │   ├── routes/
+│       │   │   │   └── index.js
+│       │   │   │
+│       │   │   └── utils/
+│       │   │       ├── apiResponse.js
+│       │   │       ├── AppError.js
+│       │   │       └── serviceClient.js
+│       │   │
+│       │   └── tests/
+│       │
+│       ├── product/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── jest.config.js
+│       │   ├── sonar-project.properties
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   │
+│       │   │   ├── config/
+│       │   │   │   ├── db.js
+│       │   │   │   └── env.js
+│       │   │   │
+│       │   │   ├── controllers/
+│       │   │   │   ├── product.controller.js
+│       │   │   │   └── qa.controller.js
+│       │   │   │
+│       │   │   ├── middleware/
+│       │   │   │   └── auth.js
+│       │   │   │
+│       │   │   ├── models/
+│       │   │   │   └── Product.js
+│       │   │   │
+│       │   │   ├── routes/
+│       │   │   │   └── index.js
+│       │   │   │
+│       │   │   ├── services/
+│       │   │   │   ├── cache.service.js
+│       │   │   │   ├── query.service.js
+│       │   │   │   ├── rag.service.js
+│       │   │   │   ├── redis.service.js
+│       │   │   │   └── vendor.service.js
+│       │   │   │
+│       │   │   ├── validators/
+│       │   │   │   └── product.js
+│       │   │   │
+│       │   │   └── utils/
+│       │   │       ├── apiResponse.js
+│       │   │       ├── AppError.js
+│       │   │       └── serviceClient.js
+│       │   │
+│       │   └── tests/
+│       │
+│       ├── order/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── jest.config.js
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   │
+│       │   │   ├── config/
+│       │   │   ├── controllers/
+│       │   │   │   └── order.controller.js
+│       │   │   ├── middleware/
+│       │   │   ├── models/
+│       │   │   │   ├── Order.js
+│       │   │   │   ├── OrderItem.js
+│       │   │   │   └── OrderStatusHistory.js
+│       │   │   ├── routes/
+│       │   │   ├── validators/
+│       │   │   │   └── order.js
+│       │   │   └── utils/
+│       │   │
+│       │   └── tests/
+│       │
+│       ├── cart/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── jest.config.js
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   ├── config/
+│       │   │   ├── controllers/
+│       │   │   │   └── cart.controller.js
+│       │   │   ├── middleware/
+│       │   │   ├── models/
+│       │   │   │   └── CartItem.js
+│       │   │   ├── routes/
+│       │   │   └── utils/
+│       │   │
+│       │   └── tests/
+│       │
+│       ├── payment/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── jest.config.js
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   ├── config/
+│       │   │   ├── controllers/
+│       │   │   │   └── payment.controller.js
+│       │   │   ├── middleware/
+│       │   │   ├── models/
+│       │   │   │   └── Payment.js
+│       │   │   ├── routes/
+│       │   │   ├── services/
+│       │   │   │   └── stripe.service.js
+│       │   │   └── utils/
+│       │   │
+│       │   └── tests/
+│       │
+│       ├── address/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── jest.config.js
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   ├── config/
+│       │   │   ├── controllers/
+│       │   │   │   └── address.controller.js
+│       │   │   ├── middleware/
+│       │   │   ├── models/
+│       │   │   │   └── Address.js
+│       │   │   ├── routes/
+│       │   │   └── utils/
+│       │   │
+│       │   └── tests/
+│       │
+│       ├── vendor/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   ├── config/
+│       │   │   ├── controllers/
+│       │   │   │   └── vendor.controller.js
+│       │   │   ├── middleware/
+│       │   │   ├── models/
+│       │   │   │   └── Vendor.js
+│       │   │   ├── routes/
+│       │   │   └── utils/
+│       │   │
+│       │   └── tests/
+│       │
+│       ├── review/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── jest.config.js
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   ├── config/
+│       │   │   ├── controllers/
+│       │   │   │   └── review.controller.js
+│       │   │   ├── middleware/
+│       │   │   ├── models/
+│       │   │   │   └── Review.js
+│       │   │   ├── routes/
+│       │   │   ├── services/
+│       │   │   │   ├── cache.service.js
+│       │   │   │   └── redis.service.js
+│       │   │   └── utils/
+│       │   │
+│       │   └── tests/
+│       │
+│       ├── support/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   ├── config/
+│       │   │   ├── controllers/
+│       │   │   │   └── issue.controller.js
+│       │   │   ├── middleware/
+│       │   │   ├── models/
+│       │   │   │   └── CustomerIssue.js
+│       │   │   ├── routes/
+│       │   │   ├── validators/
+│       │   │   │   └── issue.js
+│       │   │   └── utils/
+│       │   │
+│       │   └── tests/
+│       │
+│       ├── admin/
+│       │   ├── Dockerfile
+│       │   ├── package.json
+│       │   ├── package-lock.json
+│       │   ├── jest.config.js
+│       │   ├── README.md
+│       │   │
+│       │   ├── src/
+│       │   │   ├── app.js
+│       │   │   ├── server.js
+│       │   │   ├── config/
+│       │   │   ├── controllers/
+│       │   │   │   └── admin.controller.js
+│       │   │   ├── middleware/
+│       │   │   ├── routes/
+│       │   │   └── utils/
+│       │   │
+│       │   └── tests/
+│       │
+│       └── rag/
+│           ├── Dockerfile
+│           ├── package.json
+│           ├── package-lock.json
+│           ├── jest.config.js
+│           ├── README.md
+│           │
+│           ├── src/
+│           │   ├── app.js
+│           │   ├── server.js
+│           │   │
+│           │   ├── config/
+│           │   │   ├── db.js
+│           │   │   └── env.js
+│           │   │
+│           │   ├── controllers/
+│           │   │   └── rag.controller.js
+│           │   │
+│           │   ├── middleware/
+│           │   │   └── auth.js
+│           │   │
+│           │   ├── routes/
+│           │   │   └── index.js
+│           │   │
+│           │   ├── rag/
+│           │   │   ├── embeddings.js
+│           │   │   ├── graph.js
+│           │   │   ├── ingest.js
+│           │   │   └── vectorStore.js
+│           │   │
+│           │   └── utils/
+│           │       ├── apiResponse.js
+│           │       ├── AppError.js
+│           │       ├── hfClient.js
+│           │       └── serviceClient.js
+│           │
+│           └── tests/
+│
+└── ...
