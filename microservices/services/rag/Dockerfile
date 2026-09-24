@@ -7,7 +7,7 @@ COPY package.json ./
 COPY packages ./packages
 COPY services/rag ./services/rag
 
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 WORKDIR /app/services/rag
 
