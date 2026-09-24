@@ -19,6 +19,9 @@ pipeline {
         COMPOSE_FILE = 'docker-compose.yml'
         SONAR_PROJECT_KEY = 'shopsphere-microservices'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
+
+        REGISTRY = "docker.io"
+        REGISTRY_NAMESPACE = "${params.REGISTRY_NAMESPACE}"
     }
 
     stages {
