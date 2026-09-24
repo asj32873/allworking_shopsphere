@@ -2,12 +2,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./ 
 
 COPY packages ./packages
 COPY services/auth ./services/auth
 
-RUN npm install
+RUN npm ci  
 
 WORKDIR /app/services/auth
 
