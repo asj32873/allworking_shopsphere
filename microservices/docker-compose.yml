@@ -4,6 +4,8 @@ services:
   # ============================================================
 
   auth-service:
+    image: asj32873/shopsphere-auth:latest
+
     build:
       context: .
       dockerfile: ./services/auth/Dockerfile
@@ -35,6 +37,8 @@ services:
   # ============================================================
 
   user-service:
+    image: asj32873/shopsphere-user:latest
+
     build:
       context: .
       dockerfile: ./services/user/Dockerfile
@@ -64,6 +68,8 @@ services:
   # ============================================================
 
   product-service:
+    image: asj32873/shopsphere-product:latest
+
     build:
       context: .
       dockerfile: ./services/product/Dockerfile
@@ -102,6 +108,8 @@ services:
   # ============================================================
 
   cart-service:
+    image: asj32873/shopsphere-cart:latest
+
     build:
       context: .
       dockerfile: ./services/cart/Dockerfile
@@ -135,6 +143,8 @@ services:
   # ============================================================
 
   order-service:
+    image: asj32873/shopsphere-order:latest
+
     build:
       context: .
       dockerfile: ./services/order/Dockerfile
@@ -172,6 +182,8 @@ services:
   # ============================================================
 
   payment-service:
+    image: asj32873/shopsphere-payment:latest
+
     build:
       context: .
       dockerfile: ./services/payment/Dockerfile
@@ -214,6 +226,8 @@ services:
   # ============================================================
 
   address-service:
+    image: asj32873/shopsphere-address:latest
+
     build:
       context: .
       dockerfile: ./services/address/Dockerfile
@@ -245,6 +259,8 @@ services:
   # ============================================================
 
   vendor-service:
+    image: asj32873/shopsphere-vendor:latest
+
     build:
       context: .
       dockerfile: ./services/vendor/Dockerfile
@@ -274,6 +290,8 @@ services:
   # ============================================================
 
   review-service:
+    image: asj32873/shopsphere-review:latest
+
     build:
       context: .
       dockerfile: ./services/review/Dockerfile
@@ -315,6 +333,8 @@ services:
   # ============================================================
 
   rag-service:
+    image: asj32873/shopsphere-rag:latest
+
     build:
       context: .
       dockerfile: ./services/rag/Dockerfile
@@ -356,6 +376,8 @@ services:
   # ============================================================
 
   support-service:
+    image: asj32873/shopsphere-support:latest
+
     build:
       context: .
       dockerfile: ./services/support/Dockerfile
@@ -389,6 +411,8 @@ services:
   # ============================================================
 
   admin-service:
+    image: asj32873/shopsphere-admin:latest
+
     build:
       context: .
       dockerfile: ./services/admin/Dockerfile
@@ -428,6 +452,8 @@ services:
   # ============================================================
 
   api-gateway:
+    image: asj32873/shopsphere-api-gateway:latest
+
     build:
       context: .
       dockerfile: ./services/api-gateway/Dockerfile
@@ -505,3 +531,15 @@ networks:
 
 volumes:
   redis-data:
+  auth-service-data:
+  user-service-data:
+  product-service-data:
+  cart-service-data:
+  order-service-data:
+  payment-service-data:
+  address-service-data:
+  review-service-data:
+  rag-service-data:
+  support-service-data:
+  vendor-service-data:
+  admin-service-data:

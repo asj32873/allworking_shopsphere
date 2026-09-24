@@ -2,7 +2,8 @@ minikube start --driver=docker --cpus=4 --memory=6g
 minikube addons enable ingress
 
 cd microservices
-.\k8s\build-images.ps1
+.\k8s\build-images.ps1 # no need now
+
 
 minikube image load shopsphere/api-gateway:latest
 minikube image load shopsphere/auth-service:latest
@@ -24,18 +25,16 @@ notepad k8s\02-secrets.yaml   # fill in real JWT/Mongo/Stripe/HF/Chroma values
 
 kubectl apply -k k8s
 
-# watch pods come up healthy (Ctrl+C to stop watching)
 kubectl get pods -n shopsphere -w
 
-
 kubectl get svc,deploy,hpa,pdb -n shopsphere
+
+kubectl port-forward -n shopsphere svc/api-gateway 5001:5001
+
 
 # quick internal health check without exposing anything externally
 kubectl run curl-test -n shopsphere --rm -it --image=curlimages/curl --restart=Never -- `
   curl -s http://auth-service:5002/health
-
-# port-forward the gateway and hit it directly
-kubectl port-forward -n shopsphere svc/api-gateway 5001:5001
 # in a second terminal:
 Invoke-WebRequest http://localhost:5001/health
 Invoke-WebRequest http://localhost:5001/api/health

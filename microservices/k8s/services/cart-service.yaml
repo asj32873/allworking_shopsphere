@@ -31,8 +31,8 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: cart-service
-          image: shopsphere/cart-service:latest
-          imagePullPolicy: IfNotPresent
+          image: asj32873/shopsphere-cart:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 5004
           envFrom:

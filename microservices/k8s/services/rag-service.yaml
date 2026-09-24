@@ -31,8 +31,8 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: rag-service
-          image: shopsphere/rag-service:latest
-          imagePullPolicy: IfNotPresent
+          image: asj32873/shopsphere-rag:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 5010
           envFrom:

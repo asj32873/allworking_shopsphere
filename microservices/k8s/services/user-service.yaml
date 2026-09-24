@@ -31,8 +31,8 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: user-service
-          image: shopsphere/user-service:latest
-          imagePullPolicy: IfNotPresent
+          image: asj32873/shopsphere-user:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 5007
           envFrom:
