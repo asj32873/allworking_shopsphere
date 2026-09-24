@@ -1,452 +1,84 @@
 pipeline {
-
     agent any
 
     options {
         timestamps()
         disableConcurrentBuilds()
-
         skipDefaultCheckout(true)
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '10'))
+    }
 
-        buildDiscarder(
-            logRotator(
-                numToKeepStr: '10',
-                artifactNumToKeepStr: '10'
-            )
-        )
+    parameters {
+        string(name: 'REGISTRY', defaultValue: 'docker.io', description: 'Container registry hostname')
+        string(name: 'REGISTRY_NAMESPACE', defaultValue: '', description: 'Docker Hub user or registry project')
+        booleanParam(name: 'DEPLOY_TO_KUBERNETES', defaultValue: true, description: 'Deploy the pushed images')
     }
 
     environment {
-
-        // ========================================================
-        // Docker Compose configuration
-        // ========================================================
-
         COMPOSE_DIR = 'microservices'
         COMPOSE_FILE = 'docker-compose.yml'
-        COMPOSE_PROJECT_NAME = 'shopsphere'
-
-        // ========================================================
-        // SonarQube
-        // ========================================================
-
         SONAR_PROJECT_KEY = 'shopsphere-microservices'
-
-        // ========================================================
-        // Node.js
-        // ========================================================
-
-        PATH = "C:\\Program Files\\nodejs;${env.PATH}"
+        IMAGE_TAG = "build-${BUILD_NUMBER}"
     }
 
-
     stages {
-
-        // ========================================================
-        // CHECKOUT
-        // ========================================================
-
         stage('Checkout') {
             steps {
-
-                echo 'Checking out ShopSphere source code...'
-
                 checkout scm
             }
         }
 
-
-        // ========================================================
-        // LOAD ENVIRONMENT FILE
-        // ========================================================
-
-        stage('Load Environment') {
-
+        stage('Validate Configuration') {
             steps {
-
-                withCredentials([
-                    file(
-                        credentialsId: 'shopsphere-env',
-                        variable: 'SHOPSPHERE_ENV_FILE'
-                    )
-                ]) {
-
+                withCredentials([file(credentialsId: 'shopsphere-env', variable: 'SHOPSPHERE_ENV_FILE')]) {
                     dir("${COMPOSE_DIR}") {
-
-                        bat '''
-                            @echo off
-
-                            echo ========================================
-                            echo Loading ShopSphere environment
-                            echo ========================================
-
-                            if not exist "%SHOPSPHERE_ENV_FILE%" (
-                                echo ERROR: Jenkins environment credential file was not found.
-                                exit /b 1
-                            )
-
-                            copy /Y "%SHOPSPHERE_ENV_FILE%" ".env" >nul
-
-                            if errorlevel 1 (
-                                echo ERROR: Failed to copy Jenkins environment file.
-                                exit /b 1
-                            )
-
-                            if not exist ".env" (
-                                echo ERROR: .env file was not created.
-                                exit /b 1
-                            )
-
-                            echo ShopSphere environment file loaded successfully.
+                        sh '''
+                            set -eu
+                            cp "$SHOPSPHERE_ENV_FILE" .env
+                            docker compose -f "$COMPOSE_FILE" config -q
+                            for service in api-gateway auth user product cart order payment address review rag support vendor admin; do
+                                test -f "services/$service/package.json"
+                                test -f "services/$service/Dockerfile"
+                            done
                         '''
                     }
                 }
             }
         }
 
-
-        // ========================================================
-        // VERIFY ENVIRONMENT
-        // ========================================================
-
-        stage('Verify Environment') {
-
+        stage('Build and Test Images') {
             steps {
-
-                bat '''
-                    @echo off
-
-                    echo ========================================
-                    echo Verifying Jenkins Environment
-                    echo ========================================
-
-                    echo.
-                    echo Docker:
-                    docker --version
-
-                    if errorlevel 1 exit /b 1
-
-
-                    echo.
-                    echo Docker Compose:
-                    docker compose version
-
-                    if errorlevel 1 exit /b 1
-
-
-                    echo.
-                    echo Node.js:
-                    where node
-
-                    if errorlevel 1 (
-                        echo ERROR: Node.js was not found in Jenkins PATH.
-                        exit /b 1
-                    )
-
-                    node --version
-
-                    if errorlevel 1 exit /b 1
-
-
-                    echo.
-                    echo npm:
-                    where npm
-
-                    if errorlevel 1 (
-                        echo ERROR: npm was not found in Jenkins PATH.
-                        exit /b 1
-                    )
-
-                    npm --version
-
-                    if errorlevel 1 exit /b 1
-
-
-                    echo.
-                    echo Git:
-                    git --version
-
-                    if errorlevel 1 exit /b 1
-
-
-                    echo.
-                    echo SonarScanner:
-                    sonar-scanner --version
-
-                    if errorlevel 1 exit /b 1
-
-
-                    echo.
-                    echo ========================================
-                    echo Environment verification completed.
-                    echo ========================================
-                '''
-            }
-        }
-
-
-        // ========================================================
-        // VALIDATE DOCKER COMPOSE
-        // ========================================================
-
-        stage('Validate Docker Compose') {
-
-            steps {
-
                 dir("${COMPOSE_DIR}") {
+                    sh '''
+                        set -eu
+                        test -n "$REGISTRY_NAMESPACE" || { echo "REGISTRY_NAMESPACE is required"; exit 1; }
+                        for service in api-gateway auth user product cart order payment address review rag support vendor admin; do
+                            image="$REGISTRY/$REGISTRY_NAMESPACE/shopsphere-$service:$IMAGE_TAG"
+                            docker build --pull -t "$image" -f "services/$service/Dockerfile" .
 
-                    bat '''
-                        @echo off
-
-                        echo ========================================
-                        echo Validating Docker Compose configuration
-                        echo ========================================
-
-                        if not exist "%COMPOSE_FILE%" (
-                            echo ERROR: %COMPOSE_FILE% was not found.
-                            echo Current directory:
-                            cd
-                            echo.
-                            echo Files:
-                            dir
-                            exit /b 1
-                        )
-
-
-                        echo.
-                        echo Checking environment variables...
-
-
-                        docker compose -f "%COMPOSE_FILE%" config -q
-
-                        if errorlevel 1 (
-                            echo ERROR: Docker Compose configuration is invalid.
-                            exit /b 1
-                        )
-
-
-                        echo.
-                        echo ========================================
-                        echo Docker Compose configuration is valid.
-                        echo ========================================
+                            if docker run --rm "$image" node -e "const p=require('./package.json'); process.exit(p.scripts?.test ? 0 : 1)"; then
+                                docker run --rm --env-file .env "$image" npm test
+                            else
+                                echo "No test script for $service; skipping"
+                            fi
+                        done
                     '''
                 }
             }
         }
-
-
-        // ========================================================
-        // VALIDATE NODE DEPENDENCIES / PACKAGE.JSON
-        // ========================================================
-
-        stage('Install / Validate Node Dependencies') {
-
-            steps {
-
-                dir("${COMPOSE_DIR}") {
-
-                    bat '''
-                        @echo off
-
-                        echo ========================================
-                        echo Validating service package.json files
-                        echo ========================================
-
-                        for %%S in (
-                            api-gateway
-                            auth
-                            user
-                            product
-                            cart
-                            order
-                            payment
-                            address
-                            review
-                            rag
-                            support
-                            vendor
-                            admin
-                        ) do (
-
-                            echo.
-                            echo ========================================
-                            echo Checking %%S
-                            echo ========================================
-
-                            if not exist "services/%%S/package.json" (
-                                echo ERROR: services/%%S/package.json not found.
-                                exit /b 1
-                            )
-
-                            node -e "const p=require('./services/%%S/package.json'); console.log('Service:',p.name); console.log('Version:',p.version); console.log('Dependencies:',Object.keys(p.dependencies||{}).length);"
-
-                            if errorlevel 1 (
-                                echo ERROR: Invalid package.json for %%S.
-                                exit /b 1
-                            )
-                        )
-
-                        echo.
-                        echo ========================================
-                        echo All service package.json files are valid.
-                        echo ========================================
-                    '''
-                }
-            }
-        }
-
-
-        // ========================================================
-        // BUILD DOCKER IMAGES
-        // ========================================================
-
-        stage('Build Docker Images') {
-
-            steps {
-
-                dir("${COMPOSE_DIR}") {
-
-                    bat '''
-                        @echo off
-
-                        echo ========================================
-                        echo Building ShopSphere Docker images
-                        echo ========================================
-
-                        docker compose -f "%COMPOSE_FILE%" build --pull
-
-                        if errorlevel 1 (
-                            echo ERROR: Docker image build failed.
-                            exit /b 1
-                        )
-
-                        echo.
-                        echo ========================================
-                        echo Docker image build completed successfully.
-                        echo ========================================
-                    '''
-                }
-            }
-        }
-
-
-        // ========================================================
-        // RUN TESTS
-        // ========================================================
-
-        stage('Run Tests') {
-
-            steps {
-
-                dir("${COMPOSE_DIR}") {
-
-                    bat '''
-                        @echo off
-
-                        echo ========================================
-                        echo Running service tests
-                        echo ========================================
-
-                        for %%S in (
-                            api-gateway
-                            auth
-                            user
-                            product
-                            cart
-                            order
-                            payment
-                            address
-                            review
-                            rag
-                            support
-                            vendor
-                            admin
-                        ) do (
-
-                            echo.
-                            echo ========================================
-                            echo Testing %%S
-                            echo ========================================
-
-                            if not exist "services/%%S/package.json" (
-
-                                echo package.json not found for %%S - skipping.
-
-                            ) else (
-
-                                node -e "const p=require('./services/%%S/package.json'); process.exit(p.scripts && p.scripts.test ? 0 : 1);"
-
-                                if errorlevel 1 (
-
-                                    echo No test script defined for %%S - skipping.
-
-                                ) else (
-
-                                    echo Test script found for %%S.
-                                    echo Running npm test inside Docker container...
-
-                                    docker compose -f "%COMPOSE_FILE%" run --rm --no-deps %%S npm test
-
-                                    if errorlevel 1 (
-                                        echo ERROR: Tests failed for %%S.
-                                        exit /b 1
-                                    )
-                                )
-                            )
-                        )
-
-                        echo.
-                        echo ========================================
-                        echo Test stage completed successfully.
-                        echo ========================================
-                    '''
-                }
-            }
-        }
-
-
-        // ========================================================
-        // SONARQUBE ANALYSIS
-        // ========================================================
 
         stage('SonarQube Analysis') {
-
             steps {
-
-                withCredentials([
-                    string(
-                        credentialsId: 'sonarqube-token',
-                        variable: 'SONAR_TOKEN'
-                    )
-                ]) {
-
+                withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
                     withSonarQubeEnv('SonarQube') {
-
                         dir("${COMPOSE_DIR}") {
-
-                            bat '''
-                                @echo off
-
-                                echo ========================================
-                                echo Running SonarQube analysis
-                                echo ========================================
-
-                                sonar-scanner ^
-                                    -Dsonar.projectKey="%SONAR_PROJECT_KEY%" ^
-                                    -Dsonar.projectName="ShopSphere-Microservices" ^
-                                    -Dsonar.sources="services,packages" ^
-                                    -Dsonar.exclusions="**/node_modules/**,**/coverage/**,**/tests/**" ^
-                                    -Dsonar.token="%SONAR_TOKEN%"
-
-                                if errorlevel 1 (
-                                    echo ERROR: SonarQube analysis failed.
-                                    exit /b 1
-                                )
-
-                                echo.
-                                echo ========================================
-                                echo SonarQube analysis completed successfully.
-                                echo ========================================
+                            sh '''
+                                sonar-scanner \
+                                    -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
+                                    -Dsonar.projectName=ShopSphere-Microservices \
+                                    -Dsonar.sources=services,packages \
+                                    -Dsonar.exclusions='**/node_modules/**,**/coverage/**,**/tests/**' \
+                                    -Dsonar.token="$SONAR_TOKEN"
                             '''
                         }
                     }
@@ -454,234 +86,103 @@ pipeline {
             }
         }
 
-
-        // ========================================================
-        // START INFRASTRUCTURE
-        // ========================================================
-
-        stage('Start Infrastructure') {
-
+        stage('Push Images') {
             steps {
-
-                dir("${COMPOSE_DIR}") {
-
-                    bat '''
-                        @echo off
-
-                        echo ========================================
-                        echo Starting ShopSphere infrastructure
-                        echo ========================================
-
-                        if not exist ".env" (
-                            echo ERROR: .env file is missing.
-                            echo The Load Environment stage should have created it.
-                            exit /b 1
-                        )
-
-                        echo.
-                        echo Starting Docker Compose services...
-
-                        docker compose -f "%COMPOSE_FILE%" up -d
-
-                        if errorlevel 1 (
-                            echo ERROR: Docker Compose failed to start.
-                            exit /b 1
-                        }
-
-                        echo.
-                        echo ========================================
-                        echo ShopSphere infrastructure started successfully.
-                        echo ========================================
-                    '''
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-registry-credentials',
+                    usernameVariable: 'REGISTRY_USERNAME',
+                    passwordVariable: 'REGISTRY_PASSWORD'
+                )]) {
+                    dir("${COMPOSE_DIR}") {
+                        sh '''
+                            set -eu
+                            printf '%s' "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+                            for service in api-gateway auth user product cart order payment address review rag support vendor admin; do
+                                image="$REGISTRY/$REGISTRY_NAMESPACE/shopsphere-$service"
+                                docker push "$image:$IMAGE_TAG"
+                                docker tag "$image:$IMAGE_TAG" "$image:latest"
+                                docker push "$image:latest"
+                            done
+                            docker logout "$REGISTRY"
+                        '''
+                    }
                 }
             }
         }
 
-
-        // ========================================================
-        // WAIT FOR SERVICES
-        // ========================================================
-
-        stage('Wait For Services') {
-
-            steps {
-
-                dir("${COMPOSE_DIR}") {
-
-                    bat '''
-                        @echo off
-
-                        echo ========================================
-                        echo Waiting for services to start
-                        echo ========================================
-
-                        timeout /t 20 /nobreak >nul
-
-
-                        echo.
-                        echo ========================================
-                        echo Container Status
-                        echo ========================================
-
-                        docker compose -f "%COMPOSE_FILE%" ps
-
-                        if errorlevel 1 (
-                            echo WARNING: Could not retrieve Compose status.
-                        )
-
-
-                        echo.
-                        echo ========================================
-                        echo Docker Container Health / Status
-                        echo ========================================
-
-                        docker ps ^
-                            --filter "name=shopsphere" ^
-                            --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
-
-
-                        echo.
-                        echo Service startup check completed.
-                    '''
-                }
+        stage('Deploy to Kubernetes') {
+            when {
+                expression { params.DEPLOY_TO_KUBERNETES }
             }
-        }
-
-
-        // ========================================================
-        // SMOKE CHECK
-        // ========================================================
-
-        stage('Smoke Check') {
-
             steps {
+                withCredentials([
+                    file(credentialsId: 'shopsphere-kubeconfig', variable: 'KUBECONFIG_FILE'),
+                    file(credentialsId: 'shopsphere-env', variable: 'SHOPSPHERE_ENV_FILE'),
+                    usernamePassword(
+                        credentialsId: 'docker-registry-credentials',
+                        usernameVariable: 'REGISTRY_USERNAME',
+                        passwordVariable: 'REGISTRY_PASSWORD'
+                    )
+                ]) {
+                    dir("${COMPOSE_DIR}") {
+                        sh '''
+                            set -eu
+                            cp "$KUBECONFIG_FILE" .jenkins-kubeconfig
+                            export KUBECONFIG="$PWD/.jenkins-kubeconfig"
+                            cluster="$(kubectl config view --minify -o jsonpath='{.clusters[0].name}')"
+                            server="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')"
+                            case "$server" in
+                                https://127.0.0.1:*|https://localhost:*)
+                                    port="${server##*:}"
+                                    kubectl config set-cluster "$cluster" \
+                                        --server="https://host.docker.internal:$port" \
+                                        --tls-server-name=minikube
+                                    ;;
+                            esac
 
-                dir("${COMPOSE_DIR}") {
+                            kubectl apply -f k8s/00-namespace.yaml
+                            kubectl create secret generic shopsphere-secrets \
+                                --namespace shopsphere \
+                                --from-env-file="$SHOPSPHERE_ENV_FILE" \
+                                --dry-run=client -o yaml | kubectl apply -f -
+                            kubectl create secret docker-registry registry-credentials \
+                                --namespace shopsphere \
+                                --docker-server="$REGISTRY" \
+                                --docker-username="$REGISTRY_USERNAME" \
+                                --docker-password="$REGISTRY_PASSWORD" \
+                                --dry-run=client -o yaml | kubectl apply -f -
 
-                    bat '''
-                        @echo off
+                            rm -rf .k8s-render
+                            cp -R k8s .k8s-render
+                            cd .k8s-render
+                            printf '\nimages:\n' >> kustomization.yaml
+                            for service in api-gateway auth user product cart order payment address review rag support vendor admin; do
+                                base="shopsphere/$service-service"
+                                test "$service" = api-gateway && base="shopsphere/api-gateway"
+                                printf '  - name: %s\n    newName: %s/%s/shopsphere-%s\n    newTag: %s\n' \
+                                    "$base" "$REGISTRY" "$REGISTRY_NAMESPACE" "$service" "$IMAGE_TAG" >> kustomization.yaml
+                            done
+                            kubectl kustomize . | kubectl apply -f -
 
-                        echo ========================================
-                        echo Running API Gateway smoke check
-                        echo ========================================
-
-                        echo Checking http://localhost:5001/health ...
-
-                        curl.exe -fsS http://localhost:5001/health >nul 2>&1
-
-                        if errorlevel 1 (
-
-                            echo.
-                            echo WARNING: /health endpoint was not available.
-
-                            echo.
-                            echo Checking API Gateway container logs...
-
-                            echo.
-
-                            docker compose -f "%COMPOSE_FILE%" logs --tail=50 api-gateway
-
-                            echo.
-                            echo Smoke check did not pass.
-
-                            exit /b 1
-                        )
-
-                        echo.
-                        echo API Gateway health check passed.
-                    '''
+                            kubectl rollout status deployment --all --namespace shopsphere --timeout=5m
+                        '''
+                    }
                 }
             }
         }
     }
 
-
-    // ============================================================
-    // POST ACTIONS
-    // ============================================================
-
     post {
-
-        success {
-
-            echo '''
-            ============================================
-            ShopSphere Jenkins Build SUCCESS
-            ============================================
-            Docker images built successfully.
-            Tests completed.
-            SonarQube analysis completed.
-            Docker Compose deployment completed.
-            '''
-        }
-
-
         failure {
-
-            echo '''
-            ============================================
-            ShopSphere Jenkins Build FAILED
-            ============================================
-            Collecting Docker Compose information...
+            sh '''
+                if [ -n "${KUBECONFIG_FILE:-}" ]; then
+                    KUBECONFIG="$KUBECONFIG_FILE" kubectl get pods -n shopsphere -o wide || true
+                fi
             '''
-
-            dir("${COMPOSE_DIR}") {
-
-                bat '''
-                    @echo off
-
-                    echo.
-                    echo ========================================
-                    echo Docker Compose Container Status
-                    echo ========================================
-
-                    docker compose -f "%COMPOSE_FILE%" ps
-
-
-                    echo.
-                    echo ========================================
-                    echo Docker Compose Logs
-                    echo ========================================
-
-                    docker compose -f "%COMPOSE_FILE%" logs --tail=100
-
-                    exit /b 0
-                '''
-            }
         }
-
-
         always {
-
             dir("${COMPOSE_DIR}") {
-
-                bat '''
-                    @echo off
-
-                    echo.
-                    echo ========================================
-                    echo Cleaning ShopSphere environment file
-                    echo ========================================
-
-                    if exist ".env" (
-                        del /F /Q ".env"
-                        echo Jenkins .env file removed.
-                    ) else (
-                        echo No .env file found.
-                    )
-
-
-                    echo.
-                    echo ========================================
-                    echo Cleaning unused Docker resources
-                    echo ========================================
-
-                    docker image prune -f
-
-                    echo Docker cleanup completed.
-
-                    exit /b 0
-                '''
+                sh 'rm -f .env .jenkins-kubeconfig; rm -rf .k8s-render; docker image prune -f || true'
             }
         }
     }

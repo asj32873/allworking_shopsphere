@@ -1,27 +1,13 @@
 minikube start --driver=docker --cpus=4 --memory=6g
 minikube addons enable ingress
 
+# Jenkins now builds, pushes, and deploys registry images. See ..\jenkins\README.md.
+# These commands are only for a manual deployment after creating both secrets.
 cd microservices
-.\k8s\build-images.ps1
-
-minikube image load shopsphere/api-gateway:latest
-minikube image load shopsphere/auth-service:latest
-minikube image load shopsphere/user-service:latest
-minikube image load shopsphere/product-service:latest
-minikube image load shopsphere/cart-service:latest
-minikube image load shopsphere/order-service:latest
-minikube image load shopsphere/payment-service:latest
-minikube image load shopsphere/address-service:latest
-minikube image load shopsphere/vendor-service:latest
-minikube image load shopsphere/review-service:latest
-minikube image load shopsphere/rag-service:latest
-minikube image load shopsphere/support-service:latest
-minikube image load shopsphere/admin-service:latest
-
-Copy-Item k8s\02-secrets.example.yaml k8s\02-secrets.yaml
-notepad k8s\02-secrets.yaml   # fill in real JWT/Mongo/Stripe/HF/Chroma values
-
-
+kubectl apply -f k8s\00-namespace.yaml
+kubectl create secret generic shopsphere-secrets -n shopsphere --from-env-file=.env
+kubectl create secret docker-registry registry-credentials -n shopsphere `
+  --docker-server=docker.io --docker-username=<username> --docker-password=<access-token>
 kubectl apply -k k8s
 
 # watch pods come up healthy (Ctrl+C to stop watching)

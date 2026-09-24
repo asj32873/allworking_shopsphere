@@ -4,7 +4,6 @@ namespace: shopsphere
 resources:
   - 00-namespace.yaml
   - 01-configmap.yaml
-  - 02-secrets.yaml
   - 03-redis.yaml
   - services/auth-service.yaml
   - services/user-service.yaml
@@ -19,3 +18,18 @@ resources:
   - services/support-service.yaml
   - services/admin-service.yaml
   - services/api-gateway.yaml
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      labelSelector: app notin (redis)
+    patch: |-
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value:
+          - name: registry-credentials
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always

@@ -41,21 +41,15 @@ k8s/
 
 ## Before applying
 
-1. Build and push images for each service, tagged to match the manifests
-   (`shopsphere/<service>:latest`), e.g.:
+1. Use the repository `Jenkinsfile` to build and push all service images. Jenkins
+   writes the registry-qualified image names and immutable build tag into a
+   temporary Kustomize overlay before deployment. See `jenkins/README.md`.
+2. For manual deployments, create the application and registry secrets first:
    ```powershell
-   docker build -t shopsphere/auth-service:latest -f services/auth/Dockerfile .
-   ```
-   For local clusters (kind/minikube) load images instead of pushing:
-   `kind load docker-image shopsphere/auth-service:latest`.
-2. Create the real secrets file (don't commit it):
-   ```powershell
-   Copy-Item k8s/02-secrets.example.yaml k8s/02-secrets.yaml
-   # edit k8s/02-secrets.yaml with real values
-   ```
-   or generate directly from an `.env` file:
-   ```powershell
-   kubectl create secret generic shopsphere-secrets -n shopsphere --from-env-file=.env --dry-run=client -o yaml > k8s/02-secrets.yaml
+   kubectl apply -f k8s/00-namespace.yaml
+   kubectl create secret generic shopsphere-secrets -n shopsphere --from-env-file=.env
+   kubectl create secret docker-registry registry-credentials -n shopsphere `
+    --docker-server=docker.io --docker-username=<username> --docker-password=<access-token>
    ```
 3. Install an ingress controller if you want external access via `Ingress`
    (e.g. `ingress-nginx`), or switch the `api-gateway` Service to `type: LoadBalancer`.
@@ -65,6 +59,10 @@ k8s/
 ```powershell
 kubectl apply -k k8s
 ```
+
+The base manifests retain placeholder `shopsphere/*:latest` image names for
+local rendering. Production deployment is owned by Jenkins, which replaces all
+of them with registry-qualified immutable tags before applying the manifests.
 
 ## Verify
 

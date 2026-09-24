@@ -5,6 +5,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+microservices/k8s/02-secrets.yaml
 
 # Build output
 dist/
