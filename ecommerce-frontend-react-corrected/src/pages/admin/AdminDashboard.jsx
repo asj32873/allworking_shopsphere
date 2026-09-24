@@ -13,38 +13,102 @@ export default function AdminDashboard() {
 
   const issues = useSelector((state) => state.issues.items);
 
+  const stats = [
+    {
+      label: "Users",
+      value: users.length,
+      icon: "bi-people",
+      description: "Registered platform users",
+    },
+    {
+      label: "Vendors",
+      value: vendors.length,
+      icon: "bi-shop",
+      description: "Vendor accounts on the platform",
+    },
+    {
+      label: "Pending Vendors",
+      value: vendors.filter((v) => v.status === "APPLIED").length,
+      icon: "bi-person-check",
+      description: "Vendor applications awaiting review",
+      attention: true,
+    },
+    {
+      label: "Products",
+      value: products.length,
+      icon: "bi-box-seam",
+      description: "Products across all vendors",
+    },
+    {
+      label: "Open Issues",
+      value: issues.filter(
+        (i) => !["RESOLVED", "CLOSED"].includes(i.status),
+      ).length,
+      icon: "bi-exclamation-circle",
+      description: "Issues requiring attention",
+      attention: true,
+    },
+    {
+      label: "Orders",
+      value: orders.length,
+      icon: "bi-receipt",
+      description: "Orders across the platform",
+    },
+  ];
+
   return (
     <PortalLayout type="admin">
-      <div className="py-4">
-        <h2>Admin Dashboard</h2>
+      <div className="admin-dashboard">
+        <header className="admin-dashboard-header">
+          <div>
+            <div className="admin-dashboard-eyebrow">
+              ADMIN OVERVIEW
+            </div>
 
-        <div className="row g-3">
-          {[
-            ["Users", users.length],
-            ["Vendors", vendors.length],
-            [
-              "Pending Vendors",
-              vendors.filter((v) => v.status === "APPLIED").length,
-            ],
-            ["Products", products.length],
-            [
-              "Open Issues",
-              issues.filter((i) => !["RESOLVED", "CLOSED"].includes(i.status))
-                .length,
-            ],
-            ["Orders", orders.length],
-          ].map(([a, b]) => (
-            <div className="col-sm-6 col-xl-4" key={a}>
-              <div className="card stat-card">
-                <div className="card-body">
-                  <small>{a}</small>
+            <h1 className="admin-dashboard-title">
+              Admin Dashboard
+            </h1>
 
-                  <div className="fs-2 fw-bold">{b}</div>
+            <p className="admin-dashboard-subtitle">
+              Monitor users, vendors, products, orders, and platform issues
+              from one place.
+            </p>
+          </div>
+
+          <div className="admin-dashboard-badge">
+            <span className="admin-dashboard-badge-dot" />
+            Admin Portal
+          </div>
+        </header>
+
+        <section className="admin-dashboard-stats">
+          {stats.map((stat) => (
+            <div
+              className={`admin-stat-card${
+                stat.attention ? " admin-stat-card-attention" : ""
+              }`}
+              key={stat.label}
+            >
+              <div className="admin-stat-top">
+                <div className="admin-stat-icon">
+                  <i className={`bi ${stat.icon}`} />
                 </div>
+
+                <span className="admin-stat-label">
+                  {stat.label}
+                </span>
               </div>
+
+              <div className="admin-stat-value">
+                {stat.value}
+              </div>
+
+              <p className="admin-stat-description">
+                {stat.description}
+              </p>
             </div>
           ))}
-        </div>
+        </section>
       </div>
     </PortalLayout>
   );

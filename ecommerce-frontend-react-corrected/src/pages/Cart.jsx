@@ -19,15 +19,11 @@ export default function Cart() {
   const nav = useNavigate();
 
   const cartItems = useSelector((state) => state.cart.items);
-
   const cartTotal = useSelector((state) => state.cart.total);
-
   const addresses = useSelector((state) => state.addresses.items);
 
   const [paymentLoading, setPaymentLoading] = useState(false);
-
   const [paymentError, setPaymentError] = useState("");
-
   const [address, setAddress] = useState("");
 
   useEffect(() => {
@@ -48,12 +44,27 @@ export default function Cart() {
 
   if (!cartItems.length) {
     return (
-      <div className="container py-5 text-center">
-        <h2>Cart is empty</h2>
+      <div className="cart-page">
+        <div className="container">
+          <div className="cart-empty">
+            <div className="cart-empty-icon">
+              <i className="bi bi-cart3" />
+            </div>
 
-        <Link to="/products" className="btn btn-primary">
-          Browse Products
-        </Link>
+            <div className="cart-empty-eyebrow">YOUR CART</div>
+
+            <h1 className="cart-empty-title">Your cart is empty</h1>
+
+            <p className="cart-empty-description">
+              Browse the ShopSphere catalog and add something you love.
+            </p>
+
+            <Link to="/products" className="cart-primary-button">
+              Browse Products
+              <i className="bi bi-arrow-right" />
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
@@ -84,133 +95,262 @@ export default function Cart() {
   };
 
   return (
-    <div className="container py-4">
-      <h2>Shopping Cart</h2>
+    <div className="cart-page">
+      <div className="container">
+        <header className="cart-header">
+          <div>
+            <div className="cart-eyebrow">SHOPPING BAG</div>
 
-      <div className="row g-4">
-        <div className="col-lg-8">
-          {cartItems.map((item) => {
-            const product = item.product || item;
+            <h1 className="cart-title">Shopping Cart</h1>
 
-            const quantity = item.quantity || 1;
+            <p className="cart-subtitle">
+              Review your items and complete your order.
+            </p>
+          </div>
 
-            return (
-              <div className="card mb-3" key={item.id}>
-                <div className="card-body d-flex gap-3 align-items-center">
-                  <img
-                    src={product.image}
-                    alt={product.name}
-                    style={{
-                      width: 90,
-                      height: 90,
-                      objectFit: "cover",
-                    }}
-                  />
+          <div className="cart-item-count">
+            {cartItems.length}{" "}
+            {cartItems.length === 1 ? "item" : "items"}
+          </div>
+        </header>
 
-                  <div className="flex-grow-1">
-                    <h5>{product.name}</h5>
+        <div className="cart-layout">
+          <main className="cart-items-column">
+            <div className="cart-section-label">
+              <span>Your Items</span>
+              <span>{cartItems.length}</span>
+            </div>
 
-                    <div>₹{Number(product.price).toLocaleString("en-IN")}</div>
+            <div className="cart-items-list">
+              {cartItems.map((item) => {
+                const product = item.product || item;
+                const quantity = item.quantity || 1;
+                const productId = item.productId || product.id;
 
-                    <div className="mt-2 d-flex gap-2 align-items-center">
-                      <button
-                        className="btn btn-sm btn-outline-secondary"
-                        onClick={() =>
-                          dispatch(
-                            updateCartQty({
-                              productId: item.productId || product.id,
-                              quantity: quantity - 1,
-                            }),
-                          )
-                        }
-                      >
-                        -
-                      </button>
+                const subtotal =
+                  item.subtotal || product.price * quantity;
 
-                      <span>{quantity}</span>
-
-                      <button
-                        className="btn btn-sm btn-outline-secondary"
-                        onClick={() =>
-                          dispatch(
-                            updateCartQty({
-                              productId: item.productId || product.id,
-                              quantity: quantity + 1,
-                            }),
-                          )
-                        }
-                      >
-                        +
-                      </button>
-
-                      <button
-                        className="btn btn-sm btn-outline-danger ms-2"
-                        onClick={() =>
-                          dispatch(removeFromCart(item.productId || product.id))
-                        }
-                      >
-                        Remove
-                      </button>
+                return (
+                  <article
+                    className="cart-item-card"
+                    key={item.id || productId}
+                  >
+                    <div className="cart-item-image-wrap">
+                      {product.image ? (
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="cart-item-image"
+                        />
+                      ) : (
+                        <div className="cart-item-no-image">
+                          <i className="bi bi-image" />
+                        </div>
+                      )}
                     </div>
-                  </div>
 
-                  <strong>
-                    ₹
-                    {Number(
-                      item.subtotal || product.price * quantity,
-                    ).toLocaleString("en-IN")}
-                  </strong>
-                </div>
+                    <div className="cart-item-content">
+                      <div className="cart-item-main">
+                        <div className="cart-item-meta">
+                          {product.brand || "ShopSphere"}
+                        </div>
+
+                        <h2 className="cart-item-name">
+                          {product.name}
+                        </h2>
+
+                        <div className="cart-item-unit-price">
+                          ₹
+                          {Number(product.price).toLocaleString(
+                            "en-IN",
+                          )}{" "}
+                          each
+                        </div>
+                      </div>
+
+                      <div className="cart-item-bottom">
+                        <div className="cart-quantity-control">
+                          <button
+                            type="button"
+                            className="cart-quantity-button"
+                            aria-label={`Decrease quantity of ${product.name}`}
+                            disabled={quantity <= 1}
+                            onClick={() =>
+                              dispatch(
+                                updateCartQty({
+                                  productId,
+                                  quantity: quantity - 1,
+                                }),
+                              )
+                            }
+                          >
+                            −
+                          </button>
+
+                          <span className="cart-quantity-value">
+                            {quantity}
+                          </span>
+
+                          <button
+                            type="button"
+                            className="cart-quantity-button"
+                            aria-label={`Increase quantity of ${product.name}`}
+                            onClick={() =>
+                              dispatch(
+                                updateCartQty({
+                                  productId,
+                                  quantity: quantity + 1,
+                                }),
+                              )
+                            }
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="cart-remove-button"
+                          onClick={() =>
+                            dispatch(removeFromCart(productId))
+                          }
+                        >
+                          <i className="bi bi-trash3" />
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="cart-item-total">
+                      <span className="cart-item-total-label">
+                        Subtotal
+                      </span>
+
+                      <strong>
+                        ₹
+                        {Number(subtotal).toLocaleString("en-IN")}
+                      </strong>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <Link
+              to="/products"
+              className="cart-continue-shopping"
+            >
+              <i className="bi bi-arrow-left" />
+              Continue shopping
+            </Link>
+          </main>
+
+          <aside className="cart-summary">
+            <div className="cart-summary-header">
+              <div className="cart-summary-eyebrow">
+                ORDER SUMMARY
               </div>
-            );
-          })}
-        </div>
 
-        <div className="col-lg-4">
-          <div className="card">
-            <div className="card-body">
-              <h4>Order Summary</h4>
+              <h2>Order Summary</h2>
+            </div>
 
-              <h3>₹{Number(cartTotal).toLocaleString("en-IN")}</h3>
+            <div className="cart-summary-total">
+              <span>Total</span>
 
-              {paymentError && (
-                <div className="alert alert-danger">{paymentError}</div>
-              )}
+              <strong>
+                ₹{Number(cartTotal).toLocaleString("en-IN")}
+              </strong>
+            </div>
 
-              <label className="form-label mt-3">Delivery Address</label>
+            <div className="cart-summary-divider" />
 
-              <select
-                className="form-select mb-3"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
+            {paymentError && (
+              <div className="cart-payment-error">
+                <i className="bi bi-exclamation-circle" />
+                <span>{paymentError}</span>
+              </div>
+            )}
+
+            <div className="cart-address-section">
+              <label
+                htmlFor="cart-address"
+                className="cart-address-label"
               >
-                <option value="">Select Address</option>
+                Delivery Address
+              </label>
 
-                {addresses.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.type}: {a.addressLine}, {a.city}
-                  </option>
-                ))}
-              </select>
+              {addresses.length ? (
+                <select
+                  id="cart-address"
+                  className="cart-address-select"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                >
+                  <option value="">Select Address</option>
+
+                  {addresses.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.type}: {a.addressLine}, {a.city}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="cart-no-address">
+                  <i className="bi bi-geo-alt" />
+
+                  <div>
+                    <strong>No delivery address</strong>
+
+                    <span>
+                      Add an address before checking out.
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {!addresses.length && (
                 <Link
                   to="/profile/addresses"
-                  className="btn btn-outline-primary w-100 mb-2"
+                  className="cart-add-address-button"
                 >
+                  <i className="bi bi-plus-circle" />
                   Add Address
                 </Link>
               )}
-
-              <button
-                className="btn btn-success w-100"
-                disabled={paymentLoading || !address}
-                onClick={handleCheckout}
-              >
-                {paymentLoading ? "Starting Payment..." : "Checkout"}
-              </button>
             </div>
-          </div>
+
+            <button
+              type="button"
+              className="cart-checkout-button"
+              disabled={paymentLoading || !address}
+              onClick={handleCheckout}
+            >
+              {paymentLoading ? (
+                <>
+                  <span
+                    className="spinner-border spinner-border-sm"
+                    role="status"
+                    aria-hidden="true"
+                  />
+
+                  Starting Payment...
+                </>
+              ) : (
+                <>
+                  Checkout
+                  <i className="bi bi-arrow-right" />
+                </>
+              )}
+            </button>
+
+            <div className="cart-secure-note">
+              <i className="bi bi-shield-check" />
+
+              <span>
+                Secure checkout powered by Stripe
+              </span>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

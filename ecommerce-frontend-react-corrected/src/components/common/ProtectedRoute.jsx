@@ -8,8 +8,18 @@ export default function ProtectedRoute({ roles }) {
 
   if (loading) {
     return (
-      <div className="container py-5 text-center">
-        <div className="spinner-border" role="status" aria-label="Loading" />
+      <div className="protected-route-loading">
+        <div className="protected-route-loader">
+          <span className="protected-route-spinner" />
+        </div>
+
+        <div className="protected-route-title">
+          Loading your account
+        </div>
+
+        <div className="protected-route-text">
+          Please wait while we verify your session.
+        </div>
       </div>
     );
   }

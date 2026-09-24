@@ -15,9 +15,7 @@ export default function ReviewForm({
   const dispatch = useDispatch();
 
   const [rating, setRating] = useState(existingReview?.rating || 5);
-
   const [review, setReview] = useState(existingReview?.review || "");
-
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -95,44 +93,92 @@ export default function ReviewForm({
   };
 
   return (
-    <div className="card mt-3">
+    <div className="card mt-3 product-review-form-card">
       <div className="card-body">
-        <h5>{editing ? "Edit Your Review" : "Write a Review"}</h5>
 
-        {msg && <div className="alert alert-info py-2">{msg}</div>}
+        {/* Header */}
+        <div className="product-review-form-header">
+          <div>
+            <div className="product-review-form-eyebrow">
+              {editing ? "YOUR REVIEW" : "SHARE YOUR EXPERIENCE"}
+            </div>
+
+            <h5 className="product-review-form-title">
+              {editing ? "Edit Your Review" : "Write a Review"}
+            </h5>
+          </div>
+
+          <div className="product-review-form-star">
+            ★
+          </div>
+        </div>
+
+        {/* Status Message */}
+        {msg && (
+          <div className="alert alert-info py-2 product-review-form-message">
+            {msg}
+          </div>
+        )}
 
         <form onSubmit={submit}>
-          <label className="form-label">Rating</label>
 
-          <select
-            className="form-select mb-2"
-            value={rating}
-            onChange={(e) => setRating(Number(e.target.value))}
-          >
-            {[5, 4, 3, 2, 1].map((x) => (
-              <option key={x} value={x}>
-                {x} ★
-              </option>
-            ))}
-          </select>
+          {/* Rating */}
+          <div className="product-review-field">
+            <label className="form-label">
+              Rating
+            </label>
 
-          <label className="form-label">Review</label>
+            <select
+              className="form-select"
+              value={rating}
+              onChange={(e) =>
+                setRating(Number(e.target.value))
+              }
+            >
+              {[5, 4, 3, 2, 1].map((x) => (
+                <option key={x} value={x}>
+                  {x} ★
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <textarea
-            className="form-control mb-2"
-            rows="4"
-            maxLength={2000}
-            value={review}
-            onChange={(e) => setReview(e.target.value)}
-            placeholder="Share your experience..."
-            required
-          />
+          {/* Review */}
+          <div className="product-review-field">
+            <label className="form-label">
+              Review
+            </label>
 
-          <div className="small text-muted mb-2">{review.length}/2000</div>
+            <textarea
+              className="form-control"
+              rows="4"
+              maxLength={2000}
+              value={review}
+              onChange={(e) =>
+                setReview(e.target.value)
+              }
+              placeholder="Share your experience..."
+              required
+            />
 
-          <div className="d-flex gap-2">
-            <button className="btn btn-primary" disabled={busy}>
-              {busy ? "Saving..." : editing ? "Update Review" : "Submit Review"}
+            <div className="product-review-counter">
+              {review.length}/2000
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="product-review-form-actions">
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={busy}
+            >
+              {busy
+                ? "Saving..."
+                : editing
+                  ? "Update Review"
+                  : "Submit Review"}
             </button>
 
             {editing && (
@@ -145,7 +191,9 @@ export default function ReviewForm({
                 Delete
               </button>
             )}
+
           </div>
+
         </form>
       </div>
     </div>

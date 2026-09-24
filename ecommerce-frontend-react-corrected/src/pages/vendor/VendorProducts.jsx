@@ -20,57 +20,161 @@ export default function VendorProducts() {
 
   return (
     <PortalLayout type="vendor">
-      <div className="py-4">
-        <div className="d-flex justify-content-between">
-          <h2>Product Management</h2>
+      <div className="vendor-products-page">
+        <header className="vendor-products-header">
+          <div>
+            <div className="vendor-products-eyebrow">
+              VENDOR CATALOG
+            </div>
 
-          <Link className="btn btn-primary" to="/vendor/products/create">
+            <h1 className="vendor-products-title">
+              Product Management
+            </h1>
+
+            <p className="vendor-products-subtitle">
+              Manage your products, pricing, inventory, and catalog listings.
+            </p>
+          </div>
+
+          <Link
+            className="vendor-products-add-button"
+            to="/vendor/products/create"
+          >
+            <i className="bi bi-plus-lg" />
             Add Product
           </Link>
-        </div>
+        </header>
 
-        <div className="card mt-3">
-          <div className="card-body table-responsive">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Price</th>
-                  <th>Stock</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+        <section className="vendor-products-card">
+          <div className="vendor-products-card-header">
+            <div>
+              <div className="vendor-products-card-eyebrow">
+                YOUR PRODUCTS
+              </div>
 
-              <tbody>
-                {mine.map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.name}</td>
+              <h2 className="vendor-products-card-title">
+                Catalog
+              </h2>
+            </div>
 
-                    <td>₹{p.price.toLocaleString("en-IN")}</td>
-
-                    <td>{p.stock}</td>
-
-                    <td>
-                      <Link
-                        className="btn btn-sm btn-outline-primary me-2"
-                        to={`/vendor/products/${p.id}/edit`}
-                      >
-                        Edit
-                      </Link>
-
-                      <button
-                        className="btn btn-sm btn-outline-danger"
-                        onClick={() => dispatch(deleteProduct(p.id))}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="vendor-products-count">
+              {mine.length} {mine.length === 1 ? "product" : "products"}
+            </div>
           </div>
-        </div>
+
+          {mine.length > 0 ? (
+            <div className="vendor-products-table-wrap">
+              <table className="vendor-products-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Price</th>
+                    <th>Stock</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {mine.map((p) => {
+                    const lowStock = p.stock < 10;
+
+                    return (
+                      <tr key={p.id}>
+                        <td>
+                          <div className="vendor-product-name-cell">
+                            <div className="vendor-product-icon">
+                              <i className="bi bi-box-seam" />
+                            </div>
+
+                            <div>
+                              <div className="vendor-product-name">
+                                {p.name}
+                              </div>
+
+                              <div className="vendor-product-id">
+                                Product #{p.id}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td>
+                          <span className="vendor-product-price">
+                            ₹{p.price.toLocaleString("en-IN")}
+                          </span>
+                        </td>
+
+                        <td>
+                          <div className="vendor-product-stock">
+                            <span
+                              className={`vendor-product-stock-dot${
+                                lowStock
+                                  ? " vendor-product-stock-dot-low"
+                                  : ""
+                              }`}
+                            />
+
+                            <span>{p.stock}</span>
+
+                            {lowStock && (
+                              <span className="vendor-product-low-stock">
+                                Low
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td>
+                          <div className="vendor-product-actions">
+                            <Link
+                              className="vendor-product-edit"
+                              to={`/vendor/products/${p.id}/edit`}
+                            >
+                              <i className="bi bi-pencil" />
+                              Edit
+                            </Link>
+
+                            <button
+                              className="vendor-product-delete"
+                              onClick={() => dispatch(deleteProduct(p.id))}
+                            >
+                              <i className="bi bi-trash3" />
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="vendor-products-empty">
+              <div className="vendor-products-empty-icon">
+                <i className="bi bi-box-seam" />
+              </div>
+
+              <div className="vendor-products-empty-eyebrow">
+                EMPTY CATALOG
+              </div>
+
+              <h3>No products yet</h3>
+
+              <p>
+                Add your first product to start building your vendor catalog.
+              </p>
+
+              <Link
+                to="/vendor/products/create"
+                className="vendor-products-empty-button"
+              >
+                <i className="bi bi-plus-lg" />
+                Add Product
+              </Link>
+            </div>
+          )}
+        </section>
       </div>
     </PortalLayout>
   );

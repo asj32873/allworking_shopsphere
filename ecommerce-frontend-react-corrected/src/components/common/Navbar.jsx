@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { NavLink, Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 
 import { logout } from "../../store/slices/authSlice";
@@ -14,7 +14,6 @@ export default function Navbar() {
   const dispatch = useDispatch();
 
   const user = useSelector((state) => state.auth.user);
-
   const cartItems = useSelector((state) => state.cart.items);
 
   const navigate = useNavigate();
@@ -33,15 +32,19 @@ export default function Navbar() {
     navigate("/");
   };
 
+  const navLinkClass = ({ isActive }) =>
+    `shopsphere-nav-link${isActive ? " active" : ""}`;
+
   return (
-    <nav className="navbar navbar-expand-lg bg-dark navbar-dark sticky-top shopsphere-navbar">
+    <nav className="navbar navbar-expand-lg sticky-top shopsphere-navbar">
       <div className="container">
-        <Link className="navbar-brand fw-bold" to="/">
-          ShopSphere
+        <Link className="navbar-brand shopsphere-brand" to="/">
+          <span className="shopsphere-brand-mark">S</span>
+          <span>ShopSphere</span>
         </Link>
 
         <button
-          className="navbar-toggler"
+          className="navbar-toggler shopsphere-toggler"
           type="button"
           data-bs-toggle="collapse"
           data-bs-target="#mainNavbar"
@@ -49,80 +52,96 @@ export default function Navbar() {
           aria-expanded="false"
           aria-label="Toggle navigation"
         >
-          <span className="navbar-toggler-icon" />
+          <span className="shopsphere-toggler-icon">
+            <span />
+            <span />
+            <span />
+          </span>
         </button>
 
         <div className="collapse navbar-collapse" id="mainNavbar">
-          <ul className="navbar-nav me-auto mb-3 mb-lg-0">
+          <ul className="navbar-nav shopsphere-nav me-auto">
             <li className="nav-item">
-              <Link className="nav-link" to="/products">
+              <NavLink to="/products" className={navLinkClass}>
                 Products
-              </Link>
+              </NavLink>
             </li>
 
             {user?.role === "USER" && (
               <>
                 <li className="nav-item">
-                  <Link className="nav-link" to="/orders">
+                  <NavLink to="/orders" className={navLinkClass}>
                     Orders
-                  </Link>
+                  </NavLink>
                 </li>
 
                 <li className="nav-item">
-                  <Link className="nav-link" to="/issues">
+                  <NavLink to="/issues" className={navLinkClass}>
                     Issues
-                  </Link>
+                  </NavLink>
                 </li>
               </>
             )}
 
             {user?.role === "VENDOR" && (
               <li className="nav-item">
-                <Link className="nav-link" to="/vendor/dashboard">
+                <NavLink to="/vendor/dashboard" className={navLinkClass}>
                   Vendor
-                </Link>
+                </NavLink>
               </li>
             )}
 
             {user?.role === "ADMIN" && (
               <li className="nav-item">
-                <Link className="nav-link" to="/admin/dashboard">
+                <NavLink to="/admin/dashboard" className={navLinkClass}>
                   Admin
-                </Link>
+                </NavLink>
               </li>
             )}
           </ul>
 
-          <div className="navbar-actions d-flex align-items-center gap-2">
+          <div className="navbar-actions shopsphere-actions">
             {user?.role === "USER" && (
-              <Link className="btn btn-outline-light" to="/cart">
-                <i className="bi bi-cart3 me-1" />
-                Cart ({cartItems.length})
+              <Link className="shopsphere-cart-link" to="/cart">
+                <i className="bi bi-cart3" />
+                <span>Cart</span>
+                <span className="shopsphere-cart-count">
+                  {cartItems.length}
+                </span>
               </Link>
             )}
 
             {user ? (
               <>
-                <Link className="btn btn-light" to="/profile">
-                  <i className="bi bi-person me-1" />
-                  {user.name}
+                <Link className="shopsphere-profile-link" to="/profile">
+                  <span className="shopsphere-profile-icon">
+                    <i className="bi bi-person" />
+                  </span>
+
+                  <span className="shopsphere-profile-name">
+                    {user.name}
+                  </span>
                 </Link>
 
                 <button
-                  className="btn btn-outline-light"
+                  className="shopsphere-logout"
                   onClick={handleLogout}
+                  type="button"
                 >
-                  <i className="bi bi-box-arrow-right me-1" />
-                  Logout
+                  <i className="bi bi-box-arrow-right" />
+                  <span>Logout</span>
                 </button>
               </>
             ) : (
               <>
-                <Link className="btn btn-outline-light" to="/vendor/register">
+                <Link
+                  className="shopsphere-vendor-link"
+                  to="/vendor/register"
+                >
                   Become a Vendor
                 </Link>
 
-                <Link className="btn btn-primary" to="/login">
+                <Link className="shopsphere-login-link" to="/login">
                   Login
                 </Link>
               </>

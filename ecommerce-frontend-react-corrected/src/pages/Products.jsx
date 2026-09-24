@@ -61,141 +61,317 @@ export default function Products() {
   };
 
   return (
-    <div className="container py-4">
-      {/* KEEP THE REST OF YOUR EXISTING JSX EXACTLY THE SAME */}
-      {/* Only use products from Redux as shown above */}
+    <main className="products-page">
+      {/* =====================================================
+          CATALOG HEADER
+      ===================================================== */}
 
-      <div className="row g-4 product-grid">
-        <div className="col-lg-3">
-          <div className="card">
-            <div className="card-body">
-              <h5>Filters</h5>
+      <section className="products-header">
+        <div className="container">
+          <div className="products-header-inner">
+            <div>
+              <span className="products-eyebrow">
+                ShopSphere catalog
+              </span>
 
-              <input
-                className="form-control mt-3"
-                placeholder="Search"
-                value={q}
-                onChange={(e) => change(setQ, e.target.value)}
-              />
+              <h1>Products</h1>
 
-              <select
-                className="form-select mt-3"
-                value={brand}
-                onChange={(e) => change(setBrand, e.target.value)}
-              >
-                <option value="">All brands</option>
+              <p>
+                Explore products from trusted vendors across the
+                ShopSphere marketplace.
+              </p>
+            </div>
 
-                {brands.map((x) => (
-                  <option key={x}>{x}</option>
-                ))}
-              </select>
-
-              <select
-                className="form-select mt-3"
-                value={cat}
-                onChange={(e) => change(setCat, e.target.value)}
-              >
-                <option value="">All categories</option>
-
-                {cats.map((x) => (
-                  <option key={x}>{x}</option>
-                ))}
-              </select>
-
-              <div className="row g-2">
-                <div className="col">
-                  <input
-                    type="number"
-                    className="form-control mt-3"
-                    placeholder="Min ₹"
-                    value={min}
-                    onChange={(e) => change(setMin, e.target.value)}
-                  />
-                </div>
-
-                <div className="col">
-                  <input
-                    type="number"
-                    className="form-control mt-3"
-                    placeholder="Max ₹"
-                    value={max}
-                    onChange={(e) => change(setMax, e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <select
-                className="form-select mt-3"
-                value={rating}
-                onChange={(e) => change(setRating, e.target.value)}
-              >
-                <option value="">Any rating</option>
-                <option value="4">4+</option>
-                <option value="4.5">4.5+</option>
-              </select>
-
-              <select
-                className="form-select mt-3"
-                value={stock}
-                onChange={(e) => change(setStock, e.target.value)}
-              >
-                <option value="">All availability</option>
-                <option value="in">In Stock</option>
-                <option value="out">Out of Stock</option>
-              </select>
-
-              <select
-                className="form-select mt-3"
-                value={sort}
-                onChange={(e) => change(setSort, e.target.value)}
-              >
-                <option value="">Default</option>
-                <option value="low">Price low → high</option>
-                <option value="high">Price high → low</option>
-                <option value="rating">Rating</option>
-              </select>
+            <div className="products-result-summary">
+              <strong>{filtered.length}</strong>
+              <span>
+                {filtered.length === 1 ? "product" : "products"}
+              </span>
             </div>
           </div>
         </div>
+      </section>
 
-        <div className="col-lg-9">
-          <div className="d-flex justify-content-between">
-            <h2>Products</h2>
-            <span>{filtered.length} results</span>
-          </div>
+      {/* =====================================================
+          CATALOG
+      ===================================================== */}
 
-          <div className="row g-4">
-            {items.map((p) => (
-              <div className="col-md-6 col-xl-4" key={p.id}>
-                <ProductCard product={p} />
+      <section className="products-catalog">
+        <div className="container">
+          <div className="products-layout">
+            {/* =================================================
+                FILTERS
+            ================================================= */}
+
+            <aside className="products-filters">
+              <div className="products-filters-header">
+                <div>
+                  <span className="products-filter-label">
+                    Refine
+                  </span>
+
+                  <h2>Filters</h2>
+                </div>
+
+                <i className="bi bi-sliders" />
               </div>
-            ))}
-          </div>
 
-          {!items.length && (
-            <div className="alert alert-info mt-3">
-              No products match your filters.
-            </div>
-          )}
+              <div className="products-filter-group">
+                <label htmlFor="product-search">
+                  Search
+                </label>
 
-          {total > 1 && (
-            <nav className="mt-4">
-              <ul className="pagination">
-                {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
-                  <li
-                    className={`page-item ${page === n ? "active" : ""}`}
-                    key={n}
+                <div className="products-search-field">
+                  <i className="bi bi-search" />
+
+                  <input
+                    id="product-search"
+                    type="search"
+                    placeholder="Search products..."
+                    value={q}
+                    onChange={(e) =>
+                      change(setQ, e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="products-filter-group">
+                <label htmlFor="product-brand">
+                  Brand
+                </label>
+
+                <select
+                  id="product-brand"
+                  value={brand}
+                  onChange={(e) =>
+                    change(setBrand, e.target.value)
+                  }
+                >
+                  <option value="">All brands</option>
+
+                  {brands.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="products-filter-group">
+                <label htmlFor="product-category">
+                  Category
+                </label>
+
+                <select
+                  id="product-category"
+                  value={cat}
+                  onChange={(e) =>
+                    change(setCat, e.target.value)
+                  }
+                >
+                  <option value="">All categories</option>
+
+                  {cats.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="products-filter-group">
+                <label>Price range</label>
+
+                <div className="products-price-fields">
+                  <div className="products-price-field">
+                    <span>₹</span>
+
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      value={min}
+                      onChange={(e) =>
+                        change(setMin, e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="products-price-field">
+                    <span>₹</span>
+
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      value={max}
+                      onChange={(e) =>
+                        change(setMax, e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="products-filter-group">
+                <label htmlFor="product-rating">
+                  Rating
+                </label>
+
+                <select
+                  id="product-rating"
+                  value={rating}
+                  onChange={(e) =>
+                    change(setRating, e.target.value)
+                  }
+                >
+                  <option value="">Any rating</option>
+                  <option value="4">4+ stars</option>
+                  <option value="4.5">4.5+ stars</option>
+                </select>
+              </div>
+
+              <div className="products-filter-group">
+                <label htmlFor="product-stock">
+                  Availability
+                </label>
+
+                <select
+                  id="product-stock"
+                  value={stock}
+                  onChange={(e) =>
+                    change(setStock, e.target.value)
+                  }
+                >
+                  <option value="">All availability</option>
+                  <option value="in">In stock</option>
+                  <option value="out">Out of stock</option>
+                </select>
+              </div>
+            </aside>
+
+            {/* =================================================
+                PRODUCTS
+            ================================================= */}
+
+            <div className="products-results">
+              <div className="products-toolbar">
+                <div className="products-toolbar-info">
+                  <span className="products-toolbar-count">
+                    Showing
+                  </span>
+
+                  <strong>
+                    {items.length} of {filtered.length}
+                  </strong>
+
+                  <span className="products-toolbar-count">
+                    products
+                  </span>
+                </div>
+
+                <div className="products-sort">
+                  <label htmlFor="product-sort">
+                    Sort by
+                  </label>
+
+                  <select
+                    id="product-sort"
+                    value={sort}
+                    onChange={(e) =>
+                      change(setSort, e.target.value)
+                    }
                   >
-                    <button className="page-link" onClick={() => setPage(n)}>
-                      {n}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          )}
+                    <option value="">Default</option>
+                    <option value="low">
+                      Price: low to high
+                    </option>
+                    <option value="high">
+                      Price: high to low
+                    </option>
+                    <option value="rating">
+                      Highest rated
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              {items.length > 0 ? (
+                <div className="row g-4 products-grid">
+                  {items.map((product) => (
+                    <div
+                      className="col-md-6 col-xl-4"
+                      key={product.id}
+                    >
+                      <ProductCard product={product} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="products-empty">
+                  <div className="products-empty-icon">
+                    <i className="bi bi-search" />
+                  </div>
+
+                  <h2>No products found</h2>
+
+                  <p>
+                    No products match your current filters.
+                  </p>
+                </div>
+              )}
+
+              {/* =================================================
+                  PAGINATION
+              ================================================= */}
+
+              {total > 1 && (
+                <nav
+                  className="products-pagination"
+                  aria-label="Product pagination"
+                >
+                  <button
+                    type="button"
+                    className="products-page-button"
+                    disabled={page === 1}
+                    onClick={() => setPage(page - 1)}
+                    aria-label="Previous page"
+                  >
+                    <i className="bi bi-chevron-left" />
+                  </button>
+
+                  <div className="products-page-numbers">
+                    {Array.from(
+                      { length: total },
+                      (_, i) => i + 1,
+                    ).map((n) => (
+                      <button
+                        type="button"
+                        className={`products-page-number ${
+                          page === n ? "active" : ""
+                        }`}
+                        key={n}
+                        onClick={() => setPage(n)}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="products-page-button"
+                    disabled={page === total}
+                    onClick={() => setPage(page + 1)}
+                    aria-label="Next page"
+                  >
+                    <i className="bi bi-chevron-right" />
+                  </button>
+                </nav>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

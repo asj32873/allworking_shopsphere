@@ -14,7 +14,9 @@ export default function VendorDashboard() {
   const ps = products.filter((p) => String(p.vendorId) === String(user?.id));
 
   const os = orders.filter((o) =>
-    (o.items || []).some((i) => String(i.vendorId) === String(user?.id)),
+    (o.items || []).some(
+      (i) => String(i.vendorId) === String(user?.id),
+    ),
   );
 
   const vendorIssues = issues.filter(
@@ -25,38 +27,102 @@ export default function VendorDashboard() {
     (total, order) =>
       total +
       (order.items || [])
-        .filter((item) => String(item.vendorId) === String(user?.id))
-        .reduce((sum, item) => sum + item.quantity * item.unitPrice, 0),
+        .filter(
+          (item) => String(item.vendorId) === String(user?.id),
+        )
+        .reduce(
+          (sum, item) => sum + item.quantity * item.unitPrice,
+          0,
+        ),
     0,
   );
 
+  const stats = [
+    {
+      label: "Products",
+      value: ps.length,
+      icon: "bi-box-seam",
+      description: "Active products in your catalog",
+    },
+    {
+      label: "Orders",
+      value: os.length,
+      icon: "bi-receipt",
+      description: "Orders containing your products",
+    },
+    {
+      label: "Low Stock",
+      value: ps.filter((p) => p.stock < 10).length,
+      icon: "bi-exclamation-triangle",
+      description: "Products below stock threshold",
+    },
+    {
+      label: "Open Issues",
+      value: vendorIssues.filter((i) => i.status !== "RESOLVED").length,
+      icon: "bi-life-preserver",
+      description: "Issues requiring attention",
+    },
+    {
+      label: "Sales",
+      value: `₹${sales.toLocaleString("en-IN")}`,
+      icon: "bi-graph-up-arrow",
+      description: "Sales from your products",
+      featured: true,
+    },
+  ];
+
   return (
     <PortalLayout type="vendor">
-      <div className="py-4">
-        <h2>Vendor Dashboard</h2>
+      <div className="vendor-dashboard">
+        <header className="vendor-dashboard-header">
+          <div>
+            <div className="vendor-dashboard-eyebrow">
+              VENDOR OVERVIEW
+            </div>
 
-        <div className="row g-3">
-          {[
-            ["Products", ps.length],
-            ["Orders", os.length],
-            ["Low Stock", ps.filter((p) => p.stock < 10).length],
-            [
-              "Open Issues",
-              vendorIssues.filter((i) => i.status !== "RESOLVED").length,
-            ],
-            ["Sales", `₹${sales.toLocaleString("en-IN")}`],
-          ].map(([label, value]) => (
-            <div className="col-sm-6 col-xl-3" key={label}>
-              <div className="card stat-card">
-                <div className="card-body">
-                  <small>{label}</small>
+            <h1 className="vendor-dashboard-title">
+              Vendor Dashboard
+            </h1>
 
-                  <div className="fs-2 fw-bold">{value}</div>
+            <p className="vendor-dashboard-subtitle">
+              Keep track of your products, orders, stock, issues, and sales.
+            </p>
+          </div>
+
+          <div className="vendor-dashboard-badge">
+            <span className="vendor-dashboard-badge-dot" />
+            Vendor Portal
+          </div>
+        </header>
+
+        <section className="vendor-dashboard-stats">
+          {stats.map((stat) => (
+            <div
+              className={`vendor-stat-card${
+                stat.featured ? " vendor-stat-card-featured" : ""
+              }`}
+              key={stat.label}
+            >
+              <div className="vendor-stat-top">
+                <div className="vendor-stat-icon">
+                  <i className={`bi ${stat.icon}`} />
                 </div>
+
+                <span className="vendor-stat-label">
+                  {stat.label}
+                </span>
               </div>
+
+              <div className="vendor-stat-value">
+                {stat.value}
+              </div>
+
+              <p className="vendor-stat-description">
+                {stat.description}
+              </p>
             </div>
           ))}
-        </div>
+        </section>
       </div>
     </PortalLayout>
   );
