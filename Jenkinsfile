@@ -73,7 +73,7 @@ pipeline {
 
                     dir("${COMPOSE_DIR}") {
 
-                        bat '''
+                        sh '''
                             @echo off
 
                             echo ========================================
@@ -113,7 +113,7 @@ pipeline {
 
             steps {
 
-                bat '''
+                sh '''
                     @echo off
 
                     echo ========================================
@@ -195,7 +195,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    bat '''
+                    sh '''
                         @echo off
 
                         echo ========================================
@@ -245,7 +245,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    bat '''
+                    sh '''
                         @echo off
 
                         echo ========================================
@@ -306,7 +306,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    bat '''
+                    sh '''
                         @echo off
 
                         echo ========================================
@@ -340,7 +340,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    bat '''
+                    sh '''
                         @echo off
 
                         echo ========================================
@@ -424,7 +424,7 @@ pipeline {
 
                         dir("${COMPOSE_DIR}") {
 
-                            bat '''
+                            sh '''
                                 @echo off
 
                                 echo ========================================
@@ -465,7 +465,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    bat '''
+                    sh '''
                         @echo off
 
                         echo ========================================
@@ -508,7 +508,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    bat '''
+                    sh '''
                         @echo off
 
                         echo ========================================
@@ -558,7 +558,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    bat '''
+                    sh '''
                         @echo off
 
                         echo ========================================
@@ -627,7 +627,7 @@ pipeline {
 
             dir("${COMPOSE_DIR}") {
 
-                bat '''
+                sh '''
                     @echo off
 
                     echo.
@@ -655,7 +655,7 @@ pipeline {
 
             dir("${COMPOSE_DIR}") {
 
-                bat '''
+                sh '''
                     @echo off
 
                     echo.
