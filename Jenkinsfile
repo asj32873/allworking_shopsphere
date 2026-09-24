@@ -1,6 +1,8 @@
 pipeline {
 
-    agent any
+    agent {
+        label 'windows'
+    }
 
     options {
         timestamps()
@@ -73,7 +75,7 @@ pipeline {
 
                     dir("${COMPOSE_DIR}") {
 
-                        sh '''
+                        bat '''
                             @echo off
 
                             echo ========================================
@@ -113,7 +115,7 @@ pipeline {
 
             steps {
 
-                sh '''
+                bat '''
                     @echo off
 
                     echo ========================================
@@ -195,7 +197,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    sh '''
+                    bat '''
                         @echo off
 
                         echo ========================================
@@ -245,7 +247,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    sh '''
+                    bat '''
                         @echo off
 
                         echo ========================================
@@ -306,7 +308,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    sh '''
+                    bat '''
                         @echo off
 
                         echo ========================================
@@ -340,7 +342,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    sh '''
+                    bat '''
                         @echo off
 
                         echo ========================================
@@ -424,7 +426,7 @@ pipeline {
 
                         dir("${COMPOSE_DIR}") {
 
-                            sh '''
+                            bat '''
                                 @echo off
 
                                 echo ========================================
@@ -465,7 +467,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    sh '''
+                    bat '''
                         @echo off
 
                         echo ========================================
@@ -508,7 +510,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    sh '''
+                    bat '''
                         @echo off
 
                         echo ========================================
@@ -558,7 +560,7 @@ pipeline {
 
                 dir("${COMPOSE_DIR}") {
 
-                    sh '''
+                    bat '''
                         @echo off
 
                         echo ========================================
@@ -627,7 +629,7 @@ pipeline {
 
             dir("${COMPOSE_DIR}") {
 
-                sh '''
+                bat '''
                     @echo off
 
                     echo.
@@ -655,7 +657,7 @@ pipeline {
 
             dir("${COMPOSE_DIR}") {
 
-                sh '''
+                bat '''
                     @echo off
 
                     echo.
