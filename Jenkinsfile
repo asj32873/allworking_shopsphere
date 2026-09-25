@@ -9,7 +9,7 @@ environment {
 
     DOCKER_USER = credentials('dockerhub-creds')
 
-    IMAGE_PREFIX = "yourdockerusername/shopsphere"
+    IMAGE_PREFIX = "sushritha03/shopsphere"
 
 }
 
