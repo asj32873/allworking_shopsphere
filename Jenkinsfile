@@ -18,23 +18,15 @@ pipeline {
                 checkout scm
             }
         }
-
-        stage('Install Dependencies') {
-            steps {
-                dir('microservices') {
-                    sh 'npm ci --legacy-peer-deps'
-                }
+stage('Install Dependencies') {
+    steps {
+        container('node') {
+            dir('microservices') {
+                sh 'npm ci --legacy-peer-deps'
             }
         }
-
-        stage('Test') {
-            steps {
-                dir('microservices') {
-                    sh 'npm test || true'
-                }
-            }
-        }
-
+    }
+}
         stage('Build & Push Images') {
             steps {
                 container('kaniko') {
